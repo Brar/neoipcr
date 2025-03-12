@@ -53,6 +53,134 @@ import_dhis2 <- function(connection_options = dhis2_connection_options(), transl
 
   patients <- read_patients(trackedEntities, metadata)
   enrollments <- read_enrollments(enrollments, events, metadata, patients)
+  processed_events <- read_events(events, metadata$eventTypes, enrollments,
+                                  patients, metadata$departments)
+  eventDetails <- read_event_details(
+    events, processed_events,
+    metadata$users |>
+      dplyr::select("user_key", "username"))
+  eventNotes <- read_event_notes(events, processed_events, metadata$users)
+  admissiondata <- read_event_data(events, processed_events,
+                                   metadata$dataElements, metadata$options,
+                                   metadata$users, "adm")
+  surveillanceEndData <- read_event_data(events, processed_events,
+                                         metadata$dataElements,
+                                         metadata$options,
+                                         metadata$users, "end")
+  sepsisData <- read_event_data(events, processed_events, metadata$dataElements,
+                                metadata$options, metadata$users, "bsi")
+  ccs <- get_pathogen_list() |>
+    dplyr::filter(.data$is_cc) |> dplyr::pull(id)
+
+  get_cc_multiple <- function(x, cc_ids)
+  {
+    max_index <- names(x) |>
+      stringr::str_extract("\\d+") |>
+      as.integer() |>
+      max()
+
+    pair <- tibble::tibble(.rows = nrow(x))
+    for (i in 1:max_index) {
+      tmp <- x |>
+        dplyr::select(
+          dplyr::any_of(
+            c(
+              paste0("pathogen_",i,"_value"),
+              paste0("pathogen_",i,"_multiple_value"))))
+
+      pair <- pair |>
+        dplyr::bind_cols(
+          tmp |>
+            dplyr::mutate(
+              dplyr::across(
+                dplyr::all_of(paste0("pathogen_",i,"_value")),
+                \(x) dplyr::if_else(is.na(x), NA, x %in% ccs),
+                .names = paste0("pathogen_",i,"_is_cc")),
+              !!paste0("pathogen_",i,"_is_cc_multiple") := dplyr::pick(
+                dplyr::any_of(c(
+                  paste0("pathogen_",i,"_is_cc"),
+                  paste0("pathogen_",i,"_multiple_value")))) |>
+                (\(x){
+                  if(ncol(x) < 2)
+                    dplyr::if_else(is.na(x[[1]]), NA, FALSE)
+                  else
+                    dplyr::case_when(
+                      is.na(x[[1]]) ~ NA,
+                      x[[1]] == TRUE & x[[2]] == TRUE ~ TRUE,
+                      .default = FALSE)})(),
+              .keep = "unused"
+            )
+          )
+    }
+    pair
+  }
+
+  get_cc_info <- function(x){
+    x |>
+      dplyr::mutate(
+        all_cc = dplyr::if_all(
+          dplyr::ends_with("is_cc"), .fns = ~ .x == TRUE | is.na(.x)) &
+          dplyr::if_any(dplyr::ends_with("is_cc"), .fns = ~ !is.na(.x)),
+        any_cc_multiple = all_cc &
+          dplyr::if_any(dplyr::ends_with("multiple"), .fns = ~ .x == TRUE),
+        all_cc_multiple = all_cc &
+          dplyr::if_all(
+            dplyr::ends_with("multiple"), .fns = ~ .x == TRUE | is.na(.x)) &
+          dplyr::if_any(dplyr::ends_with("multiple"), .fns = ~ !is.na(.x)),
+        .keep = "unused"
+        )
+  }
+
+  sepsisData <- sepsisData |>
+    dplyr::mutate(
+      pairs = get_cc_multiple(dplyr::pick(dplyr::matches("^pathogen_\\d_(multiple_)?value$")), ccs),
+      cc_info = get_cc_info(.data$pairs),
+      cc_only = cc_info$all_cc,
+      any_cc_multiple = cc_info$any_cc_multiple,
+      all_cc_multiple = cc_info$all_cc_multiple,
+      .keep = "unused") |>
+    dplyr::mutate(
+      subType = as.factor(dplyr::if_else(
+        is.finite(.data$cc_only),
+        dplyr::if_else(
+          as.logical(.data$cc_only),
+          "lcbsi_cc",
+          "lcbsi_ncc"),
+        "clinical")),
+      definition = as.factor(dplyr::if_else(
+        .data$subType != "lcbsi_cc",
+        .data$subType,
+        dplyr::case_when(
+          .data$all_cc_multiple ~ "all_cc_multiple",
+          .data$any_cc_multiple ~ "any_cc_multiple",
+          dplyr::if_any(
+            dplyr::any_of(
+              c("wbc_value","crp_value","procalcitonin_value","it_ratio_value",
+                "interleukin_value")), .fns = ~ .x == TRUE) ~ "lab_finding",
+          .data$ab_treatment_value ~ "ab_treatment"
+        )
+      )),
+      .after = "event_key",
+      .keep = "unused") |>
+    dplyr::select(
+      !(
+        c("pairs","cc_info")
+        |
+        dplyr::matches("^pathogen_\\d_")))
+
+  necData <- read_event_data(events, processed_events, metadata$dataElements,
+                             metadata$options, metadata$users, "nec")
+  pneumoniaData <- read_event_data(events, processed_events,
+                                   metadata$dataElements, metadata$options,
+                                   metadata$users, "hap")
+  surgeryData <- read_event_data(events, processed_events,
+                                 metadata$dataElements, metadata$options,
+                                 metadata$users, "pro")
+  ssiData <- read_event_data(events, processed_events, metadata$dataElements,
+                             metadata$options, metadata$users, "ssi")
+  browser()
+
+
   ab_treatments <- read_ab_treatments(events, metadata, enrollments)
   surgeries <- read_eventData(
     events, metadata, "Surgical Procedure", keyColumn = "surgery_key",) |>
@@ -96,6 +224,7 @@ import_dhis2 <- function(connection_options = dhis2_connection_options(), transl
     list(
       patients = patients,
       enrollments = enrollments,
+      events = processed_events,
       sepses = sepses,
       necs = necs,
       pneumonias = pneumonias,
@@ -246,8 +375,8 @@ read_eventData <- function(
     dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
     dplyr::left_join(
       metadata$departments |>
-        dplyr::select("organisationUnit", "department_key"),
-      dplyr::join_by("orgUnit" == "organisationUnit"))
+        dplyr::select("orgUnit", "department_key"),
+      dplyr::join_by("orgUnit"))
 
   if(!is.null(keyColumn))
     e <- e |>
@@ -267,8 +396,8 @@ read_eventData <- function(
     tidyr::unnest_wider("dataValues", names_sep = "_") |>
     dplyr::inner_join(
       metadata$dataElements |>
-        dplyr::select("id", "code"),
-      dplyr::join_by("dataValues_dataElement" == "id")) |>
+        dplyr::select("dataElement", "code"),
+      dplyr::join_by("dataValues_dataElement" == "dataElement")) |>
     dplyr::select(!c("dataValues_dataElement", "dataValues_createdAt", "dataValues_updatedAt", "dataValues_createdBy"))
 
   if(!is.null(dataElementFilter))
@@ -482,8 +611,8 @@ read_enrollments <- function(enrollments, events, metadata, patients)
     dplyr::mutate(enrollment_updatedBy = .data$user_key, .keep = "unused") |>
     dplyr::left_join(
       metadata$departments |>
-        dplyr::select("organisationUnit", "department_key"),
-      dplyr::join_by("enrollment_orgUnit" == "organisationUnit")) |>
+        dplyr::select("orgUnit", "department_key"),
+      dplyr::join_by("enrollment_orgUnit" == "orgUnit")) |>
     dplyr::mutate(enrollment_department_key = .data$department_key, .keep = "unused") |>
     dplyr::inner_join(
       patients |>
@@ -588,8 +717,8 @@ read_patients <- function(trackedEntities, metadata)
     dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
     dplyr::left_join(
       metadata$departments |>
-        dplyr::select("organisationUnit", "department_key"),
-      dplyr::join_by("orgUnit" == "organisationUnit")) |>
+        dplyr::select("orgUnit", "department_key"),
+      dplyr::join_by("orgUnit")) |>
     dplyr::select(!"orgUnit") |>
     add_key_column("patient_key")
 

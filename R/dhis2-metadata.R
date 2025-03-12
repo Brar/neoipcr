@@ -72,16 +72,16 @@ read_metadata_reponses <- function(resps, user_info)
     dplyr::select(!"country_code")
 
   metadata$departments <- metadata$departments |>
-    dplyr::mutate(isTestUnit = .data$organisationUnit %in% metadata$testUnitIds) |>
+    dplyr::mutate(isTestUnit = .data$orgUnit %in% metadata$testUnitIds) |>
     dplyr::left_join(
       metadata$trials |>
         dplyr::select("organisationUnits", "code") |>
         dplyr::rename(
-          organisationUnit = .data$organisationUnits,
+          orgUnit = .data$organisationUnits,
           name = .data$code) |>
         tidyr::unnest_longer(1) |>
         tidyr::unnest_wider(1),
-      dplyr::join_by("organisationUnit" == "id")) |>
+      dplyr::join_by("orgUnit" == "id")) |>
     dplyr::mutate(value = !is.na(.data$name)) |>
     tidyr::pivot_wider(values_fill = FALSE) |>
     dplyr::select(!tidyselect::any_of("NA"))
@@ -143,8 +143,8 @@ read_metadata <- function(metadata)
       world_bank_classes |>
         dplyr::select("world_bank_class_key", "organisationUnits") |>
         tidyr::unnest_longer(organisationUnits) |>
-        tidyr::hoist("organisationUnits", organisationUnit = list(1L)),
-      dplyr::join_by("organisationUnit"))
+        tidyr::hoist("organisationUnits", orgUnit = list(1L)),
+      dplyr::join_by("orgUnit"))
 
   ret <- list(
     system = system,
@@ -263,8 +263,8 @@ read_organisationUnits_hospitals <- function(organisationUnits)
     dplyr::filter(.data$country_code != "NEOIPC") |>
     dplyr::select(!tidyselect::any_of("geometry")) |>
     dplyr::distinct() |>
-    dplyr::relocate("organisationUnit" = "id") |>
-    add_key_column("hospital_key", as_factor = TRUE) |>
+    dplyr::relocate("orgUnit" = "id") |>
+    add_key_column("hospital_key") |>
     dplyr::arrange(.data$code)
 }
 
@@ -287,10 +287,10 @@ read_organisationUnits_departments <- function(organisationUnits, hospitals)
                    latitude = list("coordinates", 2))
 
   departments |>
-    dplyr::left_join(hospitals |> dplyr::select("organisationUnit", "hospital_key"),
-                     dplyr::join_by("parent_id" == "organisationUnit")) |>
-    dplyr::relocate("organisationUnit" = "id") |>
-    add_key_column("department_key", as_factor = TRUE) |>
+    dplyr::left_join(hospitals |> dplyr::select("orgUnit", "hospital_key"),
+                     dplyr::join_by("parent_id" == "orgUnit")) |>
+    dplyr::relocate("orgUnit" = "id") |>
+    add_key_column("department_key") |>
     dplyr::arrange(.data$parent_code, .data$openingDate) |>
     dplyr::select(!tidyselect::starts_with("parent")) |>
     dplyr::select(!tidyselect::any_of(c("hospital","geometry")))
@@ -341,15 +341,33 @@ read_metadata_programStages <- function(metadata)
           "Necrotizing enterocolitis",
           "Surgical Site Infection",
           "Pneumonia",
-          "Surveillance-End"))
+          "Surveillance-End")),
+      event_type_key = factor(
+        dplyr::case_match(
+          .data$name,
+          "Admission" ~ "adm",
+          "Surgical Procedure" ~ "pro",
+          "Primary Sepsis/BSI" ~ "bsi",
+          "Necrotizing enterocolitis" ~ "nec",
+          "Surgical Site Infection" ~ "ssi",
+          "Pneumonia" ~ "hap",
+          "Surveillance-End" ~ "end"
+          ),
+        levels = c(
+          "adm",
+          "pro",
+          "bsi",
+          "nec",
+          "ssi",
+          "hap",
+          "end"))
     ) |>
     dplyr::arrange(.data$name) |>
     dplyr::mutate(
       displayName = factor(.data$displayName, levels = unique(.data$displayName)),
       displayFormName = factor(.data$displayFormName, levels = unique(.data$displayFormName))
     ) |>
-    dplyr::relocate("programStage" = "id") |>
-    add_key_column("event_type_key")
+    dplyr::relocate("event_type_key", "programStage" = "id")
 }
 
 read_metadata_dataElements <- function(metadata)
@@ -372,7 +390,8 @@ read_metadata_dataElements <- function(metadata)
     tidyr::unnest_longer(1) |>
     tidyr::unnest_wider(1) |>
     tidyr::unnest_wider(1) |>
-    tidyr::hoist("optionSet", optionSet = "code", .remove = FALSE)
+    tidyr::hoist("optionSet", optionSet = "code", .remove = FALSE) |>
+    dplyr::relocate(dataElement = .data$id)
 }
 
 read_metadata_trackedEntityAttributes <- function(metadata)
@@ -417,7 +436,7 @@ read_metadata_countries <- function(metadata)
     tidyr::unnest_wider(1) |>
     dplyr::mutate(dplyr::across(!"id", ordered)) |>
     dplyr::relocate("id", .before = 1) |>
-    dplyr::rename(organisationUnit = .data$id)
+    dplyr::rename(orgUnit = .data$id)
 }
 
 read_metadata_test_unit_ids <- function(metadata)
