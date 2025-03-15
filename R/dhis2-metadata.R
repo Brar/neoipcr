@@ -1,78 +1,179 @@
-get_metadata <- function(d2_req_base, user_info, translate, locale)
+get_metadata <- function(d2_req_base, user_info, metadata_options)
 {
   md_req_base <- d2_req_base |>
     httr2::req_url_query(
       paging = "false",
-      translate = tolower(translate))
+      translate = tolower(metadata_options$translate))
 
-  if(translate && rlang::is_character(locale, n = 1))
+  if(metadata_options$translate &&
+     rlang::is_character(metadata_options$locale, n = 1))
     md_req_base <- md_req_base |>
     httr2::req_url_query(
-      locale = locale)
-
-  md_req <- md_req_base |>
-    httr2::req_url_path_append("metadata")
+      locale = metadata_options$locale)
 
   requests <- list(
-    # This is the overall query to get most of the NeoIPC-related metadata that
-    # every NeoIPC user should be allowed to see
-    md_req |>
-      httr2::req_url_query(
-        `programs:fields` = "id,programTrackedEntityAttributes[trackedEntityAttribute[id,valueType,code,displayName,displayShortName,displayFormName,displayDescription,optionSet[id]]],programStages[id,name,displayName,displayFormName,displayDescription,programStageDataElements[dataElement[id,valueType,code,displayName,displayShortName,displayFormName,displayDescription,optionSet[code]]]]",
-        `programs:filter` = "code:eq:NEOIPC_CORE",
-        `trackedEntityTypes:fields` = "id",
-        `trackedEntityTypes:filter` = "name:eq:NeoIPC Patient",
-        `organisationUnitGroups:fields` = "code,organisationUnits[id,code,displayName,displayShortName,displayDescription]",
-        `organisationUnitGroups:filter` = "code:in:[COUNTRY,TEST_UNITS]",
-        `organisationUnitGroupSets:fields` = "code,organisationUnitGroups[code,displayName,displayShortName,displayDescription,organisationUnits[id]]",
-        `organisationUnitGroupSets:filter` = "code:in:[NEOIPC_TRIALS,WORLD_BANK_CLASSES]",
-        `optionGroupSets:fields` = "code,optionGroups[code,displayName,displayShortName,displayDescription,options[code]]",
-        `optionGroupSets:filter` = "code:in:[ATC5,WHO_AWARE]",
-        `options:fields` = "code,displayName,displayFormName,displayDescription,sortOrder,optionSet[code]",
-        `options:filter` = "optionSet.code:in:[NEOIPC_ASA_SCORE,NEOIPC_ADMISSION_TYPES,NEOIPC_ANTIMICROBIAL_SUBSTANCES,NEOIPC_BSI_DEVICE_ASS,NEOIPC_BSI_PATHOGEN_RECOVERED_FROM,NEOIPC_DELIVERY_MODES,NEOIPC_HAP_DEVICE_ASS,NEOIPC_HAP_RESPIRATORY_TRACT_SAMPLE_SOURCES,NEOIPC_SSI_TYPE,NEOIPC_SEX_VALUES,NEOIPC_SURVEILLANCE_END_REASON,NEOIPC_WOUND_CLASSES,NEOIPC_YES_NO_NO_FOLLOWUP,NEOIPC_YES_NO_NOT_TESTED]"),
+    get_metadata_request(md_req_base, user_info, metadata_options),
+    get_organisationUnit_request(md_req_base, user_info, metadata_options)) |>
+    httr2::req_perform_parallel(on_error = "continue") |>
+    read_metadata_reponses(user_info, metadata_options)
+}
 
-    # We query the organisationUnits endpoint so that we can apply the
-    # withinUserHierarchy filter
-    md_req_base |>
-      httr2::req_url_path_append("organisationUnits") |>
+# Creates the overall query to get most of the NeoIPC-related metadata that
+# every NeoIPC user should be allowed to see
+get_metadata_request <- function(req_base, user_info, metadata_options)
+{
+  req <- req_base |>
+    httr2::req_url_path_append("metadata")
+
+  if(!is.null(metadata_options$include_trial_info) ||
+     metadata_options$include_world_bank_class != "no")
+  {
+    if(is.null(metadata_options$include_trial_info))
+    {
+      if(metadata_options$include_world_bank_class == "yes")
+        req <- req |>
+          httr2::req_url_query(
+            `organisationUnitGroupSets:fields` = "code,organisationUnitGroups[code,displayName,displayShortName,displayDescription,organisationUnits[id]]")
+      else # pseudonymise
+        req <- req |>
+          httr2::req_url_query(
+            `organisationUnitGroupSets:fields` = "code,organisationUnitGroups[code,organisationUnits[id]]")
+
+      req <- req |>
+         httr2::req_url_query(
+           `organisationUnitGroupSets:filter` = "code:eq:WORLD_BANK_CLASSES")
+    }
+    else
+    {
+      req <- req |>
+        httr2::req_url_query(
+          `organisationUnitGroupSets:fields` = "code,organisationUnitGroups[code,displayName,displayShortName,displayDescription,organisationUnits[id]]")
+
+      if(metadata_options$include_world_bank_class == "no")
+        req <- req |>
+          httr2::req_url_query(
+            `organisationUnitGroupSets:filter` = "code:eq:NEOIPC_TRIALS")
+      else
+        req <- req |>
+          httr2::req_url_query(
+            `organisationUnitGroupSets:filter` = "code:in:[NEOIPC_TRIALS,WORLD_BANK_CLASSES]")
+    }
+  }
+
+  if(metadata_options$include_country != "no" ||
+     metadata_options$include_world_bank_class != "no")
+  {
+    if(metadata_options$include_country == "yes")
+      req <- req |>
+        httr2::req_url_query(
+          `organisationUnitGroups:fields` = "code,organisationUnits[id,code,displayName,displayShortName,displayDescription]")
+    else # pseudonymised or include_world_bank_class != "no"
+      req <- req |>
+        httr2::req_url_query(
+          `organisationUnitGroups:fields` = "code,organisationUnits[id]")
+
+    req <- req |>
       httr2::req_url_query(
-        withinUserHierarchy = "true",
-        fields = "id,code,displayName,displayShortName,displayDescription,openingDate,comment,geometry,parent[id,code,displayName,displayShortName,displayDescription,comment,geometry,parent[code]]",
-        filter = "organisationUnitGroups.code:eq:NEO_DEPARTMENT")
-  )
+        `organisationUnitGroups:filter` = "code:in:[COUNTRY,TEST_UNITS]")
+  }
+  else
+    req <- req |>
+      httr2::req_url_query(
+        `organisationUnitGroups:fields` = "code,organisationUnits[id]",
+        `organisationUnitGroups:filter` = "code:eq:TEST_UNITS")
+
+  req <- req |>
+    httr2::req_url_query(
+      `programs:fields` = "id,programTrackedEntityAttributes[trackedEntityAttribute[id,valueType,code,displayName,displayShortName,displayFormName,displayDescription,optionSet[id]]],programStages[id,name,displayName,displayFormName,displayDescription,programStageDataElements[dataElement[id,valueType,code,displayName,displayShortName,displayFormName,displayDescription,optionSet[code]]]]",
+      `programs:filter` = "code:eq:NEOIPC_CORE",
+      `trackedEntityTypes:fields` = "id",
+      `trackedEntityTypes:filter` = "name:eq:NeoIPC Patient",
+      `optionGroupSets:fields` = "code,optionGroups[code,displayName,displayShortName,displayDescription,options[code]]",
+      `optionGroupSets:filter` = "code:in:[ATC5,WHO_AWARE]",
+      `options:fields` = "code,displayName,displayFormName,displayDescription,sortOrder,optionSet[code]",
+      `options:filter` = "optionSet.code:in:[NEOIPC_ASA_SCORE,NEOIPC_ADMISSION_TYPES,NEOIPC_ANTIMICROBIAL_SUBSTANCES,NEOIPC_BSI_DEVICE_ASS,NEOIPC_BSI_PATHOGEN_RECOVERED_FROM,NEOIPC_DELIVERY_MODES,NEOIPC_HAP_DEVICE_ASS,NEOIPC_HAP_RESPIRATORY_TRACT_SAMPLE_SOURCES,NEOIPC_SSI_TYPE,NEOIPC_SEX_VALUES,NEOIPC_SURVEILLANCE_END_REASON,NEOIPC_WOUND_CLASSES,NEOIPC_YES_NO_NO_FOLLOWUP,NEOIPC_YES_NO_NOT_TESTED]"
+      )
 
   # We only read the complete user information via the metadata endpoint if we
   # have the required authorities to do so
-  if (length(intersect(c("ALL","F_METADATA_EXPORT","F_USER_VIEW"), user_info$authorities)) > 0) {
-    requests[[1]] <- requests[[1]] |>
-      httr2::req_url_query(
-        `users:fields` = "id,username,firstName,surname,email,created,lastLogin,organisationUnits[id],dataViewOrganisationUnits[id],teiSearchOrganisationUnits[id],userRoles[id]")
+  if (metadata_options$include_user != "no" && length(intersect(c("ALL","F_METADATA_EXPORT","F_USER_VIEW"), user_info$authorities)) > 0) {
+    if(metadata_options$include_user == "yes")
+      req <- req |>
+        httr2::req_url_query(
+          `users:fields` = "id,username,firstName,surname,email,created,lastLogin,organisationUnits[id],dataViewOrganisationUnits[id],teiSearchOrganisationUnits[id],userRoles[id]")
+    else # pseudonymise
+      req <- req |>
+        httr2::req_url_query(
+          `users:fields` = "id")
   }
-
-  requests |>
-    httr2::req_perform_parallel(on_error = "continue") |>
-    read_metadata_reponses(user_info)
+  req
 }
 
-read_metadata_reponses <- function(resps, user_info)
+# Creates the organisationUnits query, which we use, so that we can apply the
+# withinUserHierarchy filter
+get_organisationUnit_request <- function(req_base, user_info, metadata_options)
+{
+  fields <- "id"
+
+  if(metadata_options$include_department == "yes")
+    fields <- paste0(fields, ",code,displayName,displayShortName,displayDescription,openingDate,comment,geometry")
+
+  if(metadata_options$include_country != "no" ||
+     metadata_options$include_world_bank_class != "no")
+    country_fields <- ",parent[id]]"
+  else
+    country_fields <- "]"
+
+  if(metadata_options$include_hospital == "yes")
+    fields <- paste0(fields, paste0(",parent[id,code,displayName,displayShortName,displayDescription,comment,geometry", country_fields))
+  else if (metadata_options$include_hospital == "pseudonymised" ||
+           metadata_options$include_country != "no" ||
+           metadata_options$include_world_bank_class != "no")
+    fields <- paste0(fields, paste0(",parent[id", country_fields))
+
+  req_base |>
+    httr2::req_url_path_append("organisationUnits") |>
+    httr2::req_url_query(
+      withinUserHierarchy = "true",
+      fields = fields,
+      filter = "organisationUnitGroups.code:eq:NEO_DEPARTMENT")
+}
+
+read_metadata_reponses <- function(resps, user_info, metadata_options)
 {
   metadata <- resps |>
-    lapply(read_metadata_reponse) |>
+    lapply(read_metadata_reponse, metadata_options) |>
     unlist(recursive = FALSE)
 
   if (!("users" %in% names(metadata)))
-    metadata$users <- read_user_info_table(user_info)
+    metadata$users <- read_user_info_table(
+      user_info,
+      metadata_options$include_user)
 
-  metadata$hospitals <- metadata$hospitals |>
+    metadata$departments <- metadata$departments |>
+      dplyr::mutate(isTestUnit = .data$orgUnit %in% metadata$testUnitIds)
+
+  if(metadata_options$include_hospital != "no" ||
+     metadata_options$include_country != "no" ||
+     metadata_options$include_world_bank_class != "no")
+    metadata$hospitals <- metadata$hospitals |>
+    dplyr::anti_join(
+      metadata$departments |>
+        dplyr::filter(.data$isTestUnit) |>
+        dplyr::select("hospital_key"),
+      dplyr::join_by("hospital_key"))
+
+  if(metadata_options$include_country != "no" ||
+     metadata_options$include_world_bank_class != "no")
+    metadata$hospitals <- metadata$hospitals |>
     dplyr::left_join(
       metadata$countries |>
-        dplyr::select("code","country_key") |>
-        dplyr::rename(country_code = .data$code),
-      dplyr::join_by("country_code")) |>
-    dplyr::select(!"country_code")
+        dplyr::select("country","country_key"),
+      dplyr::join_by("country")) |>
+    dplyr::select(!"country")
 
-  metadata$departments <- metadata$departments |>
-    dplyr::mutate(isTestUnit = .data$orgUnit %in% metadata$testUnitIds) |>
+  if(!is.null(metadata_options$include_trial_info))
+    metadata$departments <- metadata$departments |>
     dplyr::left_join(
       metadata$trials |>
         dplyr::select("organisationUnits", "code") |>
@@ -92,20 +193,20 @@ read_metadata_reponses <- function(resps, user_info)
   metadata
 }
 
-read_metadata_reponse <- function(resp)
+read_metadata_reponse <- function(resp, metadata_options)
 {
   path <- httr2::resp_url_path(resp)
   json <- httr2::resp_body_json(resp)
 
   if(stringr::str_ends(path, "/metadata"))
-      return(json |> read_metadata())
+      return(json |> read_metadata(metadata_options))
   else if(stringr::str_ends(path, "/organisationUnits"))
-    return(json |> read_organisationUnits())
+    return(json |> read_organisationUnits(metadata_options))
 
   rlang::abort("Unexpected DHIS2 metadata response.")
 }
 
-read_metadata <- function(metadata)
+read_metadata <- function(metadata, metadata_options)
 {
   system <- read_metadata_system(metadata)
   programId <- read_metadata_program_id(metadata)
@@ -113,16 +214,6 @@ read_metadata <- function(metadata)
     unlist(use.names = FALSE)
   eventTypes <- read_metadata_programStages(metadata)
   dataElements <- read_metadata_dataElements(metadata)
-  trackedEntityAttributes <- read_metadata_trackedEntityAttributes(metadata)
-  users <- read_metadata_users(metadata)
-  antimicrobialSubstances <- read_metadata_AntimicrobialSubstances(metadata)
-  awareCategories <- read_metadata_AWaReCategories(metadata)
-  atc5Categories <- read_metadata_atc5Categories(metadata)
-  testUnitIds <- read_metadata_test_unit_ids(metadata)
-  trials <- read_metadata_trials(metadata)
-  world_bank_classes <- read_metadata_wb_classes(metadata) |>
-    add_key_column('world_bank_class_key', as_factor = TRUE)
-
   options <- read_metadata_options(metadata)
   admissionTypes <- read_metadata_admissionTypes(options)
   asaScores <- read_metadata_asaScores(options)
@@ -137,14 +228,28 @@ read_metadata <- function(metadata)
   woundClasses <- read_metadata_woundClasses(options)
   testResults <- read_metadata_testResults(options)
   surveillanceResults <- read_metadata_surveillanceResults(options)
-  countries <- read_metadata_countries(metadata) |>
-    add_key_column('country_key', as_factor = TRUE) |>
-    dplyr::left_join(
-      world_bank_classes |>
-        dplyr::select("world_bank_class_key", "organisationUnits") |>
-        tidyr::unnest_longer(organisationUnits) |>
-        tidyr::hoist("organisationUnits", orgUnit = list(1L)),
-      dplyr::join_by("orgUnit"))
+  trackedEntityAttributes <- read_metadata_trackedEntityAttributes(metadata)
+  antimicrobialSubstances <- read_metadata_AntimicrobialSubstances(metadata)
+  awareCategories <- read_metadata_AWaReCategories(metadata)
+  atc5Categories <- read_metadata_atc5Categories(metadata)
+  testUnitIds <- read_metadata_test_unit_ids(metadata)
+
+  users <- read_metadata_users(
+    metadata,
+    metadata_options$include_user)
+
+  trials <- read_metadata_trials(
+    metadata,
+    metadata_options$include_trial_info)
+
+  world_bank_classes <- read_metadata_wb_classes(
+      metadata,
+      metadata_options$include_world_bank_class)
+
+  countries <- read_metadata_countries(
+    metadata,
+    metadata_options$include_country,
+    world_bank_classes)
 
   ret <- list(
     system = system,
@@ -158,7 +263,6 @@ read_metadata <- function(metadata)
     awareCategories = awareCategories,
     atc5Categories = atc5Categories,
     testUnitIds = testUnitIds,
-    trials = trials,
     admissionTypes = admissionTypes,
     asaScores = asaScores,
     sepsisDeviceAssociation = sepsisDeviceAssociation,
@@ -174,42 +278,58 @@ read_metadata <- function(metadata)
     surveillanceResults = surveillanceResults
     )
 
-  if(!rlang::is_null(countries))
-    ret <- c(ret, list(countries = countries))
-  if(!rlang::is_null(users))
+  if(!is.null(users))
     ret <- c(ret, list(users = users))
+  if(!is.null(trials))
+    ret <- c(ret, list(trials = trials))
+  if(!is.null(world_bank_classes))
+    ret <- c(ret, list(worldBankClasses = world_bank_classes))
+  if(!is.null(countries))
+    ret <- c(ret, list(countries = countries))
 
   ret
 }
 
-read_user_info_table <- function(user_info)
+read_user_info_table <- function(user_info, include_user)
 {
-  user_info |>
-      list() |>
-      tibble::tibble() |>
-      tidyr::unnest_wider(1) |>
-      dplyr::select(
-        !c(
+  if(include_user == "no")
+    return(NULL)
+
+  if(include_user == "yes")
+    return(
+      user_info |>
+        list() |>
+        tibble::tibble() |>
+        tidyr::unnest_wider(1) |>
+        dplyr::select(!c(
           "organisationUnits",
           "dataViewOrganisationUnits",
           "teiSearchOrganisationUnits",
           "groups",
           "roles",
           "authorities")) |>
-      add_key_column()
+        add_key_column("user_key"))
+
+  user_info <- tibble::tibble(id = user_info$id, user_key = 1L)
 }
 
-read_metadata_users <- function(metadata)
+read_metadata_users <- function(metadata, include_user)
 {
+  if(include_user == "no")
+    return(invisible(NULL))
+
   users <- metadata |>
     purrr::pluck("users")
 
   if(rlang::is_null(users))
     return(invisible(NULL))
 
-  users |>
+  users <- users |>
     tibble::tibble() |>
-    tidyr::unnest_wider(1) |>
+    tidyr::unnest_wider(1)
+
+  if(include_user == "yes")
+    users <- users |>
     dplyr::select(
       !c(
         "organisationUnits",
@@ -219,26 +339,36 @@ read_metadata_users <- function(metadata)
     dplyr::mutate(
       created = readr::parse_datetime(.data$created),
       lastLogin = readr::parse_datetime(.data$lastLogin)) |>
-    dplyr::relocate("user" = "id", "username", "firstName", "surname", "email", "lastLogin", "created") |>
+    dplyr::relocate("user" = "id", "username", "firstName", "surname", "email", "lastLogin", "created")
+  else
+    users <- users |>
+    dplyr::rename("user" = "id")
+
+  users |>
     add_key_column("user_key")
 }
 
-read_organisationUnits <- function(organisationUnits)
+read_organisationUnits <- function(organisationUnits, metadata_options)
 {
   ret <- list()
-  hospitals <- read_organisationUnits_hospitals(organisationUnits)
+  hospitals <- read_organisationUnits_hospitals(organisationUnits, metadata_options)
   if(!rlang::is_null(hospitals))
     ret <- c(ret, list(hospitals = hospitals) )
 
-  departments <- read_organisationUnits_departments(organisationUnits, hospitals)
+  departments <- read_organisationUnits_departments(organisationUnits, metadata_options, hospitals)
   if(!rlang::is_null(departments))
     ret <- c(ret, list(departments = departments) )
 
   ret
 }
 
-read_organisationUnits_hospitals <- function(organisationUnits)
+read_organisationUnits_hospitals <- function(organisationUnits, metadata_options)
 {
+  if(metadata_options$include_hospital == "no" &&
+     metadata_options$include_country == "no" &&
+     metadata_options$include_world_bank_class == "no")
+    return(NULL)
+
   hospitals <- organisationUnits |>
     tibble::tibble() |>
     tidyr::unnest_longer(1) |>
@@ -250,50 +380,65 @@ read_organisationUnits_hospitals <- function(organisationUnits)
   else
     hospitals <- hospitals |>
       dplyr::select(1) |>
-      tidyr::unnest_wider(1) |>
-      tidyr::hoist("parent", country_code = "code")
+      tidyr::unnest_wider(1)
 
-  if("geometry" %in% names(hospitals))
+  if(metadata_options$include_country != "no" ||
+     metadata_options$include_world_bank_class != "no")
     hospitals <- hospitals |>
-      tidyr::hoist("geometry",
-                   longitude = list("coordinates", 1),
-                   latitude = list("coordinates", 2))
+    tidyr::hoist("parent", country = "id")
+
+  if(metadata_options$include_hospital == "yes")
+  {
+    if("geometry" %in% names(hospitals))
+      hospitals <- hospitals |>
+        tidyr::hoist("geometry",
+                     longitude = list("coordinates", 1),
+                     latitude = list("coordinates", 2)) |>
+      dplyr::select(!"geometry")
+  }
 
   hospitals |>
-    dplyr::filter(.data$country_code != "NEOIPC") |>
-    dplyr::select(!tidyselect::any_of("geometry")) |>
     dplyr::distinct() |>
     dplyr::relocate("orgUnit" = "id") |>
-    add_key_column("hospital_key") |>
-    dplyr::arrange(.data$code)
+    add_key_column("hospital_key")
 }
 
-read_organisationUnits_departments <- function(organisationUnits, hospitals)
+read_organisationUnits_departments <- function(organisationUnits, metadata_options, hospitals)
 {
   departments <- organisationUnits |>
     tibble::tibble() |>
     tidyr::unnest_longer(1) |>
-    tidyr::unnest_wider(1) |>
-    tidyr::hoist("parent", parent_id = "id", parent_code = "code") |>
-    dplyr::mutate(
-      openingDate =  readr::parse_date(
-        stringr::str_sub(.data$openingDate, end = 10)))
+    tidyr::unnest_wider(1)
 
-
-  if("geometry" %in% names(departments))
+  if(metadata_options$include_hospital != "no" ||
+     metadata_options$include_country != "no" ||
+     metadata_options$include_world_bank_class != "no")
     departments <- departments |>
-      tidyr::hoist("geometry",
-                   longitude = list("coordinates", 1),
-                   latitude = list("coordinates", 2))
+    tidyr::hoist("parent", parent_id = "id") |>
+    dplyr::left_join(
+      hospitals |>
+        dplyr::select("orgUnit", "hospital_key"),
+      dplyr::join_by("parent_id" == "orgUnit")) |>
+    dplyr::select(!c("parent_id","parent"))
+
+  if(metadata_options$include_department == "yes")
+  {
+    departments <- departments |>
+      dplyr::mutate(
+        openingDate =  readr::parse_date(
+          stringr::str_sub(.data$openingDate, end = 10)))
+
+    if("geometry" %in% names(departments))
+      departments <- departments |>
+        tidyr::hoist("geometry",
+                     longitude = list("coordinates", 1),
+                     latitude = list("coordinates", 2))|>
+        dplyr::select(!"geometry")
+  }
 
   departments |>
-    dplyr::left_join(hospitals |> dplyr::select("orgUnit", "hospital_key"),
-                     dplyr::join_by("parent_id" == "orgUnit")) |>
     dplyr::relocate("orgUnit" = "id") |>
-    add_key_column("department_key") |>
-    dplyr::arrange(.data$parent_code, .data$openingDate) |>
-    dplyr::select(!tidyselect::starts_with("parent")) |>
-    dplyr::select(!tidyselect::any_of(c("hospital","geometry")))
+    add_key_column("department_key")
 }
 
 read_metadata_system <- function(metadata)
@@ -423,20 +568,35 @@ read_metadata_organisationUnitGroups <- function(metadata, code_filter)
     dplyr::filter(.data$code == code_filter)
 }
 
-read_metadata_countries <- function(metadata)
+read_metadata_countries <- function(metadata, include_country, world_bank_classes)
 {
+  if(include_country == "no" && is.null(world_bank_classes))
+    return(NULL)
+
   organisationUnitGroups <- read_metadata_organisationUnitGroups(metadata, "COUNTRY")
 
   if(rlang::is_null(organisationUnitGroups) || nrow(organisationUnitGroups) < 1)
     return(NULL)
 
-  organisationUnitGroups |>
+  organisationUnitGroups <- organisationUnitGroups |>
     dplyr::select("organisationUnits") |>
     tidyr::unnest_longer(1) |>
     tidyr::unnest_wider(1) |>
     dplyr::mutate(dplyr::across(!"id", ordered)) |>
     dplyr::relocate("id", .before = 1) |>
-    dplyr::rename(orgUnit = .data$id)
+    dplyr::rename(country = .data$id) |>
+    add_key_column('country_key', as_factor = TRUE)
+
+  if(!is.null(world_bank_classes))
+    organisationUnitGroups <- organisationUnitGroups |>
+    dplyr::left_join(
+      world_bank_classes |>
+        dplyr::select("world_bank_class_key", "organisationUnits") |>
+        tidyr::unnest_longer(organisationUnits) |>
+        tidyr::hoist("organisationUnits", country = list(1L)),
+      dplyr::join_by("country"))
+
+  organisationUnitGroups
 }
 
 read_metadata_test_unit_ids <- function(metadata)
@@ -453,8 +613,11 @@ read_metadata_test_unit_ids <- function(metadata)
     dplyr::pull("id")
 }
 
-read_metadata_trials <- function(metadata)
+read_metadata_trials <- function(metadata, include_trial_info)
 {
+  if(is.null(include_trial_info))
+    return(NULL)
+
   for (i in 1:2) {
     if ('NEOIPC_TRIALS' == (metadata |> purrr::pluck("organisationUnitGroupSets", i, "code"))) {
       break
@@ -468,11 +631,15 @@ read_metadata_trials <- function(metadata)
 
   organisationUnitGroups |>
     tibble::tibble() |>
-    tidyr::unnest_wider(1)
+    tidyr::unnest_wider(1) |>
+    dplyr::filter(.data$code %in% include_trial_info)
 }
 
-read_metadata_wb_classes <- function(metadata)
+read_metadata_wb_classes <- function(metadata, include_world_bank_class)
 {
+  if(include_world_bank_class == "no")
+    return(NULL)
+
   for (i in 1:2) {
     if ('WORLD_BANK_CLASSES' == (metadata |> purrr::pluck("organisationUnitGroupSets", i, "code"))) {
       break
@@ -484,9 +651,21 @@ read_metadata_wb_classes <- function(metadata)
   if(rlang::is_null(organisationUnitGroups))
     return(NULL)
 
+  pseudonymise <- include_world_bank_class != "yes"
+
   organisationUnitGroups <- organisationUnitGroups |>
     tibble::tibble() |>
-    tidyr::unnest_wider(1) |>
+    tidyr::unnest_wider(1)
+
+  if(pseudonymise)
+    organisationUnitGroups <- organisationUnitGroups |>
+    dplyr::mutate(
+      fiscal_year = as.integer(stringr::str_extract(.data$code, "^WORLD_BANK_CLASS_(H|L|LM|UM)_FY_(\\d{4})$", group = 2)),
+      .keep = "unused",
+      .before = 1) |>
+    dplyr::arrange(dplyr::desc(.data$fiscal_year))
+  else
+    organisationUnitGroups <- organisationUnitGroups |>
     dplyr::mutate(
       class = factor(stringr::str_extract(.data$code, "^WORLD_BANK_CLASS_(H|L|LM|UM)_FY_(\\d{4})$", group = 1), levels = c('L','LM','UM','H')),
       fiscal_year = as.integer(stringr::str_extract(.data$code, "^WORLD_BANK_CLASS_(H|L|LM|UM)_FY_(\\d{4})$", group = 2)),
@@ -503,7 +682,13 @@ read_metadata_wb_classes <- function(metadata)
     }
   }
 
-  return(filtered)
+  filtered <- filtered |>
+    add_key_column('world_bank_class_key', as_factor = TRUE)
+
+  if(pseudonymise)
+    return(filtered |> dplyr::select(!"fiscal_year"))
+
+  filtered
 }
 
 read_metadata_options <- function(metadata)

@@ -1,57 +1,46 @@
 #' @export
-import_dhis2 <- function(connection_options = dhis2_connection_options(), translate = TRUE, locale = NULL, include_deleted = FALSE)
+import_dhis2 <- function(connection_options = dhis2_connection_options(), metadata_options = dhis2_metadata_options())
 {
   check_neoipcr_dhis2_conopt(connection_options)
+  check_neoipcr_dhis2_mdopt(metadata_options)
 
   d2req_base <- dhis2_request(connection_options)
 
   user_info <- d2req_base |>
     get_user_info()
 
-  metadata <- get_metadata(d2req_base, user_info, translate, locale)
+  metadata <- get_metadata(d2req_base, user_info, metadata_options)
 
-  reqs <- list()
+  browser()
 
   tracker_req <- d2req_base |>
     httr2::req_url_path_append("tracker") |>
     httr2::req_url_query(
       ouMode ="ACCESSIBLE",
       skipPaging = "true",
-      includeDeleted = tolower(include_deleted))
+      includeDeleted = tolower(metadata_options$include_deleted))
 
-  reqs <- append(
-    reqs,
-    list(
-      tracker_req |>
-        httr2::req_url_path_append("trackedEntities") |>
-        httr2::req_url_query(
-          trackedEntityType = metadata$trackedEntityTypeId,
-          fields = "trackedEntity,createdAt,createdAtClient,updatedAt,updatedAtClient,orgUnit,inactive,deleted,createdBy[username],updatedBy[username],potentialDuplicate,attributes[code,value]")))
-
-  reqs <- append(
-    reqs,
-    list(
-      tracker_req |>
-        httr2::req_url_path_append("enrollments") |>
-        httr2::req_url_query(
-          fields = "enrollment,createdAt,createdAtClient,updatedAt,updatedAtClient,trackedEntity,status,orgUnit,enrolledAt,occurredAt,followUp,deleted,completedAt,completedBy,storedBy,createdBy[username],updatedBy[username],notes")))
-
-  reqs <- append(
-    reqs,
-    list(
-      tracker_req |>
-        httr2::req_url_path_append("events") |>
-        httr2::req_url_query(fields = "event,status,programStage,enrollment,trackedEntity,orgUnit,scheduledAt,occurredAt,completedAt,followup,deleted,createdAt,createdAtClient,updatedAt,updatedAtClient,storedBy,createdBy[username],updatedBy[username],notes,dataValues[dataElement,value,createdAt,updatedAt,createdBy[username]]")))
+  reqs <- list(
+    get_trackedEntities_request(
+      tracker_req,
+      metadata_options,
+      metadata$trackedEntityTypeId),
+    get_enrollments_request(tracker_req, metadata_options),
+    get_events_request(tracker_req, metadata_options))
 
   data <-  reqs |>
     httr2::req_perform_parallel() |>
-    httr2::resps_data(function(resp) list(httr2::resp_body_json(resp) |> tibble::tibble() |> tidyr::unnest_longer(1) |> tidyr::unnest_wider(1)))
+    httr2::resps_data(\(resp){
+      list(httr2::resp_body_json(resp) |>
+             tibble::tibble() |>
+             tidyr::unnest_longer(1) |>
+             tidyr::unnest_wider(1))})
 
   trackedEntities <- data[[1]]
   enrollments <- data[[2]]
   events <- data[[3]]
 
-  patients <- read_patients(trackedEntities, metadata)
+  patients <- read_patients(trackedEntities, metadata, metadata_options)
   enrollments <- read_enrollments(enrollments, events, metadata, patients)
   processed_events <- read_events(events, metadata$eventTypes, enrollments,
                                   patients, metadata$departments)
@@ -180,6 +169,8 @@ import_dhis2 <- function(connection_options = dhis2_connection_options(), transl
                              metadata$options, metadata$users, "ssi")
   browser()
 
+  #infectiousAgentFindings
+  #substanceDays
 
   ab_treatments <- read_ab_treatments(events, metadata, enrollments)
   surgeries <- read_eventData(
@@ -236,6 +227,29 @@ import_dhis2 <- function(connection_options = dhis2_connection_options(), transl
     class = c("neoipcr_ds", "list"))
 }
 
+get_trackedEntities_request <- function(req_base, metadata_options, trackedEntityTypeId)
+{
+  req_base |>
+    httr2::req_url_path_append("trackedEntities") |>
+    httr2::req_url_query(
+      trackedEntityType = trackedEntityTypeId,
+      fields = "trackedEntity,createdAt,createdAtClient,updatedAt,updatedAtClient,orgUnit,inactive,deleted,createdBy[username],updatedBy[username],potentialDuplicate,attributes[code,value]")
+}
+
+get_enrollments_request <- function(req_base, metadata_options)
+{
+  req_base |>
+    httr2::req_url_path_append("enrollments") |>
+    httr2::req_url_query(
+      fields = "enrollment,createdAt,createdAtClient,updatedAt,updatedAtClient,trackedEntity,status,orgUnit,enrolledAt,occurredAt,followUp,deleted,completedAt,completedBy,storedBy,createdBy[username],updatedBy[username],notes")
+}
+get_events_request <- function(req_base, metadata_options)
+{
+  req_base |>
+    httr2::req_url_path_append("events") |>
+    httr2::req_url_query(fields = "event,status,programStage,enrollment,trackedEntity,orgUnit,scheduledAt,occurredAt,completedAt,followup,deleted,createdAt,createdAtClient,updatedAt,updatedAtClient,storedBy,createdBy[username],updatedBy[username],notes,dataValues[dataElement,value,createdAt,updatedAt,createdBy[username]]")
+}
+
 #' @export
 dhis2_connection_options <- function(
     token, username, session_id, scheme = "https",
@@ -254,6 +268,37 @@ dhis2_connection_options <- function(
   )
 
   structure(ret, class = "neoipcr_dhis2_conopt")
+}
+
+#' @export
+dhis2_metadata_options <- function(
+    include_world_bank_class = c("no","pseudonymised","yes"),
+    include_country = c("no","pseudonymised","yes"),
+    include_hospital = c("no","pseudonymised","yes"),
+    include_department = c("no","pseudonymised","yes"),
+    include_patient_id = c("no","pseudonymised","yes"),
+    include_user = c("no","pseudonymised","yes"),
+    include_trial_info = NULL,
+    include_dhis2_id = FALSE,
+    include_timestamps = FALSE,
+    include_deleted = FALSE,
+    translate = TRUE,
+    locale = NULL)
+{
+  structure(list(
+    include_world_bank_class = rlang::arg_match(include_world_bank_class),
+    include_country = rlang::arg_match(include_country),
+    include_hospital = rlang::arg_match(include_hospital),
+    include_department = rlang::arg_match(include_department),
+    include_patient_id = rlang::arg_match(include_patient_id),
+    include_user = rlang::arg_match(include_user),
+    include_trial_info = include_trial_info,
+    include_dhis2_id = include_dhis2_id,
+    include_timestamps = include_timestamps,
+    include_deleted = include_deleted,
+    translate = translate,
+    locale = locale
+  ), class = "neoipcr_dhis2_mdopt")
 }
 
 get_auth_data <- function(url)
@@ -680,7 +725,7 @@ hoist_createdByAndupdatedBy <- function(table)
     tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE)
 }
 
-read_patients <- function(trackedEntities, metadata)
+read_patients <- function(trackedEntities, metadata, metadata_options)
 {
   patients <- trackedEntities |>
     tidyr::unnest_longer("attributes") |>
