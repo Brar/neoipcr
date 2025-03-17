@@ -1,3 +1,10 @@
+get_events_request <- function(req_base, metadata_options)
+{
+  req_base |>
+    httr2::req_url_path_append("events") |>
+    httr2::req_url_query(fields = "event,status,programStage,enrollment,trackedEntity,orgUnit,scheduledAt,occurredAt,completedAt,followup,deleted,createdAt,createdAtClient,updatedAt,updatedAtClient,storedBy,createdBy[username],updatedBy[username],notes,dataValues[dataElement,value,createdAt,updatedAt,createdBy[username]]")
+}
+
 read_events <- function(events, eventTypes, enrollments, patients, departments)
 {
   events |>
@@ -129,28 +136,4 @@ read_event_data <- function(events, processed_events, dataElements, options, use
     tidyr::unnest_longer(dplyr::ends_with("value"), keep_empty = TRUE) |>
     dplyr::arrange(.data$event_key) |>
     dplyr::relocate(dplyr::ends_with("value"), .after = "event_key")
-}
-
-convert_value <- function(values, valueTypes, levelsLists)
-{
-  ret <- NULL
-  for (i in 1:length(values)) {
-    value <- values[i]
-    valueType <- valueTypes[i]
-    levels <- unlist(levelsLists[i])
-    if(!is.null(levels))
-      value <- factor(value, levels = levels)
-    else if (stringr::str_starts(valueType, "INTEGER"))
-      value <- as.integer(value)
-    else if (valueType == "BOOLEAN" || valueType == "TRUE_ONLY")
-      value <- as.logical(value)
-
-    ret <- c(ret, list(value))
-  }
-  ret
-}
-
-bla <- function(x)
-{
-  x
 }

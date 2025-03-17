@@ -11,8 +11,6 @@ import_dhis2 <- function(connection_options = dhis2_connection_options(), metada
 
   metadata <- get_metadata(d2req_base, user_info, metadata_options)
 
-  browser()
-
   tracker_req <- d2req_base |>
     httr2::req_url_path_append("tracker") |>
     httr2::req_url_query(
@@ -227,29 +225,6 @@ import_dhis2 <- function(connection_options = dhis2_connection_options(), metada
     class = c("neoipcr_ds", "list"))
 }
 
-get_trackedEntities_request <- function(req_base, metadata_options, trackedEntityTypeId)
-{
-  req_base |>
-    httr2::req_url_path_append("trackedEntities") |>
-    httr2::req_url_query(
-      trackedEntityType = trackedEntityTypeId,
-      fields = "trackedEntity,createdAt,createdAtClient,updatedAt,updatedAtClient,orgUnit,inactive,deleted,createdBy[username],updatedBy[username],potentialDuplicate,attributes[code,value]")
-}
-
-get_enrollments_request <- function(req_base, metadata_options)
-{
-  req_base |>
-    httr2::req_url_path_append("enrollments") |>
-    httr2::req_url_query(
-      fields = "enrollment,createdAt,createdAtClient,updatedAt,updatedAtClient,trackedEntity,status,orgUnit,enrolledAt,occurredAt,followUp,deleted,completedAt,completedBy,storedBy,createdBy[username],updatedBy[username],notes")
-}
-get_events_request <- function(req_base, metadata_options)
-{
-  req_base |>
-    httr2::req_url_path_append("events") |>
-    httr2::req_url_query(fields = "event,status,programStage,enrollment,trackedEntity,orgUnit,scheduledAt,occurredAt,completedAt,followup,deleted,createdAt,createdAtClient,updatedAt,updatedAtClient,storedBy,createdBy[username],updatedBy[username],notes,dataValues[dataElement,value,createdAt,updatedAt,createdBy[username]]")
-}
-
 #' @export
 dhis2_connection_options <- function(
     token, username, session_id, scheme = "https",
@@ -276,8 +251,8 @@ dhis2_metadata_options <- function(
     include_country = c("no","pseudonymised","yes"),
     include_hospital = c("no","pseudonymised","yes"),
     include_department = c("no","pseudonymised","yes"),
-    include_patient_id = c("no","pseudonymised","yes"),
     include_user = c("no","pseudonymised","yes"),
+    include_patient_id = FALSE,
     include_trial_info = NULL,
     include_dhis2_id = FALSE,
     include_timestamps = FALSE,
@@ -290,8 +265,8 @@ dhis2_metadata_options <- function(
     include_country = rlang::arg_match(include_country),
     include_hospital = rlang::arg_match(include_hospital),
     include_department = rlang::arg_match(include_department),
-    include_patient_id = rlang::arg_match(include_patient_id),
     include_user = rlang::arg_match(include_user),
+    include_patient_id = include_patient_id,
     include_trial_info = include_trial_info,
     include_dhis2_id = include_dhis2_id,
     include_timestamps = include_timestamps,
@@ -299,6 +274,25 @@ dhis2_metadata_options <- function(
     translate = translate,
     locale = locale
   ), class = "neoipcr_dhis2_mdopt")
+}
+
+#' @export
+print.neoipcr_dhis2_conopt <- function(x, ...)
+{
+  parts <- paste0("Base URL: ", x$base_url)
+  if(!is.null(x$token)) {
+    parts <- c(parts, "Authentication: Token")
+  } else if(!is.null(x$session_id)) {
+    parts <- c(parts, "Authentication: Cookie")
+  } else if(!is.null(x$username)) {
+    parts <- c(
+      parts,
+      "Authentication: Basic",
+      paste0("Username: ", x$username))
+  }
+
+  writeLines(parts)
+  invisible(x)
 }
 
 get_auth_data <- function(url)
@@ -349,25 +343,6 @@ read_token <- function(token)
       return(fileContent)
   }
   rlang::abort("Invalid DHIS2 personal access token.")
-}
-
-#' @export
-print.neoipcr_dhis2_conopt <- function(x, ...)
-{
-  parts <- paste0("Base URL: ", x$base_url)
-  if(!is.null(x$token)) {
-    parts <- c(parts, "Authentication: Token")
-  } else if(!is.null(x$session_id)) {
-    parts <- c(parts, "Authentication: Cookie")
-  } else if(!is.null(x$username)) {
-    parts <- c(
-      parts,
-      "Authentication: Basic",
-      paste0("Username: ", x$username))
-  }
-
-  writeLines(parts)
-  invisible(x)
 }
 
 read_eventData <- function(
@@ -696,7 +671,6 @@ read_ab_treatments <- function(events, metadata, enrollments) {
     dplyr::arrange("enrollment", "index")
 }
 
-
 process_notes <- function(notes)
 {
   sapply(
@@ -723,62 +697,6 @@ hoist_createdByAndupdatedBy <- function(table)
   table |>
     tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
     tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE)
-}
-
-read_patients <- function(trackedEntities, metadata, metadata_options)
-{
-  patients <- trackedEntities |>
-    tidyr::unnest_longer("attributes") |>
-    tidyr::unnest_wider("attributes", names_sep = "_") |>
-    tidyr::pivot_wider(
-      names_from = "attributes_code",
-      values_from = "attributes_value") |>
-    hoist_createdByAndupdatedBy() |>
-    dplyr::mutate(dplyr::across(tidyselect::any_of(c(
-      "createdAt",
-      "createdAtClient",
-      "updatedAt",
-      "updatedAtClient")), readr::parse_datetime)) |>
-    dplyr::mutate(dplyr::across(tidyselect::any_of(c(
-      "inactive",
-      "potentialDuplicate",
-      "NEOIPC_TEA_MULTIPLE_BIRTH")), as.logical)) |>
-    dplyr::mutate(
-      NEOIPC_TEA_DELIVERY_MODE = factor(
-        .data$NEOIPC_TEA_DELIVERY_MODE)) |>
-    dplyr::mutate(dplyr::across(tidyselect::any_of(c(
-      "NeoIPC_TEA_TOTAL_GESTATION_DAYS",
-      "NEOIPC_TEA_SIBLINGS",
-      "NEOIPC_TEA_BIRTH_WEIGHT")), as.integer))|>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("username", "user_key"),
-      dplyr::join_by("createdBy" == "username")) |>
-    dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("username", "user_key"),
-      dplyr::join_by("updatedBy" == "username")) |>
-    dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
-    dplyr::left_join(
-      metadata$departments |>
-        dplyr::select("orgUnit", "department_key"),
-      dplyr::join_by("orgUnit")) |>
-    dplyr::select(!"orgUnit") |>
-    add_key_column("patient_key")
-
-  if("NEOIPC_TEA_SIBLINGS" %in% names(patients))
-    patients <- patients |>
-    dplyr::mutate(
-      NEOIPC_TEA_SIBLINGS = tidyr::replace_na(.data$NEOIPC_TEA_SIBLINGS, 1))
-
-  if("NEOIPC_TEA_MULTIPLE_BIRTH" %in% names(patients))
-    patients <- patients |>
-    dplyr::mutate(
-      NEOIPC_TEA_MULTIPLE_BIRTH = tidyr::replace_na(
-        .data$NEOIPC_TEA_MULTIPLE_BIRTH, FALSE))
-
-  patients
 }
 
 get_testUnitIds <- function(metadata)
@@ -902,4 +820,23 @@ dhis2_request <- function(connection_options = dhis2_connection_options())
   else
     req |>
       httr2::req_auth_basic(username = connection_options$username, password = connection_options$password)
+}
+
+convert_value <- function(values, valueTypes, levelsLists)
+{
+  ret <- NULL
+  for (i in 1:length(values)) {
+    value <- values[i]
+    valueType <- valueTypes[i]
+    levels <- unlist(levelsLists[i])
+    if(!is.null(levels))
+      value <- factor(value, levels = levels)
+    else if (stringr::str_starts(valueType, "INTEGER"))
+      value <- as.integer(value)
+    else if (valueType == "BOOLEAN" || valueType == "TRUE_ONLY")
+      value <- as.logical(value)
+
+    ret <- c(ret, list(value))
+  }
+  ret
 }

@@ -84,7 +84,7 @@ get_metadata_request <- function(req_base, user_info, metadata_options)
 
   req <- req |>
     httr2::req_url_query(
-      `programs:fields` = "id,programTrackedEntityAttributes[trackedEntityAttribute[id,valueType,code,displayName,displayShortName,displayFormName,displayDescription,optionSet[id]]],programStages[id,name,displayName,displayFormName,displayDescription,programStageDataElements[dataElement[id,valueType,code,displayName,displayShortName,displayFormName,displayDescription,optionSet[code]]]]",
+      `programs:fields` = "id,programTrackedEntityAttributes[trackedEntityAttribute[id,valueType,code,displayName,displayShortName,displayFormName,displayDescription,optionSet[code]]],programStages[id,name,displayName,displayFormName,displayDescription,programStageDataElements[dataElement[id,valueType,code,displayName,displayShortName,displayFormName,displayDescription,optionSet[code]]]]",
       `programs:filter` = "code:eq:NEOIPC_CORE",
       `trackedEntityTypes:fields` = "id",
       `trackedEntityTypes:filter` = "name:eq:NeoIPC Patient",
@@ -551,7 +551,8 @@ read_metadata_trackedEntityAttributes <- function(metadata)
     tibble::tibble() |>
     tidyr::unnest_wider(1) |>
     tidyr::unnest_wider(1) |>
-    tidyr::hoist("optionSet", optionSet = "id", .remove = FALSE)
+    dplyr::rename(attribute = .data$id) |>
+    tidyr::hoist("optionSet", optionSet = "code", .remove = FALSE)
 }
 
 read_metadata_organisationUnitGroups <- function(metadata, code_filter)
