@@ -34,89 +34,20 @@ import_dhis2 <- function(connection_options = dhis2_connection_options(), metada
              tidyr::unnest_longer(1) |>
              tidyr::unnest_wider(1))})
 
-  trackedEntities <- data[[1]]
-  enrollments <- data[[2]]
-  events <- data[[3]]
+  trackedEntities_raw <- data[[1]]
+  enrollments_raw <- data[[2]]
+  events_raw <- data[[3]]
 
-  patients <- read_patients(trackedEntities, metadata, metadata_options)
-  enrollments <- read_enrollments(enrollments, events, metadata, patients)
-  processed_events <- read_events(events, metadata$eventTypes, enrollments,
-                                  patients, metadata$departments)
-  eventDetails <- read_event_details(
-    events, processed_events,
-    metadata$users |>
-      dplyr::select("user_key", "username"))
-  eventNotes <- read_event_notes(events, processed_events, metadata$users)
-  admissiondata <- read_event_data(events, processed_events,
-                                   metadata$dataElements, metadata$options,
-                                   metadata$users, "adm")
-  surveillanceEndData <- read_event_data(events, processed_events,
-                                         metadata$dataElements,
-                                         metadata$options,
-                                         metadata$users, "end")
-  sepsisData <- read_event_data(events, processed_events, metadata$dataElements,
-                                metadata$options, metadata$users, "bsi")
-  ccs <- get_pathogen_list() |>
-    dplyr::filter(.data$is_cc) |> dplyr::pull(id)
-
-  get_cc_multiple <- function(x, cc_ids)
-  {
-    max_index <- names(x) |>
-      stringr::str_extract("\\d+") |>
-      as.integer() |>
-      max()
-
-    pair <- tibble::tibble(.rows = nrow(x))
-    for (i in 1:max_index) {
-      tmp <- x |>
-        dplyr::select(
-          dplyr::any_of(
-            c(
-              paste0("pathogen_",i,"_value"),
-              paste0("pathogen_",i,"_multiple_value"))))
-
-      pair <- pair |>
-        dplyr::bind_cols(
-          tmp |>
-            dplyr::mutate(
-              dplyr::across(
-                dplyr::all_of(paste0("pathogen_",i,"_value")),
-                \(x) dplyr::if_else(is.na(x), NA, x %in% ccs),
-                .names = paste0("pathogen_",i,"_is_cc")),
-              !!paste0("pathogen_",i,"_is_cc_multiple") := dplyr::pick(
-                dplyr::any_of(c(
-                  paste0("pathogen_",i,"_is_cc"),
-                  paste0("pathogen_",i,"_multiple_value")))) |>
-                (\(x){
-                  if(ncol(x) < 2)
-                    dplyr::if_else(is.na(x[[1]]), NA, FALSE)
-                  else
-                    dplyr::case_when(
-                      is.na(x[[1]]) ~ NA,
-                      x[[1]] == TRUE & x[[2]] == TRUE ~ TRUE,
-                      .default = FALSE)})(),
-              .keep = "unused"
-            )
-          )
-    }
-    pair
-  }
-
-  get_cc_info <- function(x){
-    x |>
-      dplyr::mutate(
-        all_cc = dplyr::if_all(
-          dplyr::ends_with("is_cc"), .fns = ~ .x == TRUE | is.na(.x)) &
-          dplyr::if_any(dplyr::ends_with("is_cc"), .fns = ~ !is.na(.x)),
-        any_cc_multiple = all_cc &
-          dplyr::if_any(dplyr::ends_with("multiple"), .fns = ~ .x == TRUE),
-        all_cc_multiple = all_cc &
-          dplyr::if_all(
-            dplyr::ends_with("multiple"), .fns = ~ .x == TRUE | is.na(.x)) &
-          dplyr::if_any(dplyr::ends_with("multiple"), .fns = ~ !is.na(.x)),
-        .keep = "unused"
-        )
-  }
+  patients <- read_patients(trackedEntities_raw, metadata, metadata_options)
+  enrollments <- read_enrollments(enrollments_raw, patients, metadata, metadata_options)
+  # read_enrollment_details
+  # read_enrollment_notes
+  events <- read_events(events_raw, enrollments, patients, metadata, metadata_options)
+  eventDetails <- read_event_details(events_raw, events, metadata, metadata_options)
+  eventNotes <- read_event_notes(events_raw, events, metadata, metadata_options)
+  admissionData <- read_event_data(events_raw, events, metadata, metadata_options, "adm")
+  surveillanceEndData <- read_event_data(events_raw, events, metadata, metadata_options, "end")
+  sepsisData <- read_event_data(events_raw, events, metadata, metadata_options, "bsi")
 
   sepsisData <- sepsisData |>
     dplyr::mutate(
@@ -155,72 +86,47 @@ import_dhis2 <- function(connection_options = dhis2_connection_options(), metada
         |
         dplyr::matches("^pathogen_\\d_")))
 
-  necData <- read_event_data(events, processed_events, metadata$dataElements,
-                             metadata$options, metadata$users, "nec")
-  pneumoniaData <- read_event_data(events, processed_events,
-                                   metadata$dataElements, metadata$options,
-                                   metadata$users, "hap")
-  surgeryData <- read_event_data(events, processed_events,
-                                 metadata$dataElements, metadata$options,
-                                 metadata$users, "pro")
-  ssiData <- read_event_data(events, processed_events, metadata$dataElements,
-                             metadata$options, metadata$users, "ssi")
-  browser()
+  necData <- read_event_data(events_raw, events, metadata, metadata_options, "nec")
+  pneumoniaData <- read_event_data(events_raw, events, metadata, metadata_options, "hap")
+  surgeryData <- read_event_data(events_raw, events, metadata, metadata_options, "pro")
+  ssiData <- read_event_data(events_raw, events, metadata, metadata_options, "ssi")
 
-  #infectiousAgentFindings
-  #substanceDays
-
-  ab_treatments <- read_ab_treatments(events, metadata, enrollments)
-  surgeries <- read_eventData(
-    events, metadata, "Surgical Procedure", keyColumn = "surgery_key",) |>
-    recode_enrollments(enrollments)
-  sepses <- read_eventData(
-    events, metadata, "Primary Sepsis/BSI", keyColumn = "sepsis_key",
-    dataElementFilter = \(x) stringr::str_starts(x, "NEOIPC_BSI_PATHOGEN", TRUE)) |>
-    recode_enrollments(enrollments)
-  necs <- read_eventData(
-    events, metadata, "Necrotizing enterocolitis", keyColumn = "nec_key",
-    dataElementFilter = \(x) stringr::str_starts(x, "NEOIPC_NEC_SEC_BSI_PATHOGEN", TRUE)) |>
-    recode_enrollments(enrollments)
-  ssis <- read_eventData(
-    events, metadata, "Surgical Site Infection", keyColumn = "ssi_key",
-    dataElementFilter = \(x) stringr::str_starts(x, "NEOIPC_SSI_PATHOGEN", TRUE) &
-      stringr::str_starts(x, "NEOIPC_SSI_SEC_BSI_PATHOGEN", TRUE)) |>
-    recode_enrollments(enrollments)
-  pneumonias <- read_eventData(
-    events, metadata, "Pneumonia", keyColumn = "pneumonia_key",
-    dataElementFilter = \(x) stringr::str_starts(x, "NEOIPC_HAP_PATHOGEN", TRUE) &
-      stringr::str_starts(x, "NEOIPC_HAP_SEC_BSI_PATHOGEN", TRUE)) |>
-    recode_enrollments(enrollments)
-  causative_pathogens <- read_causative_pathogens(events, metadata) |>
-    recode_events(list(sepses, necs, ssis, pneumonias))
-
-  sepses <- sepses |>
-    infer_sepsis_types(causative_pathogens)
+  infectiousAgentFindings <- read_infectious_agent_findings(events_raw, events, metadata, metadata_options)
+  # read_infectious_agent_findings_details
+  substanceDays <- read_substance_days(events_raw, events, metadata, metadata_options)
+  # read_substance_days_details
 
   class(patients) <- c("neoipcr_pat", class(patients))
   class(enrollments) <- c("neoipcr_enr", class(enrollments))
-  class(ab_treatments) <- c("neoipcr_trt", class(ab_treatments))
-  class(surgeries) <- c("neoipcr_srg", class(surgeries))
-  class(sepses) <- c("neoipcr_sep", class(sepses))
-  class(necs) <- c("neoipcr_nec", class(necs))
-  class(ssis) <- c("neoipcr_ssi", class(ssis))
-  class(pneumonias) <- c("neoipcr_pne", class(pneumonias))
-  class(causative_pathogens) <- c("neoipcr_cspg", class(causative_pathogens))
+  class(events) <- c("neoipcr_evt", class(events))
+  class(eventDetails) <- c("neoipcr_evd", class(eventDetails))
+  if(!is.null(eventNotes))
+    class(eventNotes) <- c("neoipcr_evn", class(eventNotes))
+  class(admissionData) <- c("neoipcr_adm", class(admissionData))
+  class(surveillanceEndData) <- c("neoipcr_end", class(surveillanceEndData))
+  class(surgeryData) <- c("neoipcr_pro", class(surgeryData))
+  class(sepsisData) <- c("neoipcr_bsi", class(sepsisData))
+  class(necData) <- c("neoipcr_nec", class(necData))
+  class(ssiData) <- c("neoipcr_ssi", class(ssiData))
+  class(pneumoniaData) <- c("neoipcr_hap", class(pneumoniaData))
+  class(substanceDays) <- c("neoipcr_sbd", class(substanceDays))
+  class(infectiousAgentFindings) <- c("neoipcr_iaf", class(infectiousAgentFindings))
   class(metadata) <- c("neoipcr_metadata", class(metadata))
 
   structure(
     list(
       patients = patients,
       enrollments = enrollments,
-      events = processed_events,
-      sepses = sepses,
-      necs = necs,
-      pneumonias = pneumonias,
-      surgeries = surgeries,
-      ssis = ssis,
-      ab_treatments = ab_treatments,
-      causative_pathogens = causative_pathogens,
+      events = events,
+      admissionData = admissionData,
+      surveillanceEndData = surveillanceEndData,
+      sepsisData = sepsisData,
+      necData = necData,
+      pneumoniaData = pneumoniaData,
+      surgeryData = surgeryData,
+      ssiData = ssiData,
+      substanceDays = substanceDays,
+      infectiousAgentFindings = infectiousAgentFindings,
       metadata = metadata),
     class = c("neoipcr_ds", "list"))
 }
@@ -253,10 +159,13 @@ dhis2_metadata_options <- function(
     include_department = c("no","pseudonymised","yes"),
     include_user = c("no","pseudonymised","yes"),
     include_patient_id = FALSE,
-    include_trial_info = NULL,
     include_dhis2_id = FALSE,
     include_timestamps = FALSE,
+    include_test_data = FALSE,
+    include_incomplete = rlang::chr(),
+    include_notes = rlang::chr(),
     include_deleted = FALSE,
+    trial_keys = NULL,
     translate = TRUE,
     locale = NULL)
 {
@@ -267,10 +176,19 @@ dhis2_metadata_options <- function(
     include_department = rlang::arg_match(include_department),
     include_user = rlang::arg_match(include_user),
     include_patient_id = include_patient_id,
-    include_trial_info = include_trial_info,
     include_dhis2_id = include_dhis2_id,
     include_timestamps = include_timestamps,
+    include_test_data = include_test_data,
+    include_incomplete = rlang::arg_match(
+      include_incomplete,
+      c("enrollments","events"),
+      multiple = TRUE),
+    include_notes = rlang::arg_match(
+      include_notes,
+      c("enrollments","events"),
+      multiple = TRUE),
     include_deleted = include_deleted,
+    trial_keys = trial_keys,
     translate = translate,
     locale = locale
   ), class = "neoipcr_dhis2_mdopt")
@@ -475,40 +393,6 @@ get_pathogen_list <- function()
   dplyr::bind_rows(not_listed, rest)
 }
 
-read_causative_pathogens <- function(events, metadata)
-{
-  e <- events |>
-    dplyr::inner_join(
-      metadata$eventTypes |>
-        dplyr::filter(.data$name %in% c(
-          "Primary Sepsis/BSI",
-          "Necrotizing enterocolitis",
-          "Surgical Site Infection",
-          "Pneumonia")) |>
-        dplyr::select("programStage", "name", "event_type_key") |>
-        dplyr::rename(programStageName = "name"),
-      dplyr::join_by("programStage")) |>
-    dplyr::select(!"programStage") |>
-    tidyr::unnest_longer("dataValues") |>
-    tidyr::unnest_wider("dataValues", names_sep = "_") |>
-    dplyr::inner_join(
-      metadata$dataElements |>
-        dplyr::select("id", "code"),
-      dplyr::join_by("dataValues_dataElement" == "id")) |>
-    dplyr::select(!c("dataValues_dataElement", "dataValues_createdAt", "dataValues_updatedAt", "dataValues_createdBy")) |>
-    dplyr::filter(stringr::str_detect(.data$code, "PATHOGEN_\\d")) |>
-    dplyr::mutate(
-      type = factor(stringr::str_replace(.data$code, "^.+(PATHOGEN)_\\d+(.*)$", "\\1\\2")),
-      index = as.integer(stringr::str_replace(.data$code, "^.+PATHOGEN_(\\d+).*$", "\\1")),
-      secondary_bsi = stringr::str_detect(.data$code, "_SEC_BSI_"),
-      .keep = "unused"
-    ) |>
-    dplyr::select("event", "event_type_key", "type", "index", "secondary_bsi", "dataValues_value") |>
-    tidyr::pivot_wider(names_from = "type", values_from = "dataValues_value", names_sort = TRUE) |>
-    dplyr::mutate(dplyr::across(c("PATHOGEN_3GCR","PATHOGEN_CAR","PATHOGEN_COR","PATHOGEN_MRSA","PATHOGEN_VRE"), ~ as.logical(dplyr::na_if(as.integer(.x), -1)))) |>
-    dplyr::mutate(PATHOGEN = as.integer(.data$PATHOGEN))
-}
-
 infer_sepsis_types <- function(sepses, causative_pathogens)
 {
   sepses |>
@@ -568,107 +452,6 @@ convert_dataElementColumn <- function(col, col_name, dataElements, options)
     return(as.logical(col))
 
   col
-}
-
-read_enrollments <- function(enrollments, events, metadata, patients)
-{
-  admissions <- read_eventData(
-    events,
-    metadata,
-    "Admission",
-    "admission_",
-    keepEventType = FALSE)
-
-  surveillanceEnds <- read_eventData(
-    events,
-    metadata,
-    "Surveillance-End",
-    "surveillanceEnd_",
-    \(x) stringr::str_starts(x, "NEOIPC_SURVEILLANCE_END_AB_SUBST", TRUE),
-    keepEventType = FALSE)
-
-  enrollments |>
-    dplyr::mutate(dplyr::across(tidyselect::any_of(c(
-      "createdAt",
-      "createdAtClient",
-      "updatedAt",
-      "updatedAtClient",
-      "completedAt")), readr::parse_datetime)) |>
-    dplyr::mutate(dplyr::across(tidyselect::any_of(c(
-      "enrolledAt",
-      "occurredAt")), ~ readr::parse_date(stringr::str_sub(.x, end = 10)))) |>
-    dplyr::mutate(dplyr::across(
-      tidyselect::any_of(c("followUp", "deleted")),
-      as.logical)) |>
-    hoist_createdByAndupdatedBy() |>
-    dplyr::mutate(
-      status = factor(.data$status, levels = c(
-        "ACTIVE", "COMPLETED", "CANCELLED"))) |>
-    dplyr::mutate(
-      notes = process_notes(.data$notes)) |>
-    dplyr::rename_with(~ paste0("enrollment_", .x, recycle0 = TRUE), !c("enrollment","trackedEntity")) |>
-    dplyr::left_join(admissions, dplyr::join_by("enrollment", "trackedEntity")) |>
-    dplyr::left_join(surveillanceEnds, dplyr::join_by("enrollment", "trackedEntity")) |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("username", "user_key"),
-      dplyr::join_by("enrollment_completedBy" == "username")) |>
-    dplyr::mutate(enrollment_completedBy = .data$user_key, .keep = "unused") |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("username", "user_key"),
-      dplyr::join_by("enrollment_storedBy" == "username")) |>
-    dplyr::mutate(enrollment_storedBy = .data$user_key, .keep = "unused") |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("username", "user_key"),
-      dplyr::join_by("enrollment_createdBy" == "username")) |>
-    dplyr::mutate(enrollment_createdBy = .data$user_key, .keep = "unused") |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("username", "user_key"),
-      dplyr::join_by("enrollment_updatedBy" == "username")) |>
-    dplyr::mutate(enrollment_updatedBy = .data$user_key, .keep = "unused") |>
-    dplyr::left_join(
-      metadata$departments |>
-        dplyr::select("orgUnit", "department_key"),
-      dplyr::join_by("enrollment_orgUnit" == "orgUnit")) |>
-    dplyr::mutate(enrollment_department_key = .data$department_key, .keep = "unused") |>
-    dplyr::inner_join(
-      patients |>
-        dplyr::select("trackedEntity", "patient_key"),
-      dplyr::join_by("trackedEntity")) |>
-    dplyr::select(!"trackedEntity") |>
-    add_key_column("enrollment_key")
-}
-
-read_ab_treatments <- function(events, metadata, enrollments) {
-  events |>
-    dplyr::inner_join(
-      metadata$eventTypes |>
-        dplyr::filter(.data$name == "Surveillance-End") |>
-        dplyr::select("programStage","event_type_key"),
-      dplyr::join_by("programStage")) |>
-    dplyr::select("enrollment","dataValues") |>
-    recode_enrollments(enrollments) |>
-    dplyr::relocate("enrollment_key") |>
-    tidyr::unnest_longer(2) |>
-    tidyr::unnest_wider(2) |>
-    dplyr::select("enrollment_key","dataElement","value") |>
-    dplyr::inner_join(
-      metadata$dataElements |>
-        dplyr::filter(stringr::str_starts( .data$code, "NEOIPC_SURVEILLANCE_END_AB_SUBST_\\d\\d")) |>
-        dplyr::select("id", "code"),
-      dplyr::join_by("dataElement" == "id")) |>
-    dplyr::select(!"dataElement") |>
-    dplyr::mutate(
-      index = as.integer(
-        stringr::str_extract(.data$code,"^NEOIPC_SURVEILLANCE_END_AB_SUBST_\\d(\\d)(_DAYS)?$", 1)),
-      name = dplyr::if_else(stringr::str_ends(.data$code, "_DAYS"), "days", "substance_code"),
-      .keep = "unused") |>
-    tidyr::pivot_wider() |>
-    dplyr::mutate(days = as.integer(.data$days), .after = "substance_code") |>
-    dplyr::arrange("enrollment", "index")
 }
 
 process_notes <- function(notes)

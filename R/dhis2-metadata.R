@@ -25,10 +25,10 @@ get_metadata_request <- function(req_base, user_info, metadata_options)
   req <- req_base |>
     httr2::req_url_path_append("metadata")
 
-  if(!is.null(metadata_options$include_trial_info) ||
+  if(!is.null(metadata_options$trial_keys) ||
      metadata_options$include_world_bank_class != "no")
   {
-    if(is.null(metadata_options$include_trial_info))
+    if(is.null(metadata_options$trial_keys))
     {
       if(metadata_options$include_world_bank_class == "yes")
         req <- req |>
@@ -104,7 +104,7 @@ get_metadata_request <- function(req_base, user_info, metadata_options)
     else # pseudonymise
       req <- req |>
         httr2::req_url_query(
-          `users:fields` = "id")
+          `users:fields` = "id,username")
   }
   req
 }
@@ -150,18 +150,32 @@ read_metadata_reponses <- function(resps, user_info, metadata_options)
       user_info,
       metadata_options$include_user)
 
+  if(metadata_options$include_test_data)
     metadata$departments <- metadata$departments |>
-      dplyr::mutate(isTestUnit = .data$orgUnit %in% metadata$testUnitIds)
+      dplyr::mutate(isTest = .data$orgUnit %in% metadata$testUnitIds)
+  else
+    metadata$departments <- metadata$departments |>
+      dplyr::filter(!(.data$orgUnit %in% metadata$testUnitIds))
+
 
   if(metadata_options$include_hospital != "no" ||
      metadata_options$include_country != "no" ||
      metadata_options$include_world_bank_class != "no")
-    metadata$hospitals <- metadata$hospitals |>
-    dplyr::anti_join(
-      metadata$departments |>
-        dplyr::filter(.data$isTestUnit) |>
-        dplyr::select("hospital_key"),
-      dplyr::join_by("hospital_key"))
+  {
+    if(metadata_options$include_test_data)
+      metadata$hospitals <- metadata$hospitals |>
+        dplyr::anti_join(
+          metadata$departments |>
+            dplyr::filter(.data$isTest) |>
+            dplyr::select("hospital_key"),
+          dplyr::join_by("hospital_key"))
+    else
+      metadata$hospitals <- metadata$hospitals |>
+        dplyr::semi_join(
+          metadata$departments |>
+            dplyr::select("hospital_key"),
+          dplyr::join_by("hospital_key"))
+    }
 
   if(metadata_options$include_country != "no" ||
      metadata_options$include_world_bank_class != "no")
@@ -172,23 +186,16 @@ read_metadata_reponses <- function(resps, user_info, metadata_options)
       dplyr::join_by("country")) |>
     dplyr::select(!"country")
 
-  if(!is.null(metadata_options$include_trial_info))
+  if(!is.null(metadata_options$trial_keys))
     metadata$departments <- metadata$departments |>
-    dplyr::left_join(
+    dplyr::anti_join(
       metadata$trials |>
-        dplyr::select("organisationUnits", "code") |>
-        dplyr::rename(
-          orgUnit = .data$organisationUnits,
-          name = .data$code) |>
-        tidyr::unnest_longer(1) |>
-        tidyr::unnest_wider(1),
-      dplyr::join_by("orgUnit" == "id")) |>
-    dplyr::mutate(value = !is.na(.data$name)) |>
-    tidyr::pivot_wider(values_fill = FALSE) |>
-    dplyr::select(!tidyselect::any_of("NA"))
+        dplyr::select("organisationUnits") |>
+        tidyr::unnest_longer("organisationUnits") |>
+        tidyr::hoist("organisationUnits", orgUnit = "id"),
+      dplyr::join_by("orgUnit"))
 
   metadata$testUnitIds <- NULL
-  metadata$trials$organisationUnits <- NULL
 
   metadata
 }
@@ -232,7 +239,7 @@ read_metadata <- function(metadata, metadata_options)
   antimicrobialSubstances <- read_metadata_AntimicrobialSubstances(metadata)
   awareCategories <- read_metadata_AWaReCategories(metadata)
   atc5Categories <- read_metadata_atc5Categories(metadata)
-  testUnitIds <- read_metadata_test_unit_ids(metadata)
+  testUnitIds <- read_metadata_test_unit_ids(metadata, metadata_options$include_test_data)
 
   users <- read_metadata_users(
     metadata,
@@ -240,7 +247,7 @@ read_metadata <- function(metadata, metadata_options)
 
   trials <- read_metadata_trials(
     metadata,
-    metadata_options$include_trial_info)
+    metadata_options$trial_keys)
 
   world_bank_classes <- read_metadata_wb_classes(
       metadata,
@@ -310,7 +317,10 @@ read_user_info_table <- function(user_info, include_user)
           "authorities")) |>
         add_key_column("user_key"))
 
-  user_info <- tibble::tibble(id = user_info$id, user_key = 1L)
+  user_info <- tibble::tibble(
+    user_key = 1L,
+    user = user_info$id,
+    username = user_info$username)
 }
 
 read_metadata_users <- function(metadata, include_user)
@@ -600,8 +610,11 @@ read_metadata_countries <- function(metadata, include_country, world_bank_classe
   organisationUnitGroups
 }
 
-read_metadata_test_unit_ids <- function(metadata)
+read_metadata_test_unit_ids <- function(metadata, include_test_data)
 {
+  if(!include_test_data)
+    return(NULL)
+
   organisationUnitGroups <- read_metadata_organisationUnitGroups(metadata, "TEST_UNITS")
 
   if(rlang::is_null(organisationUnitGroups) || nrow(organisationUnitGroups) < 1)
@@ -614,9 +627,9 @@ read_metadata_test_unit_ids <- function(metadata)
     dplyr::pull("id")
 }
 
-read_metadata_trials <- function(metadata, include_trial_info)
+read_metadata_trials <- function(metadata, trial_keys)
 {
-  if(is.null(include_trial_info))
+  if(is.null(trial_keys))
     return(NULL)
 
   for (i in 1:2) {
@@ -630,10 +643,10 @@ read_metadata_trials <- function(metadata, include_trial_info)
   if(rlang::is_null(organisationUnitGroups))
     return(NULL)
 
-  organisationUnitGroups |>
+  organisationUnitGroups <- organisationUnitGroups |>
     tibble::tibble() |>
     tidyr::unnest_wider(1) |>
-    dplyr::filter(.data$code %in% include_trial_info)
+    dplyr::filter(stringr::str_detect(.data$code, stringr::regex(paste0(trial_keys, collapse = "|"), ignore_case = TRUE)))
 }
 
 read_metadata_wb_classes <- function(metadata, include_world_bank_class)

@@ -35,8 +35,6 @@ get_trackedEntities_request <- function(req_base, metadata_options, trackedEntit
 
 read_patients <- function(trackedEntities, metadata, metadata_options)
 {
-  browser()
-
   patients <- trackedEntities |>
     tidyr::unnest_longer("attributes") |>
     tidyr::unnest_wider("attributes", names_sep = "_") |>
@@ -44,76 +42,66 @@ read_patients <- function(trackedEntities, metadata, metadata_options)
       metadata$trackedEntityAttributes |>
         dplyr::select("attribute","code","valueType","optionSet"),
       dplyr::join_by("attributes_attribute" == "attribute")) |>
-    dplyr::filter(.data$code != "NEOIPC_TEA_GEST_AGE") |>
     dplyr::left_join(
       metadata$options |>
         dplyr::arrange("optionSet_code", "sortOrder") |>
         dplyr::group_by(.data$optionSet_code) |>
         dplyr::summarise(levels = list(.data$code)),
-      dplyr::join_by("optionSet" == "optionSet_code"))
+      dplyr::join_by("optionSet" == "optionSet_code")) |>
+    dplyr::select(!c("attributes_attribute", "optionSet"))
 
   if(!metadata_options$include_patient_id)
     patients <- patients |>
     dplyr::filter(.data$code != "NEOIPC_PATIENT_ID")
 
-  patients <- patients |>
+  if(!metadata_options$include_timestamps)
+    patients <- patients |>
+    dplyr::mutate(dplyr::across(tidyselect::contains("At", ignore.case = FALSE), readr::parse_datetime))
+
+  if(metadata_options$include_user != "no")
+    patients <- patients |>
+    tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
+    dplyr::left_join(
+      metadata$users |>
+        dplyr::select("user_key", "username"),
+      dplyr::join_by("createdBy" == "username")) |>
+    dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
+    tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
+    dplyr::left_join(
+      metadata$users |>
+        dplyr::select("user_key", "username"),
+      dplyr::join_by("updatedBy" == "username")) |>
+    dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
+    dplyr::left_join(
+      metadata$users |>
+        dplyr::select("user_key", "username"),
+      dplyr::join_by("attributes_storedBy" == "username")) |>
+    dplyr::mutate(attributes_storedBy = .data$user_key, .keep = "unused")
+
+  patients |>
     dplyr::mutate(
-      value = convert_value(.data$attributes_value, .data$valueType, .data$levels),
-      code = stringr::str_extract(tolower(.data$code), "^neoipc_tea_(.+)$", group = 1),
+      attributes_value = convert_value(
+        .data$attributes_value, .data$valueType, .data$levels),
+      code = stringr::str_extract(
+        tolower(.data$code), "^neoipc_(tea_)?(.+)$", group = 2),
       .keep = "unused"
-    )
-
-
-
-
-  # |>
-  #   tidyr::pivot_wider(
-  #     names_from = "attributes_code",
-  #     values_from = "attributes_value") |>
-  #   hoist_createdByAndupdatedBy() |>
-  #   dplyr::mutate(dplyr::across(tidyselect::any_of(c(
-  #     "createdAt",
-  #     "createdAtClient",
-  #     "updatedAt",
-  #     "updatedAtClient")), readr::parse_datetime)) |>
-  #   dplyr::mutate(dplyr::across(tidyselect::any_of(c(
-  #     "inactive",
-  #     "potentialDuplicate",
-  #     "NEOIPC_TEA_MULTIPLE_BIRTH")), as.logical)) |>
-  #   dplyr::mutate(
-  #     NEOIPC_TEA_DELIVERY_MODE = factor(
-  #       .data$NEOIPC_TEA_DELIVERY_MODE)) |>
-  #   dplyr::mutate(dplyr::across(tidyselect::any_of(c(
-  #     "NeoIPC_TEA_TOTAL_GESTATION_DAYS",
-  #     "NEOIPC_TEA_SIBLINGS",
-  #     "NEOIPC_TEA_BIRTH_WEIGHT")), as.integer))|>
-  #   dplyr::left_join(
-  #     metadata$users |>
-  #       dplyr::select("username", "user_key"),
-  #     dplyr::join_by("createdBy" == "username")) |>
-  #   dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
-  #   dplyr::left_join(
-  #     metadata$users |>
-  #       dplyr::select("username", "user_key"),
-  #     dplyr::join_by("updatedBy" == "username")) |>
-  #   dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
-  #   dplyr::left_join(
-  #     metadata$departments |>
-  #       dplyr::select("orgUnit", "department_key"),
-  #     dplyr::join_by("orgUnit")) |>
-  #   dplyr::select(!"orgUnit") |>
-  #   add_key_column("patient_key")
-  #
-  # if("NEOIPC_TEA_SIBLINGS" %in% names(patients))
-  #   patients <- patients |>
-  #     dplyr::mutate(
-  #       NEOIPC_TEA_SIBLINGS = tidyr::replace_na(.data$NEOIPC_TEA_SIBLINGS, 1))
-  #
-  # if("NEOIPC_TEA_MULTIPLE_BIRTH" %in% names(patients))
-  #   patients <- patients |>
-  #     dplyr::mutate(
-  #       NEOIPC_TEA_MULTIPLE_BIRTH = tidyr::replace_na(
-  #         .data$NEOIPC_TEA_MULTIPLE_BIRTH, FALSE))
-
-  patients
+    ) |>
+    tidyr::pivot_wider(
+      names_from = "code",
+      values_from = tidyselect::starts_with("attributes_"),
+      names_glue = "{code}_{.value}",
+      names_vary = "slowest") |>
+    tidyr::unnest_longer(dplyr::ends_with("value"), keep_empty = TRUE) |>
+    dplyr::rename_with(
+      ~ stringr::str_remove(.x, "_attributes"),
+      tidyselect::contains("_attributes_")) |>
+    dplyr::relocate (
+      tidyselect::any_of(
+        c("patient_id_value","sex_value","siblings_value","gest_age_value",
+          "birth_weight_value")),
+      tidyselect::ends_with("_value"), .after = "trackedEntity") |>
+    dplyr::rename_with(
+      ~ stringr::str_remove(.x, "_value$"),
+      tidyselect::ends_with("_value")) |>
+    add_key_column("patient_key")
 }
