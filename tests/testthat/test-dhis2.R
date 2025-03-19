@@ -371,7 +371,7 @@ rmd <- function(add_system = TRUE, add_programId = TRUE,
 
   #browser()
   metadata <- jsonlite::fromJSON(json_text, simplifyVector = FALSE)
-  ret <- read_metadata(metadata, dhis2_metadata_options())
+  ret <- read_metadata(metadata, dhis2_dataset_options())
   ret
 }
 
