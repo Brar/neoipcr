@@ -1,29 +1,29 @@
-get_enrollments_request <- function(req_base, metadata_options)
+get_enrollments_request <- function(req_base, dataset_options)
 {
   fields <- "enrollment,trackedEntity,enrolledAt,followUp,notes"
 
-  if("enrollments" %in% metadata_options$include_incomplete)
+  if("enrollments" %in% dataset_options$include_incomplete)
     fields <- paste0(fields,",status")
   else
     req_base |>
       httr2::req_url_query(programStatus = "COMPLETED")
 
-  if(metadata_options$include_timestamps)
+  if(dataset_options$include_timestamps)
     fields <- paste0(
       fields,
       ",occurredAt,createdAt,createdAtClient,updatedAt,updatedAtClient,completedAt")
 
-  if(metadata_options$include_test_data ||
-     metadata_options$include_department != "no" ||
-     metadata_options$include_hospital != "no" ||
-     metadata_options$include_country != "no" ||
-     metadata_options$include_world_bank_class != "no")
+  if(dataset_options$include_test_data ||
+     dataset_options$include_department != "no" ||
+     dataset_options$include_hospital != "no" ||
+     dataset_options$include_country != "no" ||
+     dataset_options$include_world_bank_class != "no")
     fields <- paste0(fields,",orgUnit")
 
-  if(metadata_options$include_deleted)
+  if(dataset_options$include_deleted)
     fields <- paste0(fields,",deleted")
 
-  if(metadata_options$include_user != "no")
+  if(dataset_options$include_user != "no")
     fields <- paste0(
       fields,",completedBy,storedBy,createdBy[username],updatedBy[username]")
 
@@ -32,7 +32,7 @@ get_enrollments_request <- function(req_base, metadata_options)
     httr2::req_url_query(fields = fields)
 }
 
-read_enrollments <- function(enrollments, patients, metadata, metadata_options)
+read_enrollments <- function(enrollments, patients, metadata, dataset_options)
 {
   enrollments <- enrollments |>
     dplyr::inner_join(
@@ -44,13 +44,13 @@ read_enrollments <- function(enrollments, patients, metadata, metadata_options)
         stringr::str_sub(.data$enrolledAt, end = 10))) |>
     dplyr::select(!c("trackedEntity","notes"))
 
-  if("enrollments" %in% metadata_options$include_incomplete)
+  if("enrollments" %in% dataset_options$include_incomplete)
     enrollments <- enrollments |>
       dplyr::mutate(
         status = factor(.data$status, levels = c(
           "ACTIVE", "COMPLETED", "CANCELLED")))
 
-  if(metadata_options$include_timestamps)
+  if(dataset_options$include_timestamps)
     enrollments <- enrollments |>
       dplyr::mutate(
         dplyr::across(
@@ -58,75 +58,75 @@ read_enrollments <- function(enrollments, patients, metadata, metadata_options)
             c("occurredAt","createdAt","createdAtClient","updatedAt",
               "updatedAtClient","completedAt")), readr::parse_datetime))
 
-  if(metadata_options$include_world_bank_class != "no")
+  if(dataset_options$include_world_bank_class != "no")
     enrollments <- enrollments |>
-    dplyr::inner_join(
-      metadata$departments |>
-        dplyr::select("orgUnit", "department_key", "hospital_key"),
-      dplyr::join_by("orgUnit")) |>
-    dplyr::inner_join(
-      metadata$hospitals |>
-        dplyr::select("hospital_key","country_key"),
-      dplyr::join_by("hospital_key")) |>
-    dplyr::inner_join(
-      metadata$countries |>
-        dplyr::select("country_key", "world_bank_class_key"),
-      dplyr::join_by("country_key"))
-  else if(metadata_options$include_country != "no")
+      dplyr::inner_join(
+        metadata$departments |>
+          dplyr::select("orgUnit", "department_key", "hospital_key"),
+        dplyr::join_by("orgUnit")) |>
+      dplyr::inner_join(
+        metadata$hospitals |>
+          dplyr::select("hospital_key","country_key"),
+        dplyr::join_by("hospital_key")) |>
+      dplyr::inner_join(
+        metadata$countries |>
+          dplyr::select("country_key", "world_bank_class_key"),
+        dplyr::join_by("country_key"))
+  else if(dataset_options$include_country != "no")
     enrollments <- enrollments |>
-    dplyr::inner_join(
-      metadata$departments |>
-        dplyr::select("orgUnit", "department_key", "hospital_key"),
-      dplyr::join_by("orgUnit")) |>
-    dplyr::inner_join(
-      metadata$hospitals |>
-        dplyr::select("hospital_key","country_key"),
-      dplyr::join_by("hospital_key"))
-  else if(metadata_options$include_test_data ||
-          metadata_options$include_hospital != "no" ||
-          metadata_options$include_department != "no")
+      dplyr::inner_join(
+        metadata$departments |>
+          dplyr::select("orgUnit", "department_key", "hospital_key"),
+        dplyr::join_by("orgUnit")) |>
+      dplyr::inner_join(
+        metadata$hospitals |>
+          dplyr::select("hospital_key","country_key"),
+        dplyr::join_by("hospital_key"))
+  else if(dataset_options$include_test_data ||
+          dataset_options$include_hospital != "no" ||
+          dataset_options$include_department != "no")
   {
     fields <- "orgUnit"
 
-    if(metadata_options$include_hospital != "no")
+    if(dataset_options$include_hospital != "no")
       fields <- c(fields, "department_key", "hospital_key")
-    else if(metadata_options$include_department != "no")
+    else if(dataset_options$include_department != "no")
       fields <- c(fields, "department_key")
 
-    if(metadata_options$include_test_data)
+    if(dataset_options$include_test_data)
       fields <- c(fields, "isTest")
 
     enrollments <- enrollments |>
-    dplyr::inner_join(
-      metadata$departments |>
-        dplyr::select(tidyselect::all_of(fields)),
-      dplyr::join_by("orgUnit"))
+      dplyr::inner_join(
+        metadata$departments |>
+          dplyr::select(tidyselect::all_of(fields)),
+        dplyr::join_by("orgUnit"))
   }
 
-  if(metadata_options$include_user != "no")
+  if(dataset_options$include_user != "no")
     enrollments <- enrollments |>
-    tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("user_key", "username"),
-      dplyr::join_by("createdBy" == "username")) |>
-    dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
-    tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("user_key", "username"),
-      dplyr::join_by("updatedBy" == "username")) |>
-    dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("user_key", "username"),
-      dplyr::join_by("completedBy" == "username")) |>
-    dplyr::mutate(completedBy = .data$user_key, .keep = "unused") |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("user_key", "username"),
-      dplyr::join_by("storedBy" == "username")) |>
-    dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
+      tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("createdBy" == "username")) |>
+      dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
+      tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("updatedBy" == "username")) |>
+      dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("completedBy" == "username")) |>
+      dplyr::mutate(completedBy = .data$user_key, .keep = "unused") |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("storedBy" == "username")) |>
+      dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
 
   enrollments |>
     add_key_column("enrollment_key")

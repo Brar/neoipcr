@@ -1,24 +1,24 @@
-get_trackedEntities_request <- function(req_base, metadata_options, trackedEntityTypeId)
+get_trackedEntities_request <- function(req_base, dataset_options, trackedEntityTypeId)
 {
   fields <- "trackedEntity,inactive,potentialDuplicate"
   attributeFields <- "attribute,value"
 
-  if(metadata_options$include_timestamps)
+  if(dataset_options$include_timestamps)
   {
     fields <- paste0(fields,",createdAt,createdAtClient,updatedAt,updatedAtClient")
     attributeFields <- paste0(attributeFields,",createdAt,updatedAt")
   }
 
-  if(metadata_options$include_department != "no" ||
-     metadata_options$include_hospital != "no" ||
-     metadata_options$include_country != "no" ||
-     metadata_options$include_world_bank_class != "no")
+  if(dataset_options$include_department != "no" ||
+     dataset_options$include_hospital != "no" ||
+     dataset_options$include_country != "no" ||
+     dataset_options$include_world_bank_class != "no")
     fields <- paste0(fields,",orgUnit")
 
-  if(metadata_options$include_deleted)
+  if(dataset_options$include_deleted)
     fields <- paste0(fields,",deleted")
 
-  if(metadata_options$include_user != "no")
+  if(dataset_options$include_user != "no")
   {
     fields <- paste0(fields,",createdBy[username],updatedBy[username]")
     attributeFields <- paste0(attributeFields,",storedBy")
@@ -33,7 +33,7 @@ get_trackedEntities_request <- function(req_base, metadata_options, trackedEntit
       fields = fields)
 }
 
-read_patients <- function(trackedEntities, metadata, metadata_options)
+read_patients <- function(trackedEntities, metadata, dataset_options)
 {
   patients <- trackedEntities |>
     tidyr::unnest_longer("attributes") |>
@@ -50,33 +50,33 @@ read_patients <- function(trackedEntities, metadata, metadata_options)
       dplyr::join_by("optionSet" == "optionSet_code")) |>
     dplyr::select(!c("attributes_attribute", "optionSet"))
 
-  if(!metadata_options$include_patient_id)
+  if(!dataset_options$include_patient_id)
     patients <- patients |>
-    dplyr::filter(.data$code != "NEOIPC_PATIENT_ID")
+      dplyr::filter(.data$code != "NEOIPC_PATIENT_ID")
 
-  if(!metadata_options$include_timestamps)
+  if(!dataset_options$include_timestamps)
     patients <- patients |>
-    dplyr::mutate(dplyr::across(tidyselect::contains("At", ignore.case = FALSE), readr::parse_datetime))
+      dplyr::mutate(dplyr::across(tidyselect::contains("At", ignore.case = FALSE), readr::parse_datetime))
 
-  if(metadata_options$include_user != "no")
+  if(dataset_options$include_user != "no")
     patients <- patients |>
-    tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("user_key", "username"),
-      dplyr::join_by("createdBy" == "username")) |>
-    dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
-    tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("user_key", "username"),
-      dplyr::join_by("updatedBy" == "username")) |>
-    dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("user_key", "username"),
-      dplyr::join_by("attributes_storedBy" == "username")) |>
-    dplyr::mutate(attributes_storedBy = .data$user_key, .keep = "unused")
+      tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("createdBy" == "username")) |>
+      dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
+      tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("updatedBy" == "username")) |>
+      dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("attributes_storedBy" == "username")) |>
+      dplyr::mutate(attributes_storedBy = .data$user_key, .keep = "unused")
 
   patients |>
     dplyr::mutate(

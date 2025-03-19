@@ -2,7 +2,7 @@
 
 S3method(print,neoipcr_dhis2_conopt)
 export(dhis2_connection_options)
-export(dhis2_metadata_options)
-export(filter_neoipc_ds)
+export(dhis2_dataset_options)
 export(import_dhis2)
 import(rlang)
+importFrom(rlang,.data)

@@ -1,15 +1,15 @@
-get_events_request <- function(req_base, metadata_options)
+get_events_request <- function(req_base, dataset_options)
 {
   fields <- "event,programStage,enrollment,trackedEntity,occurredAt,followup"
   dataValueFields <- "dataElement,value"
 
-  if("events" %in% metadata_options$include_incomplete)
+  if("events" %in% dataset_options$include_incomplete)
     fields <- paste0(fields,",status")
   else
     req_base |>
-      httr2::req_url_query(status = "COMPLETED")
+    httr2::req_url_query(status = "COMPLETED")
 
-  if(metadata_options$include_timestamps)
+  if(dataset_options$include_timestamps)
   {
     fields <- paste0(
       fields,
@@ -18,20 +18,20 @@ get_events_request <- function(req_base, metadata_options)
     dataValueFields <- paste0(dataValueFields,",createdAt,updatedAt")
   }
 
-  if(metadata_options$include_test_data ||
-     metadata_options$include_department != "no" ||
-     metadata_options$include_hospital != "no" ||
-     metadata_options$include_country != "no" ||
-     metadata_options$include_world_bank_class != "no")
+  if(dataset_options$include_test_data ||
+     dataset_options$include_department != "no" ||
+     dataset_options$include_hospital != "no" ||
+     dataset_options$include_country != "no" ||
+     dataset_options$include_world_bank_class != "no")
     fields <- paste0(fields,",orgUnit")
 
-  if(metadata_options$include_deleted)
+  if(dataset_options$include_deleted)
     fields <- paste0(fields,",deleted")
 
-  if("events" %in% metadata_options$include_notes)
+  if("events" %in% dataset_options$include_notes)
     fields <- paste0(fields,",notes")
 
-  if(metadata_options$include_user != "no")
+  if(dataset_options$include_user != "no")
   {
     fields <- paste0(fields,",storedBy,createdBy[username],updatedBy[username]")
     dataValueFields <- paste0(dataValueFields,",createdBy[username]")
@@ -44,7 +44,7 @@ get_events_request <- function(req_base, metadata_options)
     httr2::req_url_query(fields = fields)
 }
 
-read_events <- function(events, enrollments, patients, metadata, metadata_options)
+read_events <- function(events, enrollments, patients, metadata, dataset_options)
 {
   events <- events |>
     dplyr::inner_join(
@@ -63,42 +63,42 @@ read_events <- function(events, enrollments, patients, metadata, metadata_option
       occurredAt = readr::parse_date(
         stringr::str_sub(.data$occurredAt, end = 10)))
 
-  if(metadata_options$include_world_bank_class != "no")
+  if(dataset_options$include_world_bank_class != "no")
     events <- events |>
-    dplyr::inner_join(
-      metadata$departments |>
-        dplyr::select("orgUnit", "department_key", "hospital_key"),
-      dplyr::join_by("orgUnit")) |>
-    dplyr::inner_join(
-      metadata$hospitals |>
-        dplyr::select("hospital_key","country_key"),
-      dplyr::join_by("hospital_key")) |>
-    dplyr::inner_join(
-      metadata$countries |>
-        dplyr::select("country_key", "world_bank_class_key"),
-      dplyr::join_by("country_key"))
-  else if(metadata_options$include_country != "no")
+      dplyr::inner_join(
+        metadata$departments |>
+          dplyr::select("orgUnit", "department_key", "hospital_key"),
+        dplyr::join_by("orgUnit")) |>
+      dplyr::inner_join(
+        metadata$hospitals |>
+          dplyr::select("hospital_key","country_key"),
+        dplyr::join_by("hospital_key")) |>
+      dplyr::inner_join(
+        metadata$countries |>
+          dplyr::select("country_key", "world_bank_class_key"),
+        dplyr::join_by("country_key"))
+  else if(dataset_options$include_country != "no")
     events <- events |>
-    dplyr::inner_join(
-      metadata$departments |>
-        dplyr::select("orgUnit", "department_key", "hospital_key"),
-      dplyr::join_by("orgUnit")) |>
-    dplyr::inner_join(
-      metadata$hospitals |>
-        dplyr::select("hospital_key","country_key"),
-      dplyr::join_by("hospital_key"))
-  else if(metadata_options$include_test_data ||
-          metadata_options$include_hospital != "no" ||
-          metadata_options$include_department != "no")
+      dplyr::inner_join(
+        metadata$departments |>
+          dplyr::select("orgUnit", "department_key", "hospital_key"),
+        dplyr::join_by("orgUnit")) |>
+      dplyr::inner_join(
+        metadata$hospitals |>
+          dplyr::select("hospital_key","country_key"),
+        dplyr::join_by("hospital_key"))
+  else if(dataset_options$include_test_data ||
+          dataset_options$include_hospital != "no" ||
+          dataset_options$include_department != "no")
   {
     fields <- "orgUnit"
 
-    if(metadata_options$include_hospital != "no")
+    if(dataset_options$include_hospital != "no")
       fields <- c(fields, "department_key", "hospital_key")
-    else if(metadata_options$include_department != "no")
+    else if(dataset_options$include_department != "no")
       fields <- c(fields, "department_key")
 
-    if(metadata_options$include_test_data)
+    if(dataset_options$include_test_data)
       fields <- c(fields, "isTest")
 
     events <- events |>
@@ -108,14 +108,14 @@ read_events <- function(events, enrollments, patients, metadata, metadata_option
         dplyr::join_by("orgUnit"))
   }
 
-  if("events" %in% metadata_options$include_incomplete)
+  if("events" %in% dataset_options$include_incomplete)
     events <- events |>
-    dplyr::mutate(
-      status = factor(
-        .data$status,
-        levels = c(
-          "ACTIVE", "COMPLETED", "VISITED", "SCHEDULE", "OVERDUE", "SKIPPED"))
-    )
+      dplyr::mutate(
+        status = factor(
+          .data$status,
+          levels = c(
+            "ACTIVE", "COMPLETED", "VISITED", "SCHEDULE", "OVERDUE", "SKIPPED"))
+      )
 
   events <- events |>
     dplyr::select(
@@ -134,7 +134,7 @@ read_events <- function(events, enrollments, patients, metadata, metadata_option
     add_key_column("event_key")
 }
 
-read_event_details <- function(events, processed_events, metadata, metadata_options)
+read_event_details <- function(events, processed_events, metadata, dataset_options)
 {
   events <- events |>
     dplyr::inner_join(
@@ -142,26 +142,26 @@ read_event_details <- function(events, processed_events, metadata, metadata_opti
         dplyr::select("event_key", "event"),
       dplyr::join_by("event"))
 
-  if(metadata_options$include_user != "no")
+  if(dataset_options$include_user != "no")
     events <- events |>
-    tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
-    tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("user_key", "username"),
-      dplyr::join_by("storedBy" == "username")) |>
-    dplyr::mutate(storedBy = .data$user_key, .keep = "unused") |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("user_key", "username"),
-      dplyr::join_by("createdBy" == "username")) |>
-    dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("user_key", "username"),
-      dplyr::join_by("updatedBy" == "username")) |>
-    dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
-    dplyr::mutate(dplyr::across(dplyr::ends_with("At"), readr::parse_datetime))
+      tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
+      tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("storedBy" == "username")) |>
+      dplyr::mutate(storedBy = .data$user_key, .keep = "unused") |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("createdBy" == "username")) |>
+      dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("updatedBy" == "username")) |>
+      dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
+      dplyr::mutate(dplyr::across(dplyr::ends_with("At"), readr::parse_datetime))
 
   events |>
     dplyr::select(
@@ -171,9 +171,9 @@ read_event_details <- function(events, processed_events, metadata, metadata_opti
           "storedBy","createdBy","updatedBy","followup","deleted")))
 }
 
-read_event_notes <- function(events, processed_events, metadata, metadata_options)
+read_event_notes <- function(events, processed_events, metadata, dataset_options)
 {
-  if(!("events" %in% metadata_options$include_notes))
+  if(!("events" %in% dataset_options$include_notes))
     return(NULL)
 
   events <- events |>
@@ -185,26 +185,26 @@ read_event_notes <- function(events, processed_events, metadata, metadata_option
     tidyr::unnest_longer("notes") |>
     tidyr::unnest_wider("notes")
 
-  if(metadata_options$include_user != "no")
+  if(dataset_options$include_user != "no")
     events <- events |>
-      tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
-      dplyr::left_join(
-        users |>
-          dplyr::select("user", "user_key"),
-        dplyr::join_by("createdBy" == "user")) |>
-      dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
-      dplyr::left_join(
-        users |>
-          dplyr::select("username", "user_key"),
-        dplyr::join_by("storedBy" == "username")) |>
-      dplyr::mutate(storedBy = .data$user_key, .keep = "unused") |>
-      dplyr::mutate(storedAt = readr::parse_datetime(.data$storedAt))
+    tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
+    dplyr::left_join(
+      metadata$users |>
+        dplyr::select("user", "user_key"),
+      dplyr::join_by("createdBy" == "user")) |>
+    dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
+    dplyr::left_join(
+      metadata$users |>
+        dplyr::select("username", "user_key"),
+      dplyr::join_by("storedBy" == "username")) |>
+    dplyr::mutate(storedBy = .data$user_key, .keep = "unused") |>
+    dplyr::mutate(storedAt = readr::parse_datetime(.data$storedAt))
 
   events |>
     dplyr::select(!"note")
 }
 
-read_event_data <- function(events, processed_events, metadata, metadata_options, event_type_key)
+read_event_data <- function(events, processed_events, metadata, dataset_options, event_type_key)
 {
   events <- events |>
     dplyr::select("event", "dataValues") |>
@@ -216,23 +216,23 @@ read_event_data <- function(events, processed_events, metadata, metadata_options
     tidyr::unnest_longer("dataValues") |>
     tidyr::unnest_wider("dataValues")
 
-  if(metadata_options$include_user != "no")
+  if(dataset_options$include_user != "no")
     events <- events |>
-    tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("username", "user_key"),
-      dplyr::join_by("createdBy" == "username")) |>
-    dplyr::mutate(
-      createdBy = .data$user_key,
-      .keep = "unused")
+      tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("username", "user_key"),
+        dplyr::join_by("createdBy" == "username")) |>
+      dplyr::mutate(
+        createdBy = .data$user_key,
+        .keep = "unused")
 
-  if(metadata_options$include_timestamps)
+  if(dataset_options$include_timestamps)
     events <- events |>
-    dplyr::mutate(
-      createdAt = readr::parse_datetime(.data$createdAt),
-      updatedAt = readr::parse_datetime(.data$updatedAt),
-      .keep = "unused")
+      dplyr::mutate(
+        createdAt = readr::parse_datetime(.data$createdAt),
+        updatedAt = readr::parse_datetime(.data$updatedAt),
+        .keep = "unused")
 
   events <- events |>
     dplyr::inner_join(
@@ -261,7 +261,7 @@ read_event_data <- function(events, processed_events, metadata, metadata_options
     dplyr::relocate(dplyr::ends_with("value"), .after = "event_key")
 }
 
-read_infectious_agent_findings <- function(events_raw, processed_events, metadata, metadata_options)
+read_infectious_agent_findings <- function(events_raw, processed_events, metadata, dataset_options)
 {
   events_raw |>
     dplyr::select("event", "dataValues") |>
@@ -315,26 +315,26 @@ read_infectious_agent_findings <- function(events_raw, processed_events, metadat
           "multiple","3gcr","car","cor","mrsa","vre")))
 }
 
-read_substance_days <- function(events_raw, processed_events, metadata, metadata_options)
+read_substance_days <- function(events_raw, processed_events, metadata, dataset_options)
   events_raw |>
-    dplyr::select("event", "dataValues") |>
-    dplyr::inner_join(
-      processed_events |>
-        dplyr::select("event", "event_key"),
-      dplyr::join_by("event")) |>
-    tidyr::unnest_longer("dataValues") |>
-    tidyr::unnest_wider("dataValues") |>
-    dplyr::inner_join(
-      metadata$dataElements |>
-        dplyr::select("dataElement", "code") |>
-        dplyr::filter(stringr::str_starts( .data$code, "NEOIPC_SURVEILLANCE_END_AB_SUBST_\\d\\d")),
-      dplyr::join_by("dataElement")) |>
-    dplyr::select(!"dataElement") |>
-    dplyr::mutate(
-      index = as.integer(
-        stringr::str_extract(.data$code,"^NEOIPC_SURVEILLANCE_END_AB_SUBST_\\d(\\d)(_DAYS)?$", 1)),
-      name = dplyr::if_else(stringr::str_ends(.data$code, "_DAYS"), "days", "substance_code"),
-      .keep = "unused") |>
-    tidyr::pivot_wider() |>
-    dplyr::mutate(days = as.integer(.data$days)) |>
-    dplyr::select("event_key","index","substance_code","days")
+  dplyr::select("event", "dataValues") |>
+  dplyr::inner_join(
+    processed_events |>
+      dplyr::select("event", "event_key"),
+    dplyr::join_by("event")) |>
+  tidyr::unnest_longer("dataValues") |>
+  tidyr::unnest_wider("dataValues") |>
+  dplyr::inner_join(
+    metadata$dataElements |>
+      dplyr::select("dataElement", "code") |>
+      dplyr::filter(stringr::str_starts( .data$code, "NEOIPC_SURVEILLANCE_END_AB_SUBST_\\d\\d")),
+    dplyr::join_by("dataElement")) |>
+  dplyr::select(!"dataElement") |>
+  dplyr::mutate(
+    index = as.integer(
+      stringr::str_extract(.data$code,"^NEOIPC_SURVEILLANCE_END_AB_SUBST_\\d(\\d)(_DAYS)?$", 1)),
+    name = dplyr::if_else(stringr::str_ends(.data$code, "_DAYS"), "days", "substance_code"),
+    .keep = "unused") |>
+  tidyr::pivot_wider() |>
+  dplyr::mutate(days = as.integer(.data$days)) |>
+  dplyr::select("event_key","index","substance_code","days")
