@@ -546,7 +546,7 @@ read_metadata_dataElements <- function(metadata)
     tidyr::unnest_wider(1) |>
     tidyr::unnest_wider(1) |>
     tidyr::hoist("optionSet", optionSet = "code", .remove = FALSE) |>
-    dplyr::relocate(dataElement = .data$id)
+    dplyr::relocate(dataElement = "id")
 }
 
 read_metadata_trackedEntityAttributes <- function(metadata)
@@ -561,7 +561,7 @@ read_metadata_trackedEntityAttributes <- function(metadata)
     tibble::tibble() |>
     tidyr::unnest_wider(1) |>
     tidyr::unnest_wider(1) |>
-    dplyr::rename(attribute = .data$id) |>
+    dplyr::rename(attribute = "id") |>
     tidyr::hoist("optionSet", optionSet = "code", .remove = FALSE)
 }
 
