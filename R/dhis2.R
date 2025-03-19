@@ -370,7 +370,7 @@ recode_events <- function(events, eventList)
 
 get_pathogen_list <- function()
 {
-  pc <- pathogenConcepts |>
+  pc <- internal_pathogen_concepts |>
     dplyr::rename("name" = "concept") |>
     dplyr::mutate(synonym_for = rlang::na_int)
 
@@ -380,9 +380,9 @@ get_pathogen_list <- function()
   rest <- pc |>
       dplyr::filter(.data$id != 0) |>
       dplyr::bind_rows(
-        pathogenSynonyms |>
+        internal_pathogen_synonyms |>
           dplyr::inner_join(
-            pathogenConcepts |>
+            internal_pathogen_concepts |>
               dplyr::select(!c("concept","concept_source","concept_id")),
             dplyr::join_by("synonym_for" == "id")) |>
           dplyr::relocate("concept_type", .before = "concept_source") |>
