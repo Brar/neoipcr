@@ -163,6 +163,31 @@ import_dhis2 <- function(
       patients <- patients |>
       dplyr::semi_join(enrollments, dplyr::join_by("patient_key"))
   }
+
+  if(dataset_options$include_department != "no")
+    metadata$departments <- metadata$departments |>
+    dplyr::semi_join(
+      enrollments,
+      dplyr::join_by("department_key"))
+
+  if(dataset_options$include_hospital != "no")
+    metadata$hospitals <- metadata$hospitals |>
+    dplyr::semi_join(
+      enrollments,
+      dplyr::join_by("hospital_key"))
+
+  if(dataset_options$include_country != "no")
+    metadata$countries <- metadata$countries |>
+    dplyr::semi_join(
+      enrollments,
+      dplyr::join_by("country_key"))
+
+  if(dataset_options$include_world_bank_class != "no")
+    metadata$worldBankClasses <- metadata$worldBankClasses |>
+    dplyr::semi_join(
+      enrollments,
+      dplyr::join_by("world_bank_class_key"))
+
   # read_enrollment_details
   # read_enrollment_notes
   eventDetails <- read_event_details(events_raw, events, metadata, dataset_options)
