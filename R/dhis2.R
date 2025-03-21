@@ -1,5 +1,19 @@
 #' Configure the DHIS2 dataset
 #'
+#' @param surveillance_end_from The earliest surveillance end date of patient
+#'  records to include into the dataset.
+#' @param surveillance_end_to The latest surveillance end date of patient
+#'  records to include into the dataset.
+#' @param birth_weight_from The lowest birth weight (in grams) of patient
+#'  records to include into the dataset.
+#' @param birth_weight_to The highest birth weight (in grams) of patient
+#'  records to include into the dataset.
+#' @param gestational_age_from The lowest gestational age (in completed weeks)
+#'  of patient records to include into the dataset.
+#' @param gestational_age_to The highest gestational age (in completed weeks) of
+#'  patient records to include into the dataset
+#' @param country_filter ISO 3166 country codes	of the countries the enrolling
+#'  departments are located in to include into the dataset.
 #' @param include_world_bank_class Include the World Bank class into the
 #'  dataset. Possible values are "no", "pseudonymised" and "yes"
 #' @param include_country Include the country into the dataset. Possible values
@@ -30,6 +44,13 @@
 #'
 #' @export
 dhis2_dataset_options <- function(
+    surveillance_end_from = NULL,
+    surveillance_end_to = NULL,
+    birth_weight_from = NULL,
+    birth_weight_to = NULL,
+    gestational_age_from = NULL,
+    gestational_age_to = NULL,
+    country_filter = NULL,
     include_world_bank_class = c("no","pseudonymised","yes"),
     include_country = c("no","pseudonymised","yes"),
     include_hospital = c("no","pseudonymised","yes"),
@@ -48,7 +69,28 @@ dhis2_dataset_options <- function(
     translate = TRUE,
     locale = NULL)
 {
+  check_number_whole(birth_weight_from, allow_null = TRUE)
+  check_number_whole(birth_weight_to, allow_null = TRUE)
+  check_number_whole(gestational_age_from, allow_null = TRUE)
+  check_number_whole(gestational_age_to, allow_null = TRUE)
+  check_character(country_filter, allow_null = TRUE)
+  check_bool(include_patient_id)
+  check_bool(include_dhis2_id)
+  check_bool(include_timestamps)
+  check_bool(include_test_data)
+  check_bool(include_ineligible_patients)
+  check_bool(include_unenrolled_patients)
+  check_bool(include_deleted)
+  check_bool(translate)
+
   structure(list(
+    surveillance_end_from = as.Date(surveillance_end_from),
+    surveillance_end_to = as.Date(surveillance_end_to),
+    birth_weight_from = birth_weight_from,
+    birth_weight_to = birth_weight_to,
+    gestational_age_from = gestational_age_from,
+    gestational_age_to = gestational_age_to,
+    country_filter = country_filter,
     include_world_bank_class = rlang::arg_match(include_world_bank_class),
     include_country = rlang::arg_match(include_country),
     include_hospital = rlang::arg_match(include_hospital),
@@ -109,8 +151,8 @@ import_dhis2 <- function(
       dataset_options,
       metadata$programId,
       metadata$trackedEntityTypeId),
-    get_enrollments_request(tracker_req, dataset_options),
-    get_events_request(tracker_req, dataset_options))
+    get_enrollments_request(tracker_req, dataset_options, metadata$programId),
+    get_events_request(tracker_req, dataset_options, metadata$programId))
 
   data <-  reqs |>
     httr2::req_perform_parallel() |>
@@ -128,8 +170,51 @@ import_dhis2 <- function(
   enrollments <- read_enrollments(enrollments_raw, patients, metadata, dataset_options)
   events <- read_events(events_raw, enrollments, patients, metadata, dataset_options)
   admissionData <- read_event_data(events_raw, events, metadata, dataset_options, "adm")
+
+  needs_filtering <- FALSE
+
+  if(!is.null(dataset_options$birth_weight_from) ||
+     !is.null(dataset_options$birth_weight_to))
+  {
+    needs_filtering <- TRUE
+
+    if(!is.null(dataset_options$birth_weight_from) &&
+       !is.null(dataset_options$birth_weight_to))
+      patients <- patients |>
+        dplyr::filter(
+          .data$birth_weight >= dataset_options$birth_weight_from &
+            .data$birth_weight <= dataset_options$birth_weight_to)
+    else if(!is.null(dataset_options$birth_weight_from))
+      patients <- patients |>
+        dplyr::filter(.data$birth_weight >= dataset_options$birth_weight_from)
+    else
+      patients <- patients |>
+        dplyr::filter(.data$birth_weight <= dataset_options$birth_weight_to)
+  }
+
+  if(!is.null(dataset_options$gestational_age_from) ||
+     !is.null(dataset_options$gestational_age_to))
+  {
+    needs_filtering <- TRUE
+
+    if(!is.null(dataset_options$gestational_age_from) &&
+       !is.null(dataset_options$gestational_age_to))
+      patients <- patients |>
+        dplyr::filter(
+          .data$total_gestation_days >= (dataset_options$gestational_age_from * 7) &
+            .data$total_gestation_days <= (dataset_options$gestational_age_to * 7))
+    else if(!is.null(dataset_options$gestational_age_from))
+      patients <- patients |>
+        dplyr::filter(.data$total_gestation_days >= (dataset_options$gestational_age_from * 7))
+    else
+      patients <- patients |>
+        dplyr::filter(.data$total_gestation_days <= (dataset_options$gestational_age_to * 7))
+  }
+
   if(!dataset_options$include_ineligible_patients)
   {
+    needs_filtering <- TRUE
+
     patients <- patients |>
       dplyr::filter(
         .data$total_gestation_days < 224 | .data$birth_weight < 1500)
@@ -155,6 +240,45 @@ import_dhis2 <- function(
             admissionData,
             dplyr::join_by("event_key")),
         dplyr::join_by("enrollment_key"))
+  }
+
+  if(!is.null(dataset_options$surveillance_end_from) ||
+     !is.null(dataset_options$surveillance_end_to))
+  {
+    needs_filtering <- TRUE
+
+    if(!is.null(dataset_options$surveillance_end_from) &&
+       !is.null(dataset_options$surveillance_end_to))
+      enrollments <- enrollments |>
+        dplyr::semi_join(
+          events |>
+            dplyr::filter(
+              .data$event_type_key == "end" &
+                .data$occurredAt >= dataset_options$surveillance_end_from &
+                .data$occurredAt <= dataset_options$surveillance_end_to),
+          dplyr::join_by("enrollment_key"))
+    else if(!is.null(dataset_options$surveillance_end_from))
+      enrollments <- enrollments |>
+        dplyr::semi_join(
+          events |>
+            dplyr::filter(
+              .data$event_type_key == "end" &
+                .data$occurredAt >= dataset_options$surveillance_end_from),
+          dplyr::join_by("enrollment_key"))
+    else
+      enrollments <- enrollments |>
+        dplyr::semi_join(
+          events |>
+            dplyr::filter(
+              .data$event_type_key == "end" &
+                .data$occurredAt <= dataset_options$surveillance_end_to),
+          dplyr::join_by("enrollment_key"))
+  }
+
+  if(needs_filtering)
+  {
+    enrollments <- enrollments |>
+      dplyr::semi_join(patients, dplyr::join_by("patient_key"))
 
     events <- events |>
       dplyr::semi_join(enrollments, dplyr::join_by("enrollment_key"))

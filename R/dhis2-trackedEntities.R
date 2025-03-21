@@ -5,15 +5,15 @@ get_trackedEntities_request <- function(
   attributeFields <- "attribute,value"
 
   if(dataset_options$include_unenrolled_patients)
-    req_base |>
+    req_base <- req_base |>
     httr2::req_url_query(trackedEntityType = trackedEntityTypeId)
   else
   {
-    req_base |>
+    req_base <- req_base |>
     httr2::req_url_query(program = programId)
 
     if(!("enrollments" %in% dataset_options$include_incomplete))
-      req_base |>
+      req_base <- req_base |>
       httr2::req_url_query(programStatus = "COMPLETED")
   }
 
@@ -23,7 +23,10 @@ get_trackedEntities_request <- function(
     attributeFields <- paste0(attributeFields,",createdAt,updatedAt")
   }
 
-  if(dataset_options$include_department != "no" ||
+  if(!dataset_options$include_test_data ||
+     !is.null(dataset_options$country_filter) ||
+     !is.null(dataset_options$trial_keys) ||
+     dataset_options$include_department != "no" ||
      dataset_options$include_hospital != "no" ||
      dataset_options$include_country != "no" ||
      dataset_options$include_world_bank_class != "no")
@@ -42,9 +45,7 @@ get_trackedEntities_request <- function(
 
   req_base |>
     httr2::req_url_path_append("trackedEntities") |>
-    httr2::req_url_query(
-      trackedEntityType = trackedEntityTypeId,
-      fields = fields)
+    httr2::req_url_query(fields = fields)
 }
 
 read_patients <- function(trackedEntities, metadata, dataset_options)
@@ -91,6 +92,12 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
           dplyr::select("user_key", "username"),
         dplyr::join_by("attributes_storedBy" == "username")) |>
       dplyr::mutate(attributes_storedBy = .data$user_key, .keep = "unused")
+
+  if(!dataset_options$include_test_data ||
+     !is.null(dataset_options$country_filter) ||
+     !is.null(dataset_options$trial_keys))
+    patients <- patients |>
+      dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
 
   patients |>
     dplyr::mutate(

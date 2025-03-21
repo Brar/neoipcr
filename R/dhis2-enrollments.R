@@ -1,11 +1,11 @@
-get_enrollments_request <- function(req_base, dataset_options)
+get_enrollments_request <- function(req_base, dataset_options, programId)
 {
   fields <- "enrollment,trackedEntity,enrolledAt,followUp,notes"
 
   if("enrollments" %in% dataset_options$include_incomplete)
     fields <- paste0(fields,",status")
   else
-    req_base |>
+    req_base <- req_base |>
       httr2::req_url_query(programStatus = "COMPLETED")
 
   if(dataset_options$include_timestamps)
@@ -13,7 +13,9 @@ get_enrollments_request <- function(req_base, dataset_options)
       fields,
       ",occurredAt,createdAt,createdAtClient,updatedAt,updatedAtClient,completedAt")
 
-  if(dataset_options$include_test_data ||
+  if(!dataset_options$include_test_data ||
+     !is.null(dataset_options$country_filter) ||
+     !is.null(dataset_options$trial_keys) ||
      dataset_options$include_department != "no" ||
      dataset_options$include_hospital != "no" ||
      dataset_options$include_country != "no" ||
@@ -29,6 +31,7 @@ get_enrollments_request <- function(req_base, dataset_options)
 
   req_base |>
     httr2::req_url_path_append("enrollments") |>
+    httr2::req_url_query(program = programId) |>
     httr2::req_url_query(fields = fields)
 }
 
@@ -127,6 +130,12 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
           dplyr::select("user_key", "username"),
         dplyr::join_by("storedBy" == "username")) |>
       dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
+
+  if(!dataset_options$include_test_data ||
+     !is.null(dataset_options$country_filter) ||
+     !is.null(dataset_options$trial_keys))
+    enrollments <- enrollments |>
+      dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
 
   enrollments |>
     add_key_column("enrollment_key")

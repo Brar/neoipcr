@@ -1,4 +1,4 @@
-get_events_request <- function(req_base, dataset_options)
+get_events_request <- function(req_base, dataset_options, programId)
 {
   fields <- "event,programStage,enrollment,trackedEntity,occurredAt,followup"
   dataValueFields <- "dataElement,value"
@@ -6,8 +6,12 @@ get_events_request <- function(req_base, dataset_options)
   if("events" %in% dataset_options$include_incomplete)
     fields <- paste0(fields,",status")
   else
-    req_base |>
+    req_base <- req_base |>
     httr2::req_url_query(status = "COMPLETED")
+
+  if(!("enrollments" %in% dataset_options$include_incomplete))
+    req_base <- req_base |>
+    httr2::req_url_query(programStatus = "COMPLETED")
 
   if(dataset_options$include_timestamps)
   {
@@ -18,7 +22,9 @@ get_events_request <- function(req_base, dataset_options)
     dataValueFields <- paste0(dataValueFields,",createdAt,updatedAt")
   }
 
-  if(dataset_options$include_test_data ||
+  if(!dataset_options$include_test_data ||
+     !is.null(dataset_options$country_filter) ||
+     !is.null(dataset_options$trial_keys) ||
      dataset_options$include_department != "no" ||
      dataset_options$include_hospital != "no" ||
      dataset_options$include_country != "no" ||
@@ -41,6 +47,7 @@ get_events_request <- function(req_base, dataset_options)
 
   req_base |>
     httr2::req_url_path_append("events") |>
+    httr2::req_url_query(program = programId) |>
     httr2::req_url_query(fields = fields)
 }
 
@@ -117,7 +124,13 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
             "ACTIVE", "COMPLETED", "VISITED", "SCHEDULE", "OVERDUE", "SKIPPED"))
       )
 
-  events <- events |>
+  if(!dataset_options$include_test_data ||
+     !is.null(dataset_options$country_filter) ||
+     !is.null(dataset_options$trial_keys))
+    events <- events |>
+      dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
+
+  events |>
     dplyr::select(
       tidyselect::any_of(
         c(
