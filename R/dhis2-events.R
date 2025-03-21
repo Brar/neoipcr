@@ -304,7 +304,6 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
           "kangaroo_care_days","probiotic_days", sort(tidyselect::peek_vars()))))
   else if(event_type_key == "bsi")
     events <- events |>
-    dplyr::rename(dev_ass = .data$device_association) |>
     dplyr::select(
       tidyselect::any_of(
         c("event_key","dev_ass","los","dol", sort(tidyselect::peek_vars()))))
@@ -324,6 +323,7 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
         c("event_key","dev_ass","los","dol","sec_bsi","microbiological_test_result", sort(tidyselect::peek_vars()))))
   else if(event_type_key == "ssi")
     events <- events |>
+    dplyr::rename(sec_bsi = .data$secondary_bsi) |>
     dplyr::select(
       tidyselect::any_of(
         c("event_key","los","dol","infection_type","sec_bsi","organisms_superf",
