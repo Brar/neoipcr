@@ -148,11 +148,16 @@ import_dhis2 <- function(
       dplyr::semi_join(patients, dplyr::join_by("patient_key")) |>
       dplyr::filter(.data$dol_value < 120)
 
-    events <- events |>
-      dplyr::semi_join(admissionData, dplyr::join_by("event_key"))
-
     enrollments <- enrollments |>
-      dplyr::semi_join(events, dplyr::join_by("enrollment_key"))
+      dplyr::semi_join(
+        events |>
+          dplyr::semi_join(
+            admissionData,
+            dplyr::join_by("event_key")),
+        dplyr::join_by("enrollment_key"))
+
+    events <- events |>
+      dplyr::semi_join(enrollments, dplyr::join_by("enrollment_key"))
 
     if(!dataset_options$include_unenrolled_patients)
       patients <- patients |>
