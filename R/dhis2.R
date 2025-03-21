@@ -83,9 +83,15 @@ dhis2_dataset_options <- function(
   check_bool(include_deleted)
   check_bool(translate)
 
+  if(!is.null(surveillance_end_from))
+    surveillance_end_from <- as.Date(surveillance_end_from)
+
+  if(!is.null(surveillance_end_to))
+    surveillance_end_to <- as.Date(surveillance_end_to)
+
   structure(list(
-    surveillance_end_from = as.Date(surveillance_end_from),
-    surveillance_end_to = as.Date(surveillance_end_to),
+    surveillance_end_from = surveillance_end_from,
+    surveillance_end_to = surveillance_end_to,
     birth_weight_from = birth_weight_from,
     birth_weight_to = birth_weight_to,
     gestational_age_from = gestational_age_from,
