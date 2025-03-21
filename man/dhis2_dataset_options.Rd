@@ -14,6 +14,8 @@ dhis2_dataset_options(
   include_dhis2_id = FALSE,
   include_timestamps = FALSE,
   include_test_data = FALSE,
+  include_ineligible_patients = FALSE,
+  include_unenrolled_patients = FALSE,
   include_incomplete = rlang::chr(),
   include_notes = rlang::chr(),
   include_deleted = FALSE,
@@ -46,6 +48,12 @@ values are "no", "pseudonymised" and "yes"}
 into the dataset.}
 
 \item{include_test_data}{Include data from test units into the dataset.}
+
+\item{include_ineligible_patients}{Include data from patients that don't meet
+the NeoIPC core case eligibility criteria into the dataset.}
+
+\item{include_unenrolled_patients}{Include data from unenrolled NeoIPC
+patient records into the dataset.}
 
 \item{include_incomplete}{Include incomplete records into the dataset.
 Possible values are "enrollments" and "events"}

@@ -14,6 +14,10 @@
 #' @param include_dhis2_id Include the DHIS2 ids into the dataset.
 #' @param include_timestamps Include the createdAt and modifiedAt timestamps
 #'  into the dataset.
+#' @param include_ineligible_patients Include data from patients that don't meet
+#'  the NeoIPC core case eligibility criteria into the dataset.
+#' @param include_unenrolled_patients Include data from unenrolled NeoIPC
+#'  patient records into the dataset.
 #' @param include_test_data Include data from test units into the dataset.
 #' @param include_incomplete Include incomplete records into the dataset.
 #'  Possible values are "enrollments" and "events"
@@ -35,6 +39,8 @@ dhis2_dataset_options <- function(
     include_dhis2_id = FALSE,
     include_timestamps = FALSE,
     include_test_data = FALSE,
+    include_ineligible_patients = FALSE,
+    include_unenrolled_patients = FALSE,
     include_incomplete = rlang::chr(),
     include_notes = rlang::chr(),
     include_deleted = FALSE,
@@ -52,6 +58,8 @@ dhis2_dataset_options <- function(
     include_dhis2_id = include_dhis2_id,
     include_timestamps = include_timestamps,
     include_test_data = include_test_data,
+    include_ineligible_patients = include_ineligible_patients,
+    include_unenrolled_patients = include_unenrolled_patients,
     include_incomplete = rlang::arg_match(
       include_incomplete,
       c("enrollments","events"),
@@ -95,11 +103,11 @@ import_dhis2 <- function(
       ouMode ="ACCESSIBLE",
       skipPaging = "true",
       includeDeleted = tolower(dataset_options$include_deleted))
-
   reqs <- list(
     get_trackedEntities_request(
       tracker_req,
       dataset_options,
+      metadata$programId,
       metadata$trackedEntityTypeId),
     get_enrollments_request(tracker_req, dataset_options),
     get_events_request(tracker_req, dataset_options))
@@ -118,12 +126,42 @@ import_dhis2 <- function(
 
   patients <- read_patients(trackedEntities_raw, metadata, dataset_options)
   enrollments <- read_enrollments(enrollments_raw, patients, metadata, dataset_options)
+  events <- read_events(events_raw, enrollments, patients, metadata, dataset_options)
+  admissionData <- read_event_data(events_raw, events, metadata, dataset_options, "adm")
+  if(!dataset_options$include_ineligible_patients)
+  {
+    patients <- patients |>
+      dplyr::filter(
+        .data$total_gestation_days < 224 | .data$birth_weight < 1500)
+
+    enrollments <- enrollments |>
+      dplyr::semi_join(patients, dplyr::join_by("patient_key"))
+
+    events <- events |>
+      dplyr::semi_join(enrollments, dplyr::join_by("enrollment_key"))
+
+    admissionData <- admissionData |>
+      dplyr::inner_join(
+        events |>
+          dplyr::select("event_key","patient_key"),
+        dplyr::join_by("event_key")) |>
+      dplyr::semi_join(patients, dplyr::join_by("patient_key")) |>
+      dplyr::filter(.data$dol_value < 120)
+
+    events <- events |>
+      dplyr::semi_join(admissionData, dplyr::join_by("event_key"))
+
+    enrollments <- enrollments |>
+      dplyr::semi_join(events, dplyr::join_by("enrollment_key"))
+
+    if(!dataset_options$include_unenrolled_patients)
+      patients <- patients |>
+      dplyr::semi_join(enrollments, dplyr::join_by("patient_key"))
+  }
   # read_enrollment_details
   # read_enrollment_notes
-  events <- read_events(events_raw, enrollments, patients, metadata, dataset_options)
   eventDetails <- read_event_details(events_raw, events, metadata, dataset_options)
   eventNotes <- read_event_notes(events_raw, events, metadata, dataset_options)
-  admissionData <- read_event_data(events_raw, events, metadata, dataset_options, "adm")
   surveillanceEndData <- read_event_data(events_raw, events, metadata, dataset_options, "end")
   sepsisData <- read_event_data(events_raw, events, metadata, dataset_options, "bsi")
   necData <- read_event_data(events_raw, events, metadata, dataset_options, "nec")

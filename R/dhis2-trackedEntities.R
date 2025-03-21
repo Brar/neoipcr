@@ -1,7 +1,21 @@
-get_trackedEntities_request <- function(req_base, dataset_options, trackedEntityTypeId)
+get_trackedEntities_request <- function(
+    req_base, dataset_options, programId, trackedEntityTypeId)
 {
   fields <- "trackedEntity,inactive,potentialDuplicate"
   attributeFields <- "attribute,value"
+
+  if(dataset_options$include_unenrolled_patients)
+    req_base |>
+    httr2::req_url_query(trackedEntityType = trackedEntityTypeId)
+  else
+  {
+    req_base |>
+    httr2::req_url_query(program = programId)
+
+    if(!("enrollments" %in% dataset_options$include_incomplete))
+      req_base |>
+      httr2::req_url_query(programStatus = "COMPLETED")
+  }
 
   if(dataset_options$include_timestamps)
   {
