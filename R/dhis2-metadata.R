@@ -666,9 +666,6 @@ read_metadata_atc5Categories <- function(metadata)
 
 read_metadata_test_unit_ids <- function(metadata, include_test_data)
 {
-  if(!include_test_data)
-    return(NULL)
-
   organisationUnitGroups <- read_metadata_organisationUnitGroups(
     metadata, "TEST_UNITS")
 
