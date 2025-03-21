@@ -237,7 +237,7 @@ import_dhis2 <- function(
           dplyr::select("event_key","patient_key"),
         dplyr::join_by("event_key")) |>
       dplyr::semi_join(patients, dplyr::join_by("patient_key")) |>
-      dplyr::filter(.data$dol_value < 120)
+      dplyr::filter(.data$dol < 120)
 
     enrollments <- enrollments |>
       dplyr::semi_join(

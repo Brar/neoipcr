@@ -263,15 +263,80 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
       code = stringr::str_extract(tolower(.data$code), "^neoipc_(admission|surveillance_end|bsi|nec|hap|ssi|surgery)_(.+)$", group = 2),
       .keep = "unused"
     ) |>
-    dplyr::select(!c("event","dataElement","optionSet")) |>
+    dplyr::select(!c("event","dataElement","optionSet"))
+
+  if(event_type_key == "adm")
+    events <- events |>
+    dplyr::filter(.data$code != "los")
+  else if(event_type_key == "end")
+    events <- events |>
+    dplyr::filter(stringr::str_starts(.data$code, "ab_subst_", negate = TRUE))
+  else if(event_type_key == "bsi")
+    events <- events |>
+    dplyr::filter(stringr::str_starts(.data$code, "pathogen_\\d", negate = TRUE))
+  else if(event_type_key %in% c("nec","hap","ssi"))
+    events <- events |>
+    dplyr::filter(stringr::str_starts(.data$code, "(sec_bsi_)?pathogen_\\d", negate = TRUE))
+
+  events <- events |>
     tidyr::pivot_wider(
       names_from = "code",
       values_from = !c("code","event_key"),
       names_glue = "{code}_{.value}",
       names_vary = "slowest") |>
     tidyr::unnest_longer(dplyr::ends_with("value"), keep_empty = TRUE) |>
-    dplyr::arrange(.data$event_key) |>
-    dplyr::relocate(dplyr::ends_with("value"), .after = "event_key")
+    dplyr::relocate(dplyr::ends_with("value"), .after = "event_key") |>
+    dplyr::rename_with(~ stringr::str_extract(.x, "^(.+)_value$", 1),
+                       tidyselect::ends_with("_value"))
+
+  if(event_type_key == "adm")
+    events <- events |>
+    dplyr::select(
+      tidyselect::all_of(
+        c("event_key","type","dol", sort(tidyselect::peek_vars()))))
+  else if(event_type_key == "end")
+    events <- events |>
+    dplyr::mutate(vs_days = .data$inv_days + .data$niv_days) |>
+    dplyr::select(
+      tidyselect::all_of(
+        c("event_key","reason","patient_days","cvc_days","pvc_days","vs_days",
+          "inv_days","niv_days","ab_days","human_milk_days",
+          "kangaroo_care_days","probiotic_days", sort(tidyselect::peek_vars()))))
+  else if(event_type_key == "bsi")
+    events <- events |>
+    dplyr::rename(dev_ass = .data$device_association) |>
+    dplyr::select(
+      tidyselect::any_of(
+        c("event_key","dev_ass","los","dol", sort(tidyselect::peek_vars()))))
+  else if(event_type_key == "nec")
+    events <- events |>
+    dplyr::rename(sec_bsi = .data$secondary_bsi) |>
+    dplyr::select(
+      tidyselect::any_of(
+        c("event_key","los","dol","sec_bsi", sort(tidyselect::peek_vars()))))
+  else if(event_type_key == "hap")
+    events <- events |>
+    dplyr::rename(
+      dev_ass = .data$device_association,
+      sec_bsi = .data$secondary_bsi) |>
+    dplyr::select(
+      tidyselect::any_of(
+        c("event_key","dev_ass","los","dol","sec_bsi","microbiological_test_result", sort(tidyselect::peek_vars()))))
+  else if(event_type_key == "ssi")
+    events <- events |>
+    dplyr::select(
+      tidyselect::any_of(
+        c("event_key","los","dol","infection_type","sec_bsi","organisms_superf",
+          "organisms_organ", sort(tidyselect::peek_vars()))))
+  else if(event_type_key == "pro")
+    events <- events |>
+    dplyr::select(
+      tidyselect::any_of(
+        c("event_key","los","dol","procedure_description","main_procedure_code",
+          "side_procedure_code_1","side_procedure_code_2","asa_score",
+          "wound_class","duration","infection_signs", sort(tidyselect::peek_vars()))))
+
+  events
 }
 
 read_infectious_agent_findings <- function(events_raw, processed_events, metadata, dataset_options)

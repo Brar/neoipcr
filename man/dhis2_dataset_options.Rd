@@ -5,6 +5,13 @@
 \title{Configure the DHIS2 dataset}
 \usage{
 dhis2_dataset_options(
+  surveillance_end_from = NULL,
+  surveillance_end_to = NULL,
+  birth_weight_from = NULL,
+  birth_weight_to = NULL,
+  gestational_age_from = NULL,
+  gestational_age_to = NULL,
+  country_filter = NULL,
   include_world_bank_class = c("no", "pseudonymised", "yes"),
   include_country = c("no", "pseudonymised", "yes"),
   include_hospital = c("no", "pseudonymised", "yes"),
@@ -25,6 +32,27 @@ dhis2_dataset_options(
 )
 }
 \arguments{
+\item{surveillance_end_from}{The earliest surveillance end date of patient
+records to include into the dataset.}
+
+\item{surveillance_end_to}{The latest surveillance end date of patient
+records to include into the dataset.}
+
+\item{birth_weight_from}{The lowest birth weight (in grams) of patient
+records to include into the dataset.}
+
+\item{birth_weight_to}{The highest birth weight (in grams) of patient
+records to include into the dataset.}
+
+\item{gestational_age_from}{The lowest gestational age (in completed weeks)
+of patient records to include into the dataset.}
+
+\item{gestational_age_to}{The highest gestational age (in completed weeks) of
+patient records to include into the dataset}
+
+\item{country_filter}{ISO 3166 country codes    of the countries the enrolling
+departments are located in to include into the dataset.}
+
 \item{include_world_bank_class}{Include the World Bank class into the
 dataset. Possible values are "no", "pseudonymised" and "yes"}
 
