@@ -247,47 +247,50 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
         updatedAt = readr::parse_datetime(.data$updatedAt),
         .keep = "unused")
 
-  events <- events |>
-    dplyr::inner_join(
-      metadata$dataElements |>
-        dplyr::select("dataElement","code","valueType","optionSet"),
-      dplyr::join_by("dataElement")) |>
-    dplyr::left_join(
-      metadata$options |>
-        dplyr::arrange("optionSet_code", "sortOrder") |>
-        dplyr::group_by(.data$optionSet_code) |>
-        dplyr::summarise(levels = list(.data$code)),
-      dplyr::join_by("optionSet" == "optionSet_code")) |>
-    dplyr::mutate(
-      value = convert_value(.data$value, .data$valueType, .data$levels),
-      code = stringr::str_extract(tolower(.data$code), "^neoipc_(admission|surveillance_end|bsi|nec|hap|ssi|surgery)_(.+)$", group = 2),
-      .keep = "unused"
-    ) |>
-    dplyr::select(!c("event","dataElement","optionSet"))
+  if(nrow(events) > 0)
+  {
+    events <- events |>
+      dplyr::inner_join(
+        metadata$dataElements |>
+          dplyr::select("dataElement","code","valueType","optionSet"),
+        dplyr::join_by("dataElement")) |>
+      dplyr::left_join(
+        metadata$options |>
+          dplyr::arrange("optionSet_code", "sortOrder") |>
+          dplyr::group_by(.data$optionSet_code) |>
+          dplyr::summarise(levels = list(.data$code)),
+        dplyr::join_by("optionSet" == "optionSet_code")) |>
+      dplyr::mutate(
+        value = convert_value(.data$value, .data$valueType, .data$levels),
+        code = stringr::str_extract(tolower(.data$code), "^neoipc_(admission|surveillance_end|bsi|nec|hap|ssi|surgery)_(.+)$", group = 2),
+        .keep = "unused"
+      ) |>
+      dplyr::select(!c("event","dataElement","optionSet"))
 
-  if(event_type_key == "adm")
-    events <- events |>
-    dplyr::filter(.data$code != "los")
-  else if(event_type_key == "end")
-    events <- events |>
-    dplyr::filter(stringr::str_starts(.data$code, "ab_subst_", negate = TRUE))
-  else if(event_type_key == "bsi")
-    events <- events |>
-    dplyr::filter(stringr::str_starts(.data$code, "pathogen_\\d", negate = TRUE))
-  else if(event_type_key %in% c("nec","hap","ssi"))
-    events <- events |>
-    dplyr::filter(stringr::str_starts(.data$code, "(sec_bsi_)?pathogen_\\d", negate = TRUE))
+    if(event_type_key == "adm")
+      events <- events |>
+      dplyr::filter(.data$code != "los")
+    else if(event_type_key == "end")
+      events <- events |>
+      dplyr::filter(stringr::str_starts(.data$code, "ab_subst_", negate = TRUE))
+    else if(event_type_key == "bsi")
+      events <- events |>
+      dplyr::filter(stringr::str_starts(.data$code, "pathogen_\\d", negate = TRUE))
+    else if(event_type_key %in% c("nec","hap","ssi"))
+      events <- events |>
+      dplyr::filter(stringr::str_starts(.data$code, "(sec_bsi_)?pathogen_\\d", negate = TRUE))
 
-  events <- events |>
-    tidyr::pivot_wider(
-      names_from = "code",
-      values_from = !c("code","event_key"),
-      names_glue = "{code}_{.value}",
-      names_vary = "slowest") |>
-    tidyr::unnest_longer(dplyr::ends_with("value"), keep_empty = TRUE) |>
-    dplyr::relocate(dplyr::ends_with("value"), .after = "event_key") |>
-    dplyr::rename_with(~ stringr::str_extract(.x, "^(.+)_value$", 1),
-                       tidyselect::ends_with("_value"))
+    events <- events |>
+      tidyr::pivot_wider(
+        names_from = "code",
+        values_from = !c("code","event_key"),
+        names_glue = "{code}_{.value}",
+        names_vary = "slowest") |>
+      tidyr::unnest_longer(dplyr::ends_with("value"), keep_empty = TRUE) |>
+      dplyr::relocate(dplyr::ends_with("value"), .after = "event_key") |>
+      dplyr::rename_with(~ stringr::str_extract(.x, "^(.+)_value$", 1),
+                         tidyselect::ends_with("_value"))
+  }
 
   if(event_type_key == "adm")
     events <- events |>
