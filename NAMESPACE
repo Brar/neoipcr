@@ -3,6 +3,7 @@
 S3method(print,neoipcr_dhis2_conopt)
 export(dhis2_connection_options)
 export(dhis2_dataset_options)
+export(get_pathogen_taxonomy)
 export(import_dhis2)
 import(rlang)
 importFrom(rlang,.data)
