@@ -57,7 +57,8 @@ read_token <- function(token)
   fileInfo <- file.info(token, extra_cols = FALSE)
   if(!rlang::is_na(fileInfo$isdir) && !fileInfo$isdir)
   {
-    fileContent <- readChar(token, fileInfo$size)
+    fileContent <- readChar(token, fileInfo$size) |>
+      stringr::str_replace("\\n$", "")
     if(stringr::str_starts(fileContent, "d2pat_") && nchar(fileContent) == 48)
       return(fileContent)
   }
