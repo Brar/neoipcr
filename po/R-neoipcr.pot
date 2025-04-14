@@ -1,0 +1,29 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: neoipcr 0.1.0\n"
+"POT-Creation-Date: 2025-04-14 18:29\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Invalid DHIS2 personal access token."
+msgstr ""
+
+msgid "Please enter your password for %s:"
+msgstr ""
+
+msgid "No password provided"
+msgstr ""
+
+msgid "Please provide username and password, a personal access token or a session id to authenticate to DHIS2"
+msgstr ""
+
+msgid "Please enter your username for %s:"
+msgstr ""
+
+msgid "No username provided"
+msgstr ""

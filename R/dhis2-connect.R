@@ -62,7 +62,7 @@ read_token <- function(token)
     if(stringr::str_starts(fileContent, "d2pat_") && nchar(fileContent) == 48)
       return(fileContent)
   }
-  rlang::abort("Invalid DHIS2 personal access token.")
+  rlang::abort(gettext("Invalid DHIS2 personal access token."))
 }
 
 get_password <- function(url)
@@ -71,11 +71,11 @@ get_password <- function(url)
   if(!is.na(pw)) return(pw)
 
   pw <- askpass::askpass(
-    prompt = sprintf("Please enter your password for %s: ", url))
+    prompt = gettextf("Please enter your password for %s: ", url))
 
   if(is.null(pw)) rlang::abort(
-    message = "No password provided",
-    body = "Please provide username and password, a personal access token or a session id to authenticate to DHIS2")
+    message = gettext("No password provided"),
+    body = gettext("Please provide username and password, a personal access token or a session id to authenticate to DHIS2"))
 
   pw
 }
@@ -90,12 +90,12 @@ get_auth_data <- function(url)
 
   user <- Sys.getenv("NEOIPC_DHIS2_USER", unset = NA)
   if(is.na(user)) user <- askpass::askpass(
-    prompt = sprintf(
+    prompt = gettextf(
       "Please enter your username for %s: ", url))
 
   if(is.null(user)) rlang::abort(
-    message = "No username provided",
-    body = "Please provide username and password, a personal access token or a session id to authenticate to DHIS2")
+    message = gettext("No username provided"),
+    body = gettext("Please provide username and password, a personal access token or a session id to authenticate to DHIS2"))
 
   list(username = user, password = get_password(url))
 }
