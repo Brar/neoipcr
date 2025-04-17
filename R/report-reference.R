@@ -3,6 +3,15 @@ reference_data <- function(x, use_cache = TRUE)
 
 }
 
+#' Get the table with usage density rates of the collected time dependent risk
+#'  factors
+#'
+#' @param ref The reference data set
+#' @param use_cache Use cache
+#'
+#' @returns A table containing usage density rates of the collected time
+#'  dependent risk factors
+#' @export
 get_usage_density_rate_table <- function(ref, use_cache = TRUE)
 {
   if(use_cache && !is.null(r <- get_cached(ref, "usage_density_rate_table")))
