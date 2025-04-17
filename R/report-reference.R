@@ -1,19 +1,37 @@
-reference_data <- function(x, use_cache = TRUE)
+#' Calculate a NeoIPC reference data set
+#'
+#' @param ds The neoipcr_ds object containing the data
+#' @param use_cache Use the cache
+#'
+#' @returns A NeoIPC reference data set
+#' @export
+calculate_reference_data <- function(ds, use_cache = TRUE)
 {
+  check_neoipcr_ds(ds)
 
+  structure(
+    list(
+      usage_density_rate_table <- get_usage_density_rate_table(ds, use_cache)
+      ),
+    class = "neoipcr_ref_ds")
 }
 
-#' Get the table with usage density rates of the collected time dependent risk
+#' Get the table with usage density rates of the time dependent risk factors
+#'
+#' @param ref The reference data set which can be either a neoipcr_ref_ds or a
+#'  neoipcr_ds object
+#' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#'
+#' @returns A table containing usage density rates of the time dependent risk
 #'  factors
-#'
-#' @param ref The reference data set
-#' @param use_cache Use cache
-#'
-#' @returns A table containing usage density rates of the collected time
-#'  dependent risk factors
 #' @export
 get_usage_density_rate_table <- function(ref, use_cache = TRUE)
 {
+  check_neoipcr_ds_or_ref_ds(ref)
+
+  if(is_neoipcr_ref_ds(ref))
+    return(ref$usage_density_rate_table)
+
   if(use_cache && !is.null(r <- get_cached(ref, "usage_density_rate_table")))
     return(r)
 

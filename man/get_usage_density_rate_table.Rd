@@ -2,21 +2,20 @@
 % Please edit documentation in R/report-reference.R
 \name{get_usage_density_rate_table}
 \alias{get_usage_density_rate_table}
-\title{Get the table with usage density rates of the collected time dependent risk
-factors}
+\title{Get the table with usage density rates of the time dependent risk factors}
 \usage{
 get_usage_density_rate_table(ref, use_cache = TRUE)
 }
 \arguments{
-\item{ref}{The reference data set}
+\item{ref}{The reference data set which can be either a neoipcr_ref_ds or a
+neoipcr_ds object}
 
-\item{use_cache}{Use cache}
+\item{use_cache}{Use the cache. Ignored if ref is a neoipcr_ref_ds object}
 }
 \value{
-A table containing usage density rates of the collected time
-dependent risk factors
+A table containing usage density rates of the time dependent risk
+factors
 }
 \description{
-Get the table with usage density rates of the collected time dependent risk
-factors
+Get the table with usage density rates of the time dependent risk factors
 }
