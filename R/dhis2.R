@@ -366,7 +366,7 @@ import_dhis2 <- function(
       substanceDays = substanceDays,
       infectiousAgentFindings = infectiousAgentFindings,
       metadata = metadata,
-      `.cache` = new.env(parent = rlang::pkg_env("neoipcr"))),
+      `.cache` = new.env(parent = emptyenv())),
     class = c("neoipcr_ds", "list"))
 }
 

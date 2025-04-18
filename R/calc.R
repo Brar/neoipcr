@@ -12,6 +12,7 @@ calculate_reference_data <- function(ds, use_cache = TRUE)
   structure(
     list(
       usage_density_rate_table = get_usage_density_rate_table(ds, use_cache),
+      surgery_rate_table = get_surgery_rate_table(ds, use_cache),
       incidence_density_rate_table = get_incidence_density_rate_table(ds, use_cache),
       dev_ass_incidence_density_rate_table = get_dev_ass_incidence_density_rate_table(ds, use_cache)
       ),
@@ -81,6 +82,83 @@ get_usage_density_rate_table <- function(ref, use_cache = TRUE)
     cache(ref, "usage_density_rate_table")
 }
 
+#' Get the table with rates of surgical precedues
+#'
+#' @param ref The reference data set which can be either a neoipcr_ref_ds or a
+#'  neoipcr_ds object
+#' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#'
+#' @returns A table containing the rates of surgical precedues
+#' @export
+get_surgery_rate_table <- function(ref, use_cache = TRUE)
+{
+  check_neoipcr_ds_or_ref_ds(ref)
+
+  if(is_neoipcr_ref_ds(ref))
+    return(ref$surgery_rate_table)
+
+  if(use_cache && !is.null(r <- get_cached(ref, "surgery_rate_table")))
+    return(r)
+
+  tibble::tibble(
+    procedure_category = "overall",
+    n = get_procedures(ref, use_cache = use_cache) |>
+      dplyr::pull()) |>
+    dplyr::bind_rows(
+      get_procedures(
+        ref,
+        group_cols = "procedure_category",
+        use_cache = use_cache)
+    ) |>
+    dplyr::bind_cols(
+      get_risk_population(ref, use_cache = use_cache) |>
+        dplyr::select("n_patients")
+    ) |>
+    dplyr::mutate(rate = .data$n / .data$n_patients * 100) |>
+    dplyr::select(!"n_patients") |>
+    dplyr::inner_join(
+      get_procedures(
+        ref,
+        group_cols = c("department_key", "procedure_category"),
+        use_cache = use_cache) |>
+        dplyr::bind_rows(
+          get_procedures(
+            ref,
+            group_cols = "department_key",
+            use_cache = use_cache)) |>
+        dplyr::right_join(
+          get_risk_population(
+            ref,
+            group_cols = "department_key",
+            use_cache = use_cache) |>
+            dplyr::select("department_key", "n_patients"),
+          dplyr::join_by("department_key")) |>
+        dplyr::mutate(
+          n = tidyr::replace_na(.data$n, 0),
+          procedure_category = tidyr::replace_na(
+            as.character(.data$procedure_category), "overall"),
+          rate = .data$n / .data$n_patients * 100) |>
+        dplyr::select(!c("n","n_patients")) |>
+        tidyr::pivot_wider(
+          names_from = "procedure_category",
+          values_from = "rate",
+          values_fill = 0) |>
+        dplyr::select(!"department_key") |>
+        dplyr::reframe(
+          dplyr::across(
+            tidyselect::everything(),
+            ~quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
+        dplyr::bind_cols(tibble::tibble(name = c("q1","q2","q3"))) |>
+        tidyr::pivot_wider(values_from = !"name") |>
+        tidyr::pivot_longer(
+          tidyselect::everything(),
+          names_pattern = "^(.+)_(q(?:1|2|3))$",
+          names_to = c("procedure_category",".value")),
+      dplyr::join_by("procedure_category")) |>
+    add_class("neoipcr_tbl_sr_ref") |>
+    cache(ref, "surgery_rate_table")
+}
+
 #' Get the table with incidence density rates of the infections with time
 #'  dependent risks
 #'
@@ -126,7 +204,6 @@ get_incidence_density_rate_table <- function(ref, use_cache = TRUE)
     add_class("neoipcr_tbl_idr_ref") |>
     cache(ref, "incidence_density_rate_table")
 }
-
 
 #' Get the table with device associated incidence density rates of the
 #'  infections with device associated risks
@@ -294,6 +371,26 @@ get_incidence_density_rates <- function(x, group_cols = NULL, use_cache = TRUE)
     dplyr::select(!"patient_days")
 }
 
+get_risk_population <- function(x, group_cols = NULL, use_cache = TRUE)
+{
+  if(is.null(group_cols))
+    cache_key <- "risk_population"
+  else
+    cache_key <- paste0("risk_population_by.", paste0(group_cols, collapse = "."))
+
+  if(use_cache && !is.null(r <- get_cached(x, cache_key)))
+    return(r)
+
+  x$patients |>
+    dplyr::inner_join(x$enrollments, dplyr::join_by("patient_key")) |>
+    dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
+    dplyr::summarise(
+      n_enrollments = dplyr::n(),
+      n_patients = dplyr::n_distinct(.data$patient_key),
+      .groups = "drop") |>
+    cache(x, cache_key)
+}
+
 get_risk_time <- function(x, group_cols = NULL, use_cache = TRUE)
 {
   if(is.null(group_cols))
@@ -327,6 +424,29 @@ get_risk_time <- function(x, group_cols = NULL, use_cache = TRUE)
     cache(x, cache_key)
 }
 
+get_procedures <- function(x, group_cols = NULL, use_cache = TRUE)
+{
+  if(is.null(group_cols))
+    cache_key <- "procedures"
+  else
+    cache_key <- paste0("procedures_by.", paste0(group_cols, collapse = "."))
+
+  if(use_cache && !is.null(r <- get_cached(x, cache_key)))
+    return(r)
+
+  x$events |>
+    dplyr::inner_join(
+      x$surgeryData |>
+        dplyr::inner_join(
+          get_procedure_categories(x, use_cache = use_cache),
+          dplyr::join_by("main_procedure_code" == "procedure_code")),
+      dplyr::join_by("event_key")) |>
+    dplyr::filter(.data$procedure_category != "not_surgery") |>
+    dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
+    dplyr::summarise(n = dplyr::n(), .groups = "drop") |>
+    cache(x, cache_key)
+}
+
 get_aware_days <- function(x, use_cache = TRUE)
 {
   if(use_cache && !is.null(r <- get_cached(x, "aware_days")))
@@ -357,6 +477,97 @@ get_aware_days <- function(x, use_cache = TRUE)
     cache(x, "aware_days")
 }
 
+get_procedure_categories <- function(x, use_cache = TRUE)
+{
+  if(use_cache && !is.null(r <- get_cached(x, "procedure_categories")))
+    return(r)
+
+  tibble::tibble(
+    procedure_code = c(
+      x$surgeryData$main_procedure_code,
+      x$surgeryData$side_procedure_code_1,
+      x$surgeryData$side_procedure_code_2) |>
+      unique() |>
+      sort()) |>
+    dplyr::mutate(procedure_category = get_procedure_category(.data$procedure_code)) |>
+    cache(x, "procedure_categories")
+}
+
+get_procedure_category <- function(x) {
+  target <- stringr::str_extract(x, "^([A-Za-z]{3})\\.", 1)
+  action <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})", 2)
+  means <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})\\.([A-Za-z]{2})", 3)
+  dplyr::case_when(
+    # Neurosurgery
+    ############################################################################
+    target %in% c("AAE","MAA") &
+      means %in% c("AA","AB") ~ "neurosurgery",
+
+    # Cardiac/large vessel surgery
+    ############################################################################
+    target == "HIJ" & action == "LA" ~ "cardiac_and_large_vessel_surgery",
+
+    target == "HIK" & means == "AA" ~ "cardiac_and_large_vessel_surgery",
+
+    # Lung/pleural space/thoracic surgery
+    ############################################################################
+    target == "MCX" & means %in% c("AA","AB") ~ "lung_pleural_space_thoracic_surgery",
+
+    x == "JBF.LL.AA" ~ "lung_pleural_space_thoracic_surgery",
+
+    # Oesophageal surgery
+    ############################################################################
+    target == "KBA" & means %in% c("AA","AB") ~ "oesophageal_surgery",
+
+    # Abdominal surgery
+    ############################################################################
+    target %in% c("KBF","KBK","KBP","KBZ","KMA","PAK","PAL") &
+      means %in% c("AA","AB") ~ "abdominal_surgery",
+
+    target %in% c("PTA","PTB") &
+      action == "LA" &
+      means == "AC" ~ "abdominal_surgery",
+
+    x == "KMA.JB.AE" ~ "abdominal_surgery",
+
+    # Inguinal hernia surgery
+    ############################################################################
+    x == "PAM.MK.AA" ~ "inguinal_hernia_surgery",
+
+    # Other
+    ############################################################################
+    x %in% c(
+      "BCD.DB.AE",
+      "IZD.DL.AF",
+      "JAM.ML.AD",
+      "JBA.LI.AA",
+      "JBA.MK.AA",
+      "KAB.FB.AC",
+      "LAB.JG.AH",
+      "LCA.JG.AA",
+      "PAW.JB.AA") ~ "other",
+
+    # Not considered as surgery (remove)
+    ############################################################################
+    x %in% c("KBA.LG.AD","KBK.LD.AH","PTB.SN.AC") ~ "not_surgery",
+
+    # To be categorised (default)
+    ############################################################################
+    .default = "to_be_categorised"
+  ) |>
+    factor(
+      levels = c(
+        "abdominal_surgery",
+        "neurosurgery",
+        "inguinal_hernia_surgery",
+        "cardiac_and_large_vessel_surgery",
+        "lung_pleural_space_thoracic_surgery",
+        "oesophageal_surgery",
+        "other",
+        "not_surgery",
+        "to_be_categorised"))
+}
+
 add_class <- function(x, class_name)
 {
   check_string(class_name, allow_empty = FALSE)
@@ -368,6 +579,12 @@ cache <- function(x, container, key)
 {
   container$.cache[[key]] = x
   return(x)
+}
+
+new_cache <- function(x)
+{
+  x$.cache <- new.env(parent = emptyenv())
+  x
 }
 
 get_cached <- function(container, key)
