@@ -59,7 +59,7 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
       dplyr::join_by("attributes_attribute" == "attribute")) |>
     dplyr::left_join(
       metadata$options |>
-        dplyr::arrange("optionSet_code", "sortOrder") |>
+        dplyr::arrange(.data$optionSet_code, .data$sortOrder) |>
         dplyr::group_by(.data$optionSet_code) |>
         dplyr::summarise(levels = list(.data$code)),
       dplyr::join_by("optionSet" == "optionSet_code")) |>
