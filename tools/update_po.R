@@ -77,7 +77,7 @@ update_po <- function(dir = ".", verbose = FALSE) {
         'msgstr ""',
         sprintf('"Project-Id-Version: %s %s\\n"', package, version),
         sprintf('"Report-Msgid-Bugs-To: %s\\n"', bugs),
-        paste0('"POT-Creation-Date: ', format(now, "%Y-%m-%d %H:%M"),'\\n"'),
+        paste0('"POT-Creation-Date: ', format(now, "%Y-%m-%d %H:%M%z"),'\\n"'),
         '"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\\n"',
         '"Last-Translator: FULL NAME <EMAIL@ADDRESS>\\n"',
         '"Language-Team: LANGUAGE <LL@li.org>\\n"',

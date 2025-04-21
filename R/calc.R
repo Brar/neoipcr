@@ -493,7 +493,8 @@ get_procedure_categories <- function(x, use_cache = TRUE)
     cache(x, "procedure_categories")
 }
 
-get_procedure_category <- function(x) {
+get_procedure_category <- function(x)
+{
   target <- stringr::str_extract(x, "^([A-Za-z]{3})\\.", 1)
   action <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})", 2)
   means <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})\\.([A-Za-z]{2})", 3)
@@ -568,6 +569,24 @@ get_procedure_category <- function(x) {
         "to_be_categorised"))
 }
 
+get_procedure_category_pretty <- function(x)
+{
+  dplyr::case_match(
+    as.character(x),
+    "overall" ~ gettext("Overall"),
+    "abdominal_surgery" ~ gettext("Abdominal surgery"),
+    "neurosurgery" ~ gettext("Neurosurgery"),
+    "inguinal_hernia_surgery" ~ gettext("Inguinal hernia surgery"),
+    "cardiac_and_large_vessel_surgery" ~ gettext("Cardiac- / large vessel surgery"),
+    "lung_pleural_space_thoracic_surgery" ~ gettext("Lung- / pleural space- / thoracic surgery"),
+    "oesophageal_surgery" ~ gettext("Oesophageal surgery"),
+    "other" ~ gettext("Other"),
+    "not_surgery" ~ gettext("Not a surgical procedure"),
+    "to_be_categorised" ~ gettext("Not yet categorised"),
+    .default = x
+  )
+}
+
 add_class <- function(x, class_name)
 {
   check_string(class_name, allow_empty = FALSE)
@@ -598,31 +617,19 @@ pretty_names.neoipcr_tbl_sr_ref <- function(x, ...)
             "Q2","Q3"),
     c("procedure_category","n","rate","q1","q2","q3"))
 
-  row_names <- stats::setNames(
-    gettext("Overall","Abdominal surgery","Neurosurgery",
-            "Inguinal hernia surgery","Cardiac- / large vessel surgery",
-            "Lung- / pleural space- / thoracic surgery","Oesophageal surgery",
-            "Other"),
-    c("overall","abdominal_surgery","neurosurgery","inguinal_hernia_surgery",
-      "cardiac_and_large_vessel_surgery",
-      "lung_pleural_space_thoracic_surgery","oesophageal_surgery","other"))
+  pairs <- x |>
+    dplyr::select("procedure_category") |>
+    dplyr::mutate(
+      pretty_name = get_procedure_category_pretty(.data$procedure_category))
+
+  row_names <- stats::setNames(pairs$pretty_name, pairs$procedure_category)
 
   attr(x, "names.pretty") <- col_names
   attr(x, "row.names.pretty") <- row_names
 
   x |>
-    dplyr::mutate(
-      procedure_category = dplyr::case_match(
-        as.character(.data$procedure_category),
-        "overall"~row_names[["overall"]],
-        "abdominal_surgery"~row_names[["abdominal_surgery"]],
-        "neurosurgery"~row_names[["neurosurgery"]],
-        "inguinal_hernia_surgery"~row_names[["inguinal_hernia_surgery"]],
-        "cardiac_and_large_vessel_surgery"~row_names[["cardiac_and_large_vessel_surgery"]],
-        "lung_pleural_space_thoracic_surgery"~row_names[["lung_pleural_space_thoracic_surgery"]],
-        "oesophageal_surgery"~row_names[["oesophageal_surgery"]],
-        "other"~row_names[["other"]],
-        .default = as.character(.data$procedure_category))) |>
+    dplyr::inner_join(pairs, dplyr::join_by("procedure_category"))
+    dplyr::mutate(procedure_category = .data$pretty_name, .keep = "unused") |>
     dplyr::rename_with(
       ~ dplyr::case_match(
         .x,

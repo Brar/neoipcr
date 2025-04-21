@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: neoipcr 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/NeoIPC/neoipcr/issues\n"
-"POT-Creation-Date: 2025-04-21 08:51\n"
-"PO-Revision-Date: 2025-04-21 09:52+02\n"
+"POT-Creation-Date: 2025-04-21 18:23+0200\n"
+"PO-Revision-Date: 2025-04-21 18:24+0200\n"
 "Last-Translator: Brar Piening <brar.piening@charite.de>\n"
 "Language-Team: NeoIPC-Support <NeoIPC-Support@charite.de>\n"
 "Language: de\n"
@@ -15,61 +15,69 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: R/calc.R:597
-msgid "Procedure category"
-msgstr "Prozedur-Kategorie"
-
-#: R/calc.R:597
-msgid "Number of procedures"
-msgstr "Anzahl Prozeduren"
-
-#: R/calc.R:597
-msgid "Pooled rate"
-msgstr "Gepoolte Rate"
-
-#: R/calc.R:597
-msgid "Q1"
-msgstr "Q₁"
-
-#: R/calc.R:598
-msgid "Q2"
-msgstr "Q₂"
-
-#: R/calc.R:598
-msgid "Q3"
-msgstr "Q₃"
-
-#: R/calc.R:602
+#: R/calc.R:576
 msgid "Overall"
 msgstr "Gesamt"
 
-#: R/calc.R:602
+#: R/calc.R:577
 msgid "Abdominal surgery"
 msgstr "Abdominalchirurgie"
 
-#: R/calc.R:602
+#: R/calc.R:578
 msgid "Neurosurgery"
 msgstr "Neurochirurgie"
 
-#: R/calc.R:603
+#: R/calc.R:579
 msgid "Inguinal hernia surgery"
 msgstr "Leistenhernienchirurgie"
 
-#: R/calc.R:603
+#: R/calc.R:580
 msgid "Cardiac- / large vessel surgery"
 msgstr "Herz- und Großgefäßchirurgie"
 
-#: R/calc.R:604
+#: R/calc.R:581
 msgid "Lung- / pleural space- / thoracic surgery"
 msgstr "Lungen-, Pleura- und Thoraxchirurgie"
 
-#: R/calc.R:604
+#: R/calc.R:582
 msgid "Oesophageal surgery"
 msgstr "Ösophaguschirurgie"
 
-#: R/calc.R:605
+#: R/calc.R:583
 msgid "Other"
 msgstr "Sonstige"
+
+#: R/calc.R:584
+msgid "Not a surgical procedure"
+msgstr "Kein chirurgischer Eingriff"
+
+#: R/calc.R:585
+msgid "Not yet categorised"
+msgstr "Noch nicht kategorisiert"
+
+#: R/calc.R:616
+msgid "Procedure category"
+msgstr "Prozedur-Kategorie"
+
+#: R/calc.R:616
+msgid "Number of procedures"
+msgstr "Anzahl Prozeduren"
+
+#: R/calc.R:616
+msgid "Pooled rate"
+msgstr "Gepoolte Rate"
+
+#: R/calc.R:616
+msgid "Q1"
+msgstr "Q₁"
+
+#: R/calc.R:617
+msgid "Q2"
+msgstr "Q₂"
+
+#: R/calc.R:617
+msgid "Q3"
+msgstr "Q₃"
 
 #: R/dhis2-connect.R:65
 msgid "Invalid DHIS2 personal access token."
@@ -85,8 +93,12 @@ msgstr "Kein Passwort angegeben"
 
 #: R/dhis2-connect.R:78
 #: R/dhis2-connect.R:98
-msgid "Please provide username and password, a personal access token or a session id to authenticate to DHIS2"
-msgstr "Bitte übergeben Sie einen Benutzernamen und ein Passwort, ein persönliches Zugriffstoken oder eine Sitzungs-Id für DHIS2"
+msgid ""
+"Please provide username and password, a personal access token or a session "
+"id to authenticate to DHIS2"
+msgstr ""
+"Bitte übergeben Sie einen Benutzernamen und ein Passwort, ein persönliches "
+"Zugriffstoken oder eine Sitzungs-Id für DHIS2"
 
 #: R/dhis2-connect.R:94
 msgid "Please enter your username for %s:"
