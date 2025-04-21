@@ -508,12 +508,16 @@ get_procedure_categories <- function(x, pretty = FALSE, include_iche = FALSE,
       x$surgeryData$side_procedure_code_2) |>
       unique() |>
       sort()) |>
+    dplyr::mutate(procedure_category = get_procedure_category(.data$procedure_code))
+
+  if(pretty)
+    r <- r |>
     dplyr::mutate(
-      procedure_category = dplyr::if_else(
-        pretty,
-        get_procedure_category_pretty(
-          get_procedure_category(.data$procedure_code)),
-        get_procedure_category(.data$procedure_code)) )
+      procedure_category = get_procedure_category_pretty(.data$procedure_category)) |>
+    dplyr::rename(
+      !!gettext("Procedure code") := .data$procedure_code,
+      !!gettext("Procedure category") := .data$procedure_category)
+
 
   # if(include_iche)
   #   r <- r |>

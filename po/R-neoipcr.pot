@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: neoipcr 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/NeoIPC/neoipcr/issues\n"
-"POT-Creation-Date: 2025-04-21 18:23+0200\n"
+"POT-Creation-Date: 2025-04-21 19:30+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -15,67 +15,72 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: R/calc.R:576
-msgid "Overall"
+#: R/calc.R:518
+msgid "Procedure code"
 msgstr ""
 
-#: R/calc.R:577
-msgid "Abdominal surgery"
-msgstr ""
-
-#: R/calc.R:578
-msgid "Neurosurgery"
-msgstr ""
-
-#: R/calc.R:579
-msgid "Inguinal hernia surgery"
-msgstr ""
-
-#: R/calc.R:580
-msgid "Cardiac- / large vessel surgery"
-msgstr ""
-
-#: R/calc.R:581
-msgid "Lung- / pleural space- / thoracic surgery"
-msgstr ""
-
-#: R/calc.R:582
-msgid "Oesophageal surgery"
-msgstr ""
-
-#: R/calc.R:583
-msgid "Other"
-msgstr ""
-
-#: R/calc.R:584
-msgid "Not a surgical procedure"
-msgstr ""
-
-#: R/calc.R:585
-msgid "Not yet categorised"
-msgstr ""
-
-#: R/calc.R:616
+#: R/calc.R:519
+#: R/calc.R:651
 msgid "Procedure category"
 msgstr ""
 
+#: R/calc.R:611
+msgid "Overall"
+msgstr ""
+
+#: R/calc.R:612
+msgid "Abdominal surgery"
+msgstr ""
+
+#: R/calc.R:613
+msgid "Neurosurgery"
+msgstr ""
+
+#: R/calc.R:614
+msgid "Inguinal hernia surgery"
+msgstr ""
+
+#: R/calc.R:615
+msgid "Cardiac- / large vessel surgery"
+msgstr ""
+
 #: R/calc.R:616
+msgid "Lung- / pleural space- / thoracic surgery"
+msgstr ""
+
+#: R/calc.R:617
+msgid "Oesophageal surgery"
+msgstr ""
+
+#: R/calc.R:618
+msgid "Other"
+msgstr ""
+
+#: R/calc.R:619
+msgid "Not a surgical procedure"
+msgstr ""
+
+#: R/calc.R:620
+msgid "Not yet categorised"
+msgstr ""
+
+#: R/calc.R:651
 msgid "Number of procedures"
 msgstr ""
 
-#: R/calc.R:616
+#: R/calc.R:651
 msgid "Pooled rate"
 msgstr ""
 
-#: R/calc.R:616
+#: R/calc.R:651
 msgid "Q1"
 msgstr ""
 
-#: R/calc.R:617
+#: R/calc.R:652
 msgid "Q2"
 msgstr ""
 
-#: R/calc.R:617
+#: R/calc.R:652
 msgid "Q3"
 msgstr ""
 
