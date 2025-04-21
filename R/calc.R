@@ -511,13 +511,30 @@ get_procedure_categories <- function(x, pretty = FALSE, include_iche = FALSE,
     dplyr::mutate(procedure_category = get_procedure_category(.data$procedure_code))
 
   if(pretty)
+  {
+
+    with_pretty <- r |>
+      dplyr::select("procedure_category") |>
+      dplyr::mutate(
+        pretty_name = get_procedure_category_pretty(.data$procedure_category))
+
+    pairs <- with_pretty |> dplyr::distinct()
+
+    col_names <- stats::setNames(
+      gettext("Procedure code","Procedure category"),
+      c("procedure_code","procedure_category"))
+    row_names <- stats::setNames(pairs$pretty_name, pairs$procedure_category)
+
+    attr(r, "names.pretty") <- col_names
+    attr(r, "row.names.pretty") <- row_names
+
     r <- r |>
     dplyr::mutate(
-      procedure_category = get_procedure_category_pretty(.data$procedure_category)) |>
+      procedure_category = with_pretty$pretty_name) |>
     dplyr::rename(
-      !!gettext("Procedure code") := .data$procedure_code,
-      !!gettext("Procedure category") := .data$procedure_category)
-
+      !!col_names[["procedure_code"]] := .data$procedure_code,
+      !!col_names[["procedure_category"]] := .data$procedure_category)
+  }
 
   # if(include_iche)
   #   r <- r |>
