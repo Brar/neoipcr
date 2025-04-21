@@ -477,20 +477,51 @@ get_aware_days <- function(x, use_cache = TRUE)
     cache(x, "aware_days")
 }
 
-get_procedure_categories <- function(x, use_cache = TRUE)
+get_procedure_categories <- function(x, pretty = FALSE, include_iche = FALSE,
+                                     use_cache = TRUE)
 {
-  if(use_cache && !is.null(r <- get_cached(x, "procedure_categories")))
+  cache_key <- "procedure_categories"
+
+  # ToDo: Clarify licensing and inclusion criteria for ICHE information with WHO
+  # and add ICHE table
+  # if(include_iche)
+  #   cache_key <- paste0(cache_key, ".iche")
+
+  if(pretty)
+  {
+    l <- Sys.getenv("LANGUAGE")
+    if(l == "")
+      l <- Sys.getlocale("LC_MESSAGES")
+    if(l == "")
+      pretty <- FALSE # just in case
+    else
+      cache_key <- paste0(cache_key, ".", l)
+  }
+
+  if(use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
-  tibble::tibble(
+  r <- tibble::tibble(
     procedure_code = c(
       x$surgeryData$main_procedure_code,
       x$surgeryData$side_procedure_code_1,
       x$surgeryData$side_procedure_code_2) |>
       unique() |>
       sort()) |>
-    dplyr::mutate(procedure_category = get_procedure_category(.data$procedure_code)) |>
-    cache(x, "procedure_categories")
+    dplyr::mutate(
+      procedure_category = dplyr::if_else(
+        pretty,
+        get_procedure_category_pretty(
+          get_procedure_category(.data$procedure_code)),
+        get_procedure_category(.data$procedure_code)) )
+
+  # if(include_iche)
+  #   r <- r |>
+  #   dplyr::inner_join(
+  #     ichi_health_interventions,join_by(main_procedure_code == code))
+
+  r |>
+    cache(x, cache_key)
 }
 
 get_procedure_category <- function(x)
