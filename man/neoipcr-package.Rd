@@ -13,7 +13,7 @@ Tools for working with NeoIPC Surveillance data.
 
 Other contributors:
 \itemize{
-  \item The NeoIPC Consortium [copyright holder]
+  \item NeoIPC Surveillance Toolkit development team \email{NeoIPC-Support@charite.de} [copyright holder]
   \item The European Union (The NeoIPC project has received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement No 965328.) [funder]
 }
 
