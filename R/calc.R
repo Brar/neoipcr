@@ -575,6 +575,66 @@ add_class <- function(x, class_name)
   return(x)
 }
 
+#' Prettyf the names of a neoipcr object
+#'
+#' @param x an object used to select a method.
+#' @param ... further arguments passed to or from other methods.
+#'
+#' @returns the same object as x but with pretty and potentially translated
+#'  names
+#' @export
+pretty_names <- function(x, ...){
+  UseMethod("pretty_names")
+}
+
+#' @export
+pretty_names.default <- function(x, ...) x
+
+#' @export
+pretty_names.neoipcr_tbl_sr_ref <- function(x, ...)
+{
+  col_names <- stats::setNames(
+    gettext("Procedure category","Number of procedures","Pooled rate","Q1",
+            "Q2","Q3"),
+    c("procedure_category","n","rate","q1","q2","q3"))
+
+  row_names <- stats::setNames(
+    gettext("Overall","Abdominal surgery","Neurosurgery",
+            "Inguinal hernia surgery","Cardiac- / large vessel surgery",
+            "Lung- / pleural space- / thoracic surgery","Oesophageal surgery",
+            "Other"),
+    c("overall","abdominal_surgery","neurosurgery","inguinal_hernia_surgery",
+      "cardiac_and_large_vessel_surgery",
+      "lung_pleural_space_thoracic_surgery","oesophageal_surgery","other"))
+
+  attr(x, "names.pretty") <- col_names
+  attr(x, "row.names.pretty") <- row_names
+
+  x |>
+    dplyr::mutate(
+      procedure_category = dplyr::case_match(
+        as.character(.data$procedure_category),
+        "overall"~row_names[["overall"]],
+        "abdominal_surgery"~row_names[["abdominal_surgery"]],
+        "neurosurgery"~row_names[["neurosurgery"]],
+        "inguinal_hernia_surgery"~row_names[["inguinal_hernia_surgery"]],
+        "cardiac_and_large_vessel_surgery"~row_names[["cardiac_and_large_vessel_surgery"]],
+        "lung_pleural_space_thoracic_surgery"~row_names[["lung_pleural_space_thoracic_surgery"]],
+        "oesophageal_surgery"~row_names[["oesophageal_surgery"]],
+        "other"~row_names[["other"]],
+        .default = as.character(.data$procedure_category))) |>
+    dplyr::rename_with(
+      ~ dplyr::case_match(
+        .x,
+        "procedure_category"~col_names[["procedure_category"]],
+        "n"~col_names[["n"]],
+        "rate"~col_names[["rate"]],
+        "q1"~col_names[["q1"]],
+        "q2"~col_names[["q2"]],
+        "q3"~col_names[["q3"]],
+        .default = .x))
+}
+
 cache <- function(x, container, key)
 {
   container$.cache[[key]] = x

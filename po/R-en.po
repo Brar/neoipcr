@@ -1,4 +1,4 @@
-# neoipcr Translation Template File.
+# English neoipcr Translation Template File.
 # Copyright (C) 2025 NeoIPC Surveillance Toolkit development team
 # This file is distributed under the same license as the neoipcr package.
 #
@@ -6,11 +6,11 @@ msgid ""
 msgstr ""
 "Project-Id-Version: neoipcr 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/NeoIPC/neoipcr/issues\n"
-"POT-Creation-Date: 2025-04-21 14:59\n"
-"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
-"Language-Team: LANGUAGE <LL@li.org>\n"
-"Language: \n"
+"POT-Creation-Date: 2025-04-21 08:51\n"
+"PO-Revision-Date: 2025-04-21 09:52+02\n"
+"Last-Translator: Brar Piening <brar.piening@charite.de>\n"
+"Language-Team: NeoIPC-Support <NeoIPC-Support@charite.de>\n"
+"Language: en\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -29,15 +29,15 @@ msgstr ""
 
 #: R/calc.R:597
 msgid "Q1"
-msgstr ""
+msgstr "Q₁"
 
 #: R/calc.R:598
 msgid "Q2"
-msgstr ""
+msgstr "Q₂"
 
 #: R/calc.R:598
 msgid "Q3"
-msgstr ""
+msgstr "Q₃"
 
 #: R/calc.R:602
 msgid "Overall"
@@ -83,9 +83,10 @@ msgstr ""
 msgid "No password provided"
 msgstr ""
 
-#: R/dhis2-connect.R:78
-#: R/dhis2-connect.R:98
-msgid "Please provide username and password, a personal access token or a session id to authenticate to DHIS2"
+#: R/dhis2-connect.R:78 R/dhis2-connect.R:98
+msgid ""
+"Please provide username and password, a personal access token or a session "
+"id to authenticate to DHIS2"
 msgstr ""
 
 #: R/dhis2-connect.R:94
