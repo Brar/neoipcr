@@ -628,7 +628,7 @@ pretty_names.neoipcr_tbl_sr_ref <- function(x, ...)
   attr(x, "row.names.pretty") <- row_names
 
   x |>
-    dplyr::inner_join(pairs, dplyr::join_by("procedure_category"))
+    dplyr::inner_join(pairs, dplyr::join_by("procedure_category")) |>
     dplyr::mutate(procedure_category = .data$pretty_name, .keep = "unused") |>
     dplyr::rename_with(
       ~ dplyr::case_match(
