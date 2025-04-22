@@ -99,7 +99,7 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
     patients <- patients |>
       dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
 
-  patients |>
+  patients <- patients |>
     dplyr::mutate(
       attributes_value = convert_value(
         .data$attributes_value, .data$valueType, .data$levels),
@@ -125,4 +125,62 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
       ~ stringr::str_remove(.x, "_value$"),
       tidyselect::ends_with("_value")) |>
     add_key_column("patient_key")
+
+  if(dataset_options$include_department != "no" ||
+     dataset_options$include_hospital != "no" ||
+     dataset_options$include_country != "no" ||
+     dataset_options$include_world_bank_class != "no")
+  {
+    if(dataset_options$include_world_bank_class != "no")
+      patients <- patients |>
+        dplyr::inner_join(
+          metadata$departments |>
+            dplyr::select("orgUnit", "department_key", "hospital_key"),
+          dplyr::join_by("orgUnit")) |>
+        dplyr::inner_join(
+          metadata$hospitals |>
+            dplyr::select("hospital_key","country_key"),
+          dplyr::join_by("hospital_key")) |>
+        dplyr::inner_join(
+          metadata$countries |>
+            dplyr::select("country_key", "world_bank_class_key"),
+          dplyr::join_by("country_key"))
+    else if(dataset_options$include_country != "no")
+      patients <- patients |>
+        dplyr::inner_join(
+          metadata$departments |>
+            dplyr::select("orgUnit", "department_key", "hospital_key"),
+          dplyr::join_by("orgUnit")) |>
+        dplyr::inner_join(
+          metadata$hospitals |>
+            dplyr::select("hospital_key","country_key"),
+          dplyr::join_by("hospital_key"))
+    else if(dataset_options$include_hospital != "no")
+      patients <- patients |>
+        dplyr::inner_join(
+          metadata$departments |>
+            dplyr::select("orgUnit", "department_key", "hospital_key"),
+          dplyr::join_by("orgUnit"))
+    else if(dataset_options$include_department != "no")
+      patients <- patients |>
+        dplyr::inner_join(
+          metadata$departments |>
+            dplyr::select("orgUnit", "department_key"),
+          dplyr::join_by("orgUnit"))
+
+    exclusions <- NULL
+
+    if(dataset_options$include_world_bank_class == "no")
+      exclusions <- c(exclusions, "world_bank_class_key")
+    if(dataset_options$include_country == "no")
+      exclusions <- c(exclusions, "country_key")
+    if(dataset_options$include_hospital == "no")
+      exclusions <- c(exclusions, "hospital_key")
+    if(dataset_options$include_department == "no")
+      exclusions <- c(exclusions, "department_key")
+
+    patients <- patients |>
+      dplyr::select(!tidyselect::any_of(exclusions))
+  }
+  return(patients)
 }

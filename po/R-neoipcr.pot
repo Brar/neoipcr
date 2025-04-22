@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: neoipcr 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/NeoIPC/neoipcr/issues\n"
-"POT-Creation-Date: 2025-04-21 20:23+0200\n"
+"POT-Creation-Date: 2025-04-22 23:01+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -107,4 +107,20 @@ msgstr ""
 
 #: R/dhis2-connect.R:97
 msgid "No username provided"
+msgstr ""
+
+#: R/validation.R:36
+msgid "Validation rule %i failed to execute."
+msgstr ""
+
+#: R/validation.R:37
+msgid "The dataset must contain the enrolment status and the event status to execute this rule."
+msgstr ""
+
+#: R/validation.R:79
+msgid "The patient record does not have an enrolment."
+msgstr ""
+
+#: R/validation.R:84
+msgid "The patient record has a completed surveillance end form but the enrolment is still active."
 msgstr ""

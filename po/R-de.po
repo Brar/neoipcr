@@ -6,8 +6,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: neoipcr 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/NeoIPC/neoipcr/issues\n"
-"POT-Creation-Date: 2025-04-21 20:23+0200\n"
-"PO-Revision-Date: 2025-04-21 20:24+0200\n"
+"POT-Creation-Date: 2025-04-22 23:01+0200\n"
+"PO-Revision-Date: 2025-04-22 23:03+0200\n"
 "Last-Translator: Brar Piening <brar.piening@charite.de>\n"
 "Language-Team: NeoIPC-Support <NeoIPC-Support@charite.de>\n"
 "Language: de\n"
@@ -112,3 +112,27 @@ msgstr "Bitte geben Sie Ihren Benutzernamen für %s ein:"
 #: R/dhis2-connect.R:97
 msgid "No username provided"
 msgstr "Kein Benutzername angegeben"
+
+#: R/validation.R:36
+msgid "Validation rule %i failed to execute."
+msgstr "Ausführung der Validierungsregel %i fehlgeschlagen."
+
+#: R/validation.R:37
+msgid ""
+"The dataset must contain the enrolment status and the event status to "
+"execute this rule."
+msgstr ""
+"Der Datensatz muss den Enrollment-Status und den Event-Status enthalten um "
+"diese Regel auszuführen."
+
+#: R/validation.R:79
+msgid "The patient record does not have an enrolment."
+msgstr "Die Patientenakte hat keine Patientenregistrierung."
+
+#: R/validation.R:84
+msgid ""
+"The patient record has a completed surveillance end form but the enrolment "
+"is still active."
+msgstr ""
+"Die Patientenakte enthält ein abgeschlossenes "
+"Surveillance-Ende-Formular, aber die Patientenregistrierung ist noch offen."
