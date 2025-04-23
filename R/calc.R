@@ -327,7 +327,8 @@ get_dev_ass_incidence_density_rates <- function(x, group_cols = NULL, use_cache 
     dplyr::mutate(
       n = tidyr::replace_na(.data$n, 0),
       rate = .data$n / .data$days * 1000) |>
-    dplyr::select(!"days")
+    dplyr::select(!"days") |>
+    cache(x, cache_key)
 }
 
 get_incidence_density_rates <- function(x, group_cols = NULL, use_cache = TRUE)
@@ -368,7 +369,291 @@ get_incidence_density_rates <- function(x, group_cols = NULL, use_cache = TRUE)
     dplyr::mutate(
       n = tidyr::replace_na(.data$n, 0),
       rate = .data$n / .data$patient_days * 1000) |>
-    dplyr::select(!"patient_days")
+    dplyr::select(!"patient_days") |>
+    cache(x, cache_key)
+}
+
+get_infectious_agent_detection_rates <- function(x, group_cols = NULL, use_cache = TRUE)
+{
+  if(is.null(group_cols))
+    cache_key <- "infectious_agent_detection_rates"
+  else
+    cache_key <- paste0("infectious_agent_detection_rates_by.", paste0(group_cols, collapse = "."))
+
+  if(use_cache && !is.null(r <- get_cached(x, cache_key)))
+    return(r)
+
+  r <- x$events |>
+    dplyr::inner_join(
+      x$infectiousAgentFindings |>
+        dplyr::inner_join(
+          get_pathogen_taxonomy(
+            x$infectiousAgentFindings$pathogen_key |> unique()),
+          dplyr::join_by("pathogen_key" == "input_id")),
+      dplyr::join_by("event_key")) |>
+    dplyr::group_by(dplyr::across(tidyselect::all_of(c(group_cols)))) |>
+    dplyr::summarise(n = dplyr::n(), .groups = "drop")
+
+  # get_infection_counts cannot access specific pathogen related information
+  # since this would lead to counting infections with multiple pathogens
+  # multiple times
+  inf_groups <- setdiff(group_cols, c(names(x$infectiousAgentFindings),names(get_pathogen_taxonomy(-1))))
+
+  inf_counts <- x |>
+    get_infection_counts(
+      group_cols = c(inf_groups,"with_pathogen"),
+      use_cache = use_cache) |>
+    tidyr::pivot_wider(names_from = "with_pathogen", values_from = "n") |>
+    dplyr::mutate(
+      inf_with_pathogen = .data$`TRUE`,
+      total_inf = .data$`TRUE` + .data$`FALSE`,
+      .keep = "unused")
+
+  if(is.null(group_cols))
+    r <- r |> dplyr::bind_cols(inf_counts)
+  else
+    r <- r |>
+    dplyr::inner_join(inf_counts, by = inf_groups)
+
+  r |>
+    dplyr::mutate(
+      rate1 = .data$n / .data$inf_with_pathogen * 100,
+      rate2 = .data$n / .data$total_inf * 100
+    ) |>
+    cache(x, cache_key)
+}
+
+get_infectious_agent_detection_rates_with_department_quartiles <- function(x, group_cols = NULL, use_cache = TRUE)
+{
+  if(is.null(group_cols))
+    cache_key <- "infectious_agent_detection_rates_with_department_quartiles"
+  else
+    cache_key <- paste0("infectious_agent_detection_rates_with_department_quartiles_by.", paste0(group_cols, collapse = "."))
+
+  if(use_cache && !is.null(r <- get_cached(x, cache_key)))
+    return(r)
+
+  median_inf_with_pathogen <- x |>
+    get_infection_counts(
+      group_cols = c("department_key","with_pathogen"),
+      use_cache = use_cache) |>
+    dplyr::filter(.data$with_pathogen) |>
+    dplyr::pull(.data$n) |>
+    stats::median()
+
+  r1 <- x |>
+    get_infectious_agent_detection_rates(
+      group_cols = group_cols,
+      use_cache = use_cache) |>
+    dplyr::select(c(group_cols,"n","rate"="rate1")) |>
+    dplyr::mutate(
+      drop_quartiles = round(100 / .data$rate) >= median_inf_with_pathogen)
+
+  r2 <- x |>
+    get_infectious_agent_detection_rates(
+      group_cols = c("department_key", group_cols),
+      use_cache = use_cache) |>
+    dplyr::select(c("department_key", group_cols,"rate1"))
+
+  if (!is.null(group_cols))
+    r2 <- r2 |>
+    tidyr::pivot_wider(
+      names_from = group_cols,
+      values_from = "rate1",
+      values_fill = 0)
+
+  r2 <- r2 |>
+    dplyr::select(!"department_key") |>
+    dplyr::reframe(
+      dplyr::across(
+        tidyselect::everything(),
+        ~quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
+    dplyr::bind_cols(tibble::tibble(name = c("q1","q2","q3"))) |>
+    tidyr::pivot_wider(values_from = !"name") |>
+    tidyr::pivot_longer(
+      tidyselect::everything(),
+      names_pattern = paste0(
+        c("^", rep("(.+)_", length(group_cols)), "(q(?:1|2|3))$"),
+        collapse = ""),
+      names_to = c(group_cols,".value")) |>
+    dplyr::mutate(
+      dplyr::across(tidyselect::any_of(group_cols), ~ dplyr::na_if(.x,"NA")))
+
+  if (is.null(group_cols))
+    r <- r1 |> dplyr::bind_cols(r2)
+  else
+    r <- r1 |>
+    dplyr::mutate(dplyr::across(tidyselect::any_of(group_cols), as.character)) |>
+    dplyr::inner_join(r2 , by = group_cols)
+
+  r |> dplyr::mutate(
+    q1 = dplyr::if_else(
+      .data$drop_quartiles,
+      NA,
+      .data$q1),
+    q2 = dplyr::if_else(
+      .data$drop_quartiles,
+      NA,
+      .data$q2),
+    q3 = dplyr::if_else(
+      .data$drop_quartiles,
+      NA,
+      .data$q3)) |>
+    cache(x, cache_key)
+}
+
+#' Get the table with pathogen detection rates of the pathogens in a somewhat
+#'  meaningful taxonomic structure
+#'
+#' @param ref The reference data set which can be either a neoipcr_ref_ds or a
+#'  neoipcr_ds object
+#' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#'
+#' @returns A table containing pathogen detection rates
+#' @export
+get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
+{
+  check_neoipcr_ds_or_ref_ds(ref)
+
+  if(is_neoipcr_ref_ds(ref))
+    return(ref$dev_ass_incidence_density_rate_table)
+
+  if(use_cache && !is.null(r <- get_cached(ref, "dev_ass_incidence_density_rate_table")))
+    return(r)
+
+  lv1 <- dplyr::bind_cols(
+    lv = 1L,
+    group = "Total",
+    ref |>
+      get_infectious_agent_detection_rates_with_department_quartiles() |>
+      dplyr::select("n","rate","q1","q2","q3"))
+  d <- ref |>
+    get_infectious_agent_detection_rates_with_department_quartiles(c("domain")) |>
+    dplyr::select("group"="domain","n","rate","q1","q2","q3") |>
+    dplyr::arrange(dplyr::desc(.data$rate))
+  for (i in 1:nrow(d)) {
+    di <- d[i,]
+    if(di$group == "Bacteria") {
+      lv2 <- dplyr::bind_cols(lv = 2L, di)
+      o <- ref |>
+        get_infectious_agent_detection_rates_with_department_quartiles(c("domain","order")) |>
+        dplyr::filter(.data$domain == di$group) |>
+        dplyr::select("group"="order","n","rate","q1","q2","q3") |>
+        dplyr::arrange(dplyr::desc(.data$rate))
+      for (j in 1:nrow(o)) {
+        oj <- o[j,]
+        lv3 <- dplyr::bind_cols(lv = 3L, oj)
+        g <- ref |>
+          get_infectious_agent_detection_rates_with_department_quartiles(c("order","genus")) |>
+          dplyr::filter(.data$order == oj$group) |>
+          dplyr::select("group"="genus","n","rate","q1","q2","q3") |>
+          dplyr::arrange(dplyr::desc(.data$rate))
+        for (k in 1:nrow(g)) {
+          gk <- g[k,]
+          lv4 <- dplyr::bind_cols(lv = 4L, gk |> dplyr::mutate(group = paste(.data$group, "spp.")))
+          if(gk$group == "Staphylococcus") {
+            c <- ref |>
+              get_infectious_agent_detection_rates_with_department_quartiles(c("genus","coagulase")) |>
+              dplyr::filter(.data$genus == "Staphylococcus") |>
+              dplyr::select("group"="coagulase","n","rate","q1","q2","q3") |>
+              dplyr::arrange(dplyr::desc(.data$rate))
+            for (l in 1:nrow(c)) {
+              cl <- c[l,]
+              c_text <- switch (as.character(cl$group),
+                "n" = "Coagulase-negative staphylococci",
+                "p" = "Coagulase-positive staphylococci",
+                "Staphylococcus spp. n.o.s.")
+              lv5 <- dplyr::bind_cols(
+                lv = 5L,
+                cl |> dplyr::mutate(group = c_text))
+              s <- ref |>
+                get_infectious_agent_detection_rates_with_department_quartiles(c("genus","coagulase","species")) |>
+                dplyr::filter(.data$genus == "Staphylococcus" & .data$coagulase == cl$group) |>
+                dplyr::select("group"="species","n","rate","q1","q2","q3") |>
+                dplyr::arrange(dplyr::desc(.data$rate))
+              lv6 <- dplyr::bind_cols(
+                lv = 6L,
+                dplyr::bind_rows(
+                  s |> dplyr::filter(!is.na(.data$group)),
+                  s |> dplyr::filter(is.na(.data$group)) |>
+                    dplyr::mutate(group = paste(c_text, "n.o.s."))))
+              lv4 <- dplyr::bind_rows(lv4,lv5,lv6)
+            }
+          }
+          else {
+            s <- ref |>
+              get_infectious_agent_detection_rates_with_department_quartiles(c("genus","coagulase","species")) |>
+              dplyr::filter(.data$genus == gk$group) |>
+              dplyr::select("group"="species","n","rate","q1","q2","q3") |>
+              dplyr::arrange(dplyr::desc(.data$rate))
+            lv5 <- dplyr::bind_cols(
+              lv = 5L,
+              dplyr::bind_rows(
+                s |> dplyr::filter(!is.na(.data$group)),
+                s |> dplyr::filter(is.na(.data$group))|>
+                  dplyr::mutate(group = paste(gk$group,"spp. n.o.s."))))
+            lv4 <- dplyr::bind_rows(lv4,lv5)
+          }
+          lv3 <- dplyr::bind_rows(lv3,lv4)
+        }
+        lv2 <- dplyr::bind_rows(lv2,lv3)
+      }
+      lv1 <- dplyr::bind_rows(lv1,lv2)
+    }
+    else {# if (di$group == "Eukaryota") {
+      kd <- ref |>
+        get_infectious_agent_detection_rates_with_department_quartiles(c("domain","kingdom")) |>
+        dplyr::filter(.data$domain == di$group) |>
+        dplyr::select("group"="kingdom","n","rate","q1","q2","q3") |>
+        dplyr::arrange(dplyr::desc(.data$rate))
+      for (j in 1:nrow(kd)) {
+        kj <- kd[j,]
+        lv2 <- dplyr::bind_cols(lv = 2L, kj)
+        g <- ref |>
+          get_infectious_agent_detection_rates_with_department_quartiles(c("kingdom","genus")) |>
+          dplyr::filter(.data$kingdom == kj$group) |>
+          dplyr::select("group"="genus","n","rate","q1","q2","q3") |>
+          dplyr::arrange(dplyr::desc(.data$rate))
+        for (k in 1:nrow(g)) {
+          gk <- g[k,]
+          lv3 <- dplyr::bind_cols(lv = 3L, gk |> dplyr::mutate(group = paste(.data$group, "spp.")))
+          s <- ref |>
+            get_infectious_agent_detection_rates_with_department_quartiles(c("genus","coagulase","species")) |>
+            dplyr::filter(.data$genus == gk$group) |>
+            dplyr::select("group"="species","n","rate","q1","q2","q3") |>
+            dplyr::arrange(dplyr::desc(.data$rate))
+          lv4 <- dplyr::bind_cols(
+            lv = 4L,
+            dplyr::bind_rows(
+              s |> dplyr::filter(!is.na(.data$group)),
+              s |> dplyr::filter(is.na(.data$group))|>
+                dplyr::mutate(group = paste(gk$group,"spp. n.o.s."))))
+          lv2 <- dplyr::bind_rows(lv2,lv3,lv4)
+        }
+      }
+      lv1 <- dplyr::bind_rows(lv1,lv2)
+    }
+  }
+
+  return(lv1)
+}
+
+get_infection_counts <- function(x, group_cols = NULL, use_cache = TRUE)
+{
+  if(is.null(group_cols))
+    cache_key <- "infection_counts"
+  else
+    cache_key <- paste0("infection_counts_by.", paste0(group_cols, collapse = "."))
+
+  if(use_cache && !is.null(r <- get_cached(x, cache_key)))
+    return(r)
+
+  x$events |>
+    dplyr::filter(.data$event_type_key %in% c("bsi","nec","hap","ssi")) |>
+    dplyr::mutate(with_pathogen = .data$event_key %in% x$infectiousAgentFindings$event_key ) |>
+    dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
+    dplyr::summarise(n = dplyr::n(), .groups = "drop") |>
+    cache(x, cache_key)
 }
 
 get_risk_population <- function(x, group_cols = NULL, use_cache = TRUE)

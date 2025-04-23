@@ -35,25 +35,25 @@ get_pathogen_taxonomy <- function(ids = NULL)
   internal_pathogen_concepts |>
     dplyr::filter(is.null(ids) | .data$id %in% ids) |>
     dplyr::mutate(
-      inputId = .data$id,
-      inputName = .data$concept,
-      outputId = .data$id,
+      input_id = .data$id,
+      input_name = .data$concept,
+      output_id = .data$id,
       .keep = "none") |>
     dplyr::union(
       internal_pathogen_synonyms |>
         dplyr::filter(is.null(ids) | .data$id %in% ids) |>
         dplyr::mutate(
-          inputId = .data$id,
-          inputName = .data$synonym,
-          outputId = .data$synonym_for,
+          input_id = .data$id,
+          input_name = .data$synonym,
+          output_id = .data$synonym_for,
           .keep = "none")) |>
     dplyr::inner_join(
       internal_pathogen_concepts |>
         dplyr::select("id","concept","concept_type","is_cc","coagulase",
                       "species","genus","family","order","class","subdivision",
                       "phylum","subkingdom","kingdom","domain"),
-      dplyr::join_by("outputId" == "id")) |>
-    dplyr::rename("outputName" = "concept") |>
+      dplyr::join_by("output_id" == "id")) |>
+    dplyr::rename("output_name" = "concept") |>
     dplyr::left_join(
       internal_pathogen_concepts |>
         dplyr::select("id", "concept"),
