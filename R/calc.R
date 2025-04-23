@@ -382,7 +382,6 @@ get_risk_population <- function(x, group_cols = NULL, use_cache = TRUE)
     return(r)
 
   x$patients |>
-    dplyr::inner_join(x$enrollments, dplyr::join_by("patient_key")) |>
     dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
     dplyr::summarise(
       n_enrollments = dplyr::n(),
