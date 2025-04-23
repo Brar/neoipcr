@@ -14,7 +14,8 @@ calculate_reference_data <- function(ds, use_cache = TRUE)
       usage_density_rate_table = get_usage_density_rate_table(ds, use_cache),
       surgery_rate_table = get_surgery_rate_table(ds, use_cache),
       incidence_density_rate_table = get_incidence_density_rate_table(ds, use_cache),
-      dev_ass_incidence_density_rate_table = get_dev_ass_incidence_density_rate_table(ds, use_cache)
+      dev_ass_incidence_density_rate_table = get_dev_ass_incidence_density_rate_table(ds, use_cache),
+      pathogen_detection_rate_table = get_pathogen_detection_rate_table(ds, use_cache)
       ),
     class = "neoipcr_ref_ds")
 }
@@ -516,9 +517,9 @@ get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
   check_neoipcr_ds_or_ref_ds(ref)
 
   if(is_neoipcr_ref_ds(ref))
-    return(ref$dev_ass_incidence_density_rate_table)
+    return(ref$pathogen_detection_rate_table)
 
-  if(use_cache && !is.null(r <- get_cached(ref, "dev_ass_incidence_density_rate_table")))
+  if(use_cache && !is.null(r <- get_cached(ref, "pathogen_detection_rate_table")))
     return(r)
 
   lv1 <- dplyr::bind_cols(
@@ -635,7 +636,8 @@ get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
     }
   }
 
-  return(lv1)
+  lv1 |>
+    cache(ref, "pathogen_detection_rate_table")
 }
 
 get_infection_counts <- function(x, group_cols = NULL, use_cache = TRUE)
