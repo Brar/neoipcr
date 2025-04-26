@@ -114,13 +114,7 @@ filter_countries <- function(
     included_countries)
 {
   if(is.null(included_countries))
-    return()
-
-  if(is.null(countries))
-  {
-    warn("Cannot filter countries if country information is not included")
-    return()
-  }
+    return(countries)
 
   countries |>
     dplyr::filter(countries$code %in% included_countries)
