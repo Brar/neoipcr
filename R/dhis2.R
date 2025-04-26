@@ -177,146 +177,24 @@ import_dhis2 <- function(
   events <- read_events(events_raw, enrollments, patients, metadata, dataset_options)
   admissionData <- read_event_data(events_raw, events, metadata, dataset_options, "adm")
 
-  needs_filtering <- FALSE
+  events <- events |>
+    filter_surveillance_ends(
+      dataset_options$surveillance_end_from,
+      dataset_options$surveillance_end_to)
 
-  if(!is.null(dataset_options$birth_weight_from) ||
-     !is.null(dataset_options$birth_weight_to))
-  {
-    needs_filtering <- TRUE
+  admissionData <- admissionData |>
+    filter_admissions(dataset_options$include_ineligible_patients)
 
-    if(!is.null(dataset_options$birth_weight_from) &&
-       !is.null(dataset_options$birth_weight_to))
-      patients <- patients |>
-        dplyr::filter(
-          .data$birth_weight >= dataset_options$birth_weight_from &
-            .data$birth_weight <= dataset_options$birth_weight_to)
-    else if(!is.null(dataset_options$birth_weight_from))
-      patients <- patients |>
-        dplyr::filter(.data$birth_weight >= dataset_options$birth_weight_from)
-    else
-      patients <- patients |>
-        dplyr::filter(.data$birth_weight <= dataset_options$birth_weight_to)
-  }
+  patients <- patients |>
+    filter_patients(
+      dataset_options$birth_weight_from,
+      dataset_options$birth_weight_to,
+      dataset_options$gestational_age_from,
+      dataset_options$gestational_age_to,
+      dataset_options$include_ineligible_patients)
 
-  if(!is.null(dataset_options$gestational_age_from) ||
-     !is.null(dataset_options$gestational_age_to))
-  {
-    needs_filtering <- TRUE
-
-    if(!is.null(dataset_options$gestational_age_from) &&
-       !is.null(dataset_options$gestational_age_to))
-      patients <- patients |>
-        dplyr::filter(
-          .data$total_gestation_days >= (dataset_options$gestational_age_from * 7) &
-            .data$total_gestation_days <= (dataset_options$gestational_age_to * 7))
-    else if(!is.null(dataset_options$gestational_age_from))
-      patients <- patients |>
-        dplyr::filter(.data$total_gestation_days >= (dataset_options$gestational_age_from * 7))
-    else
-      patients <- patients |>
-        dplyr::filter(.data$total_gestation_days <= (dataset_options$gestational_age_to * 7))
-  }
-
-  if(!dataset_options$include_ineligible_patients)
-  {
-    needs_filtering <- TRUE
-
-    patients <- patients |>
-      dplyr::filter(
-        .data$total_gestation_days < 224 | .data$birth_weight < 1500)
-
-    enrollments <- enrollments |>
-      dplyr::semi_join(patients, dplyr::join_by("patient_key"))
-
-    events <- events |>
-      dplyr::semi_join(enrollments, dplyr::join_by("enrollment_key"))
-
-    admissionData <- admissionData |>
-      dplyr::inner_join(
-        events |>
-          dplyr::select("event_key","patient_key"),
-        dplyr::join_by("event_key")) |>
-      dplyr::semi_join(patients, dplyr::join_by("patient_key")) |>
-      dplyr::filter(.data$dol < 120)
-
-    enrollments <- enrollments |>
-      dplyr::semi_join(
-        events |>
-          dplyr::semi_join(
-            admissionData,
-            dplyr::join_by("event_key")),
-        dplyr::join_by("enrollment_key"))
-  }
-
-  if(!is.null(dataset_options$surveillance_end_from) ||
-     !is.null(dataset_options$surveillance_end_to))
-  {
-    needs_filtering <- TRUE
-
-    if(!is.null(dataset_options$surveillance_end_from) &&
-       !is.null(dataset_options$surveillance_end_to))
-      enrollments <- enrollments |>
-        dplyr::semi_join(
-          events |>
-            dplyr::filter(
-              .data$event_type_key == "end" &
-                .data$occurredAt >= dataset_options$surveillance_end_from &
-                .data$occurredAt <= dataset_options$surveillance_end_to),
-          dplyr::join_by("enrollment_key"))
-    else if(!is.null(dataset_options$surveillance_end_from))
-      enrollments <- enrollments |>
-        dplyr::semi_join(
-          events |>
-            dplyr::filter(
-              .data$event_type_key == "end" &
-                .data$occurredAt >= dataset_options$surveillance_end_from),
-          dplyr::join_by("enrollment_key"))
-    else
-      enrollments <- enrollments |>
-        dplyr::semi_join(
-          events |>
-            dplyr::filter(
-              .data$event_type_key == "end" &
-                .data$occurredAt <= dataset_options$surveillance_end_to),
-          dplyr::join_by("enrollment_key"))
-  }
-
-  if(needs_filtering)
-  {
-    enrollments <- enrollments |>
-      dplyr::semi_join(patients, dplyr::join_by("patient_key"))
-
-    events <- events |>
-      dplyr::semi_join(enrollments, dplyr::join_by("enrollment_key"))
-
-    if(!dataset_options$include_unenrolled_patients)
-      patients <- patients |>
-      dplyr::semi_join(enrollments, dplyr::join_by("patient_key"))
-  }
-
-  if(dataset_options$include_department != "no")
-    metadata$departments <- metadata$departments |>
-    dplyr::semi_join(
-      enrollments,
-      dplyr::join_by("department_key"))
-
-  if(dataset_options$include_hospital != "no")
-    metadata$hospitals <- metadata$hospitals |>
-    dplyr::semi_join(
-      enrollments,
-      dplyr::join_by("hospital_key"))
-
-  if(dataset_options$include_country != "no")
-    metadata$countries <- metadata$countries |>
-    dplyr::semi_join(
-      enrollments,
-      dplyr::join_by("country_key"))
-
-  if(dataset_options$include_world_bank_class != "no")
-    metadata$worldBankClasses <- metadata$worldBankClasses |>
-    dplyr::semi_join(
-      enrollments,
-      dplyr::join_by("world_bank_class_key"))
+  metadata$countries <- metadata$countries |>
+    filter_countries(dataset_options$country_filter)
 
   # read_enrollment_details
   # read_enrollment_notes
@@ -367,7 +245,8 @@ import_dhis2 <- function(
       infectiousAgentFindings = infectiousAgentFindings,
       metadata = metadata,
       `.cache` = new.env(parent = emptyenv())),
-    class = c("neoipcr_ds", "list"))
+    class = c("neoipcr_ds", "list")) |>
+    apply_postfilter()
 }
 
 dhis2_request <- function(connection_options)
