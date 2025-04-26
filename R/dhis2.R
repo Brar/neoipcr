@@ -246,7 +246,8 @@ import_dhis2 <- function(
       metadata = metadata,
       `.cache` = new.env(parent = emptyenv())),
     class = c("neoipcr_ds", "list")) |>
-    apply_postfilter()
+    apply_postfilter() |>
+    apply_data_removal(dataset_options)
 }
 
 dhis2_request <- function(connection_options)

@@ -113,6 +113,15 @@ filter_countries <- function(
     countries,
     included_countries)
 {
+  if(is.null(included_countries))
+    return()
+
+  if(is.null(countries))
+  {
+    warn("Cannot filter countries if country information is not included")
+    return()
+  }
+
   countries |>
     dplyr::filter(countries$code %in% included_countries)
 }
@@ -155,23 +164,23 @@ apply_postfilter <- function(x)
       dplyr::join_by("enrollment_key"))
 
   # Filtering by country will only work if we have country information
-  if(!is.null(countries))
+  if(!is.null(countries) && "country_key" %in% names(enrollments))
     enrollments <- enrollments |>
     dplyr::semi_join(countries, dplyr::join_by("country_key"))
 
   ########################################################
   ## Second filter all the other elements by enrollments #
   ########################################################
-  if(!is.null(departments))
+  if(!is.null(departments) && "department_key" %in% names(enrollments))
     departments <- departments |>
     dplyr::semi_join(enrollments, dplyr::join_by("department_key"))
-  if(!is.null(hospitals))
+  if(!is.null(hospitals) && "hospital_key" %in% names(enrollments))
     hospitals <- hospitals |>
     dplyr::semi_join(enrollments, dplyr::join_by("hospital_key"))
-  if(!is.null(countries))
+  if(!is.null(countries) && "country_key" %in% names(enrollments))
     countries <- countries |>
     dplyr::semi_join(enrollments, dplyr::join_by("country_key"))
-  if(!is.null(worldBankClasses))
+  if(!is.null(worldBankClasses) && "world_bank_class_key" %in% names(enrollments))
     worldBankClasses <- worldBankClasses |>
     dplyr::semi_join(enrollments, dplyr::join_by("world_bank_class_key"))
 
@@ -234,6 +243,85 @@ apply_postfilter <- function(x)
   x$ssiData <- ssiData
   x$infectiousAgentFindings <- infectiousAgentFindings
   x$substanceDays <- substanceDays
+
+  return(x)
+}
+
+apply_data_removal <- function(x, dataset_options)
+{
+  if(dataset_options$include_department == "no")
+  {
+    x$metadata$departments <- NULL
+    x$patients <- x$patients |>
+      dplyr::select(!tidyselect::any_of("department_key"))
+    x$enrollments <- x$enrollments |>
+      dplyr::select(!tidyselect::any_of("department_key"))
+    x$events <- x$events |>
+      dplyr::select(!tidyselect::any_of("department_key"))
+  }
+  if(dataset_options$include_department == "pseudonymised")
+    x$metadata$departments <- NULL
+
+  if(dataset_options$include_hospital == "no")
+  {
+    x$metadata$hospitals <- NULL
+    if(!is.null(x$metadata$departments))
+      x$metadata$departments <- x$metadata$departments |>
+        dplyr::select(!tidyselect::any_of("hospital_key"))
+    x$patients <- x$patients |>
+      dplyr::select(!tidyselect::any_of("hospital_key"))
+    x$enrollments <- x$enrollments |>
+      dplyr::select(!tidyselect::any_of("hospital_key"))
+    x$events <- x$events |>
+      dplyr::select(!tidyselect::any_of("hospital_key"))
+  }
+  if(dataset_options$include_hospital == "pseudonymised")
+    x$metadata$hospitals <- NULL
+
+  if(dataset_options$include_country == "no")
+  {
+    x$metadata$countries <- NULL
+    if(!is.null(x$metadata$hospitals))
+      x$metadata$hospitals <- x$metadata$hospitals |>
+        dplyr::select(!tidyselect::any_of("country_key"))
+    if(!is.null(x$metadata$departments))
+      x$metadata$departments <- x$metadata$departments |>
+        dplyr::select(!tidyselect::any_of("country_key"))
+    x$patients <- x$patients |>
+      dplyr::select(!tidyselect::any_of("country_key"))
+    x$enrollments <- x$enrollments |>
+      dplyr::select(!tidyselect::any_of("country_key"))
+    x$events <- x$events |>
+      dplyr::select(!tidyselect::any_of("country_key"))
+  }
+  if(dataset_options$include_country == "pseudonymised")
+    x$metadata$countries <- NULL
+
+  if(dataset_options$include_world_bank_class == "no")
+  {
+    x$metadata$worldBankClasses <- NULL
+    if(!is.null(x$metadata$countries))
+      x$metadata$countries <- x$metadata$countries |>
+        dplyr::select(!tidyselect::any_of("world_bank_class_key"))
+    if(!is.null(x$metadata$hospitals))
+      x$metadata$hospitals <- x$metadata$hospitals |>
+        dplyr::select(!tidyselect::any_of("world_bank_class_key"))
+    if(!is.null(x$metadata$departments))
+      x$metadata$departments <- x$metadata$departments |>
+        dplyr::select(!tidyselect::any_of("world_bank_class_key"))
+    x$patients <- x$patients |>
+      dplyr::select(!tidyselect::any_of("world_bank_class_key"))
+    x$enrollments <- x$enrollments |>
+      dplyr::select(!tidyselect::any_of("world_bank_class_key"))
+    x$events <- x$events |>
+      dplyr::select(!tidyselect::any_of("world_bank_class_key"))
+  }
+  else if(dataset_options$include_world_bank_class == "pseudonymised")
+    x$metadata$worldBankClasses <- NULL
+
+  if(!dataset_options$include_patient_id)
+    x$patients <- x$patients |>
+      dplyr::select(!tidyselect::any_of("neoipc_patient_id"))
 
   return(x)
 }
