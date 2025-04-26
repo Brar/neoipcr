@@ -50,7 +50,7 @@ filter_surveillance_ends <- function(
         dplyr::filter(.data$event_type_key != "end"),
       events |>
         dplyr::filter(
-          .data$event_type_key == "end" &&
+          .data$event_type_key == "end" &
             .data$occurredAt <= surveillance_end_to))
   else if(is.null(surveillance_end_to))
     dplyr::bind_rows(
@@ -58,7 +58,7 @@ filter_surveillance_ends <- function(
         dplyr::filter(.data$event_type_key != "end"),
       events |>
         dplyr::filter(
-          .data$event_type_key == "end" &&
+          .data$event_type_key == "end" &
             .data$occurredAt >= surveillance_end_from))
   else
     dplyr::bind_rows(
@@ -66,8 +66,8 @@ filter_surveillance_ends <- function(
         dplyr::filter(.data$event_type_key != "end"),
       events |>
         dplyr::filter(
-          .data$event_type_key == "end" &&
-            .data$occurredAt >= surveillance_end_from &&
+          .data$event_type_key == "end" &
+            .data$occurredAt >= surveillance_end_from &
             .data$occurredAt <= surveillance_end_to))
 }
 
