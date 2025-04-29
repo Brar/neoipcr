@@ -39,6 +39,9 @@ get_usage_density_rate_table <- function(ref, use_cache = TRUE)
   if(use_cache && !is.null(r <- get_cached(ref, "usage_density_rate_table")))
     return(r)
 
+  expected_levels <- c("cvc","pvc","vs","inv","niv","human_milk","probiotic",
+                       "kangaroo_care","ab","a","w","r")
+
   risk_time <- get_risk_time(ref, use_cache = use_cache)
   risk_rate_quartiles <- get_risk_time(
     ref, group_cols = "department_key", use_cache = use_cache) |>
@@ -48,7 +51,7 @@ get_usage_density_rate_table <- function(ref, use_cache = TRUE)
         tidyselect::everything(),
         ~quantile(.x, prob = c(.25,.5,.75))))
 
-  risk_time |>
+  r <- risk_time |>
     dplyr::select(!"patient_days" & tidyselect::ends_with("_days")) |>
     tidyr::pivot_longer(
       cols = tidyselect::ends_with("_days"),
@@ -72,12 +75,18 @@ get_usage_density_rate_table <- function(ref, use_cache = TRUE)
           tidyselect::everything(),
           names_pattern = "^(.+)_(q(?:1|2|3))$",
           names_to = c("rate",".value"))) |>
-    dplyr::select(!tidyselect::all_of(c("name","rate"))) |>
+    dplyr::select(!tidyselect::all_of(c("name","rate")))
+
+  missing <- setdiff(paste0(expected_levels, "_days"), r$factor)
+  if(length(missing) > 0)
+    r <- r |>
+    dplyr::bind_rows(tibble::tibble(factor=missing,days=0L,mean=0))
+
+  r |>
     dplyr::mutate(
       factor = factor(
         stringr::str_extract(.data$factor,"^(.+)_days", 1),
-        levels = c("cvc","pvc","vs","inv","niv","human_milk","probiotic",
-                   "kangaroo_care","ab","a","w","r"))) |>
+        levels = expected_levels)) |>
     dplyr::arrange(.data$factor) |>
     add_class("neoipcr_tbl_udr_ref") |>
     cache(ref, "usage_density_rate_table")
@@ -180,7 +189,9 @@ get_incidence_density_rate_table <- function(ref, use_cache = TRUE)
   if(use_cache && !is.null(r <- get_cached(ref, "incidence_density_rate_table")))
     return(r)
 
-  ref |>
+  expected_levels <- c("si","bsi","hap","nec")
+
+  r <- ref |>
     get_incidence_density_rates(use_cache = use_cache) |>
     dplyr::inner_join(
       ref |>
@@ -199,7 +210,14 @@ get_incidence_density_rate_table <- function(ref, use_cache = TRUE)
           tidyselect::everything(),
           names_pattern = "^(.+)_(q(?:1|2|3))$",
           names_to = c("inf",".value")),
-      dplyr::join_by("inf")) |>
+      dplyr::join_by("inf"))
+
+  missing <- setdiff(expected_levels, r$inf)
+  if(length(missing) > 0)
+    r <- r |>
+    dplyr::bind_rows(tibble::tibble(inf=missing,n=0L,rate=0))
+
+  r |>
     dplyr::mutate(inf = factor(.data$inf, levels = c("si","bsi","hap","nec"))) |>
     dplyr::arrange(.data$inf) |>
     add_class("neoipcr_tbl_idr_ref") |>
@@ -310,7 +328,9 @@ get_dev_ass_incidence_density_rates <- function(x, group_cols = NULL, use_cache 
           names_from = "dev",
           values_from = "n",
           values_fill = 0) |>
-        dplyr::mutate(vs = .data$niv + .data$inv) |>
+        dplyr::rowwise() |>
+        dplyr::mutate(vs = sum(dplyr::c_across(tidyselect::any_of(c("niv","inv"))))) |>
+        dplyr::ungroup() |>
         tidyr::pivot_longer(
           !tidyselect::all_of(c(group_cols)),
           names_to = "dev",
@@ -350,8 +370,10 @@ get_incidence_density_rates <- function(x, group_cols = NULL, use_cache = TRUE)
     tidyr::pivot_wider(
       names_from = "event_type_key",
       values_from = "n",
-      values_fill = 0) |>
-    dplyr::mutate(si = .data$bsi + .data$hap) |>
+      values_fill = 0)  |>
+    dplyr::rowwise() |>
+    dplyr::mutate(si = sum(dplyr::c_across(tidyselect::any_of(c("bsi","hap"))))) |>
+    dplyr::ungroup() |>
     tidyr::pivot_longer(!tidyselect::all_of(group_cols), names_to = "inf", values_to = "n")
 
   if(is.null(group_cols))

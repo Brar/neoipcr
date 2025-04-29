@@ -225,7 +225,7 @@ apply_postfilter <- function(x)
   x$metadata$departments <- departments
   x$patients <- patients
   x$enrollments <- enrollments
-  events <- x$events
+  x$events <- events
   x$eventDetails <- eventDetails
   x$eventNotes <- eventNotes
   x$admissionData <- admissionData
