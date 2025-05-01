@@ -549,10 +549,13 @@ get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
     tl = "none",
     group = "Total",
     ref |>
-      get_infectious_agent_detection_rates_with_department_quartiles() |>
+      get_infectious_agent_detection_rates_with_department_quartiles(
+        use_cache = use_cache) |>
       dplyr::select("n","rate","q1","q2","q3"))
   d <- ref |>
-    get_infectious_agent_detection_rates_with_department_quartiles(c("domain")) |>
+    get_infectious_agent_detection_rates_with_department_quartiles(
+      group_cols = "domain",
+      use_cache = use_cache) |>
     dplyr::select("group"="domain","n","rate","q1","q2","q3") |>
     dplyr::arrange(dplyr::desc(.data$rate))
   for (i in 1:nrow(d)) {
@@ -560,7 +563,9 @@ get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
     if(di$group == "Bacteria") {
       lv1 <- dplyr::bind_cols(lv = 1L, tl = "domain", di)
       o <- ref |>
-        get_infectious_agent_detection_rates_with_department_quartiles(c("domain","order")) |>
+        get_infectious_agent_detection_rates_with_department_quartiles(
+          group_cols = c("domain","order"),
+          use_cache = use_cache) |>
         dplyr::filter(.data$domain == di$group) |>
         dplyr::select("group"="order","n","rate","q1","q2","q3") |>
         dplyr::arrange(dplyr::desc(.data$rate))
@@ -568,7 +573,9 @@ get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
         oj <- o[j,]
         lv2 <- dplyr::bind_cols(lv = 2L, tl = "order", oj)
         g <- ref |>
-          get_infectious_agent_detection_rates_with_department_quartiles(c("order","genus")) |>
+          get_infectious_agent_detection_rates_with_department_quartiles(
+            group_cols = c("order","genus"),
+            use_cache = use_cache) |>
           dplyr::filter(.data$order == oj$group) |>
           dplyr::select("group"="genus","n","rate","q1","q2","q3") |>
           dplyr::arrange(dplyr::desc(.data$rate))
@@ -577,7 +584,9 @@ get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
           lv3 <- dplyr::bind_cols(lv = 3L, tl = "genus", gk |> dplyr::mutate(group = paste(.data$group, "spp.")))
           if(gk$group == "Staphylococcus") {
             c <- ref |>
-              get_infectious_agent_detection_rates_with_department_quartiles(c("genus","coagulase")) |>
+              get_infectious_agent_detection_rates_with_department_quartiles(
+                group_cols = c("genus","coagulase"),
+                use_cache = use_cache) |>
               dplyr::filter(.data$genus == "Staphylococcus") |>
               dplyr::select("group"="coagulase","n","rate","q1","q2","q3") |>
               dplyr::arrange(dplyr::desc(.data$rate))
@@ -593,7 +602,9 @@ get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
                              "p" = "coag_type", "coag_type_nos"),
                 cl |> dplyr::mutate(group = c_text))
               s <- ref |>
-                get_infectious_agent_detection_rates_with_department_quartiles(c("genus","coagulase","species")) |>
+                get_infectious_agent_detection_rates_with_department_quartiles(
+                  group_cols = c("genus","coagulase","species"),
+                  use_cache = use_cache) |>
                 dplyr::filter(.data$genus == "Staphylococcus" & .data$coagulase == cl$group) |>
                 dplyr::select("group"="species","n","rate","q1","q2","q3") |>
                 dplyr::arrange(dplyr::desc(.data$rate))
@@ -612,7 +623,9 @@ get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
           }
           else {
             s <- ref |>
-              get_infectious_agent_detection_rates_with_department_quartiles(c("genus","coagulase","species")) |>
+              get_infectious_agent_detection_rates_with_department_quartiles(
+                group_cols = c("genus","coagulase","species"),
+                use_cache = use_cache) |>
               dplyr::filter(.data$genus == gk$group) |>
               dplyr::select("group"="species","n","rate","q1","q2","q3") |>
               dplyr::arrange(dplyr::desc(.data$rate))
@@ -636,7 +649,9 @@ get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
     }
     else {# if (di$group == "Eukaryota") {
       kd <- ref |>
-        get_infectious_agent_detection_rates_with_department_quartiles(c("domain","kingdom")) |>
+        get_infectious_agent_detection_rates_with_department_quartiles(
+          group_cols = c("domain","kingdom"),
+          use_cache = use_cache) |>
         dplyr::filter(.data$domain == di$group) |>
         dplyr::select("group"="kingdom","n","rate","q1","q2","q3") |>
         dplyr::arrange(dplyr::desc(.data$rate))
@@ -644,7 +659,9 @@ get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
         kj <- kd[j,]
         lv1 <- dplyr::bind_cols(lv = 1L, tl = "kingdom", kj)
         g <- ref |>
-          get_infectious_agent_detection_rates_with_department_quartiles(c("kingdom","genus")) |>
+          get_infectious_agent_detection_rates_with_department_quartiles(
+            group_cols = c("kingdom","genus"),
+            use_cache = use_cache) |>
           dplyr::filter(.data$kingdom == kj$group) |>
           dplyr::select("group"="genus","n","rate","q1","q2","q3") |>
           dplyr::arrange(dplyr::desc(.data$rate))
@@ -652,7 +669,9 @@ get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
           gk <- g[k,]
           lv2 <- dplyr::bind_cols(lv = 2L, tl = "genus", gk |> dplyr::mutate(group = paste(.data$group, "spp.")))
           s <- ref |>
-            get_infectious_agent_detection_rates_with_department_quartiles(c("genus","coagulase","species")) |>
+            get_infectious_agent_detection_rates_with_department_quartiles(
+              group_cols = c("genus","coagulase","species"),
+              use_cache = use_cache) |>
             dplyr::filter(.data$genus == gk$group) |>
             dplyr::select("group"="species","n","rate","q1","q2","q3") |>
             dplyr::arrange(dplyr::desc(.data$rate))
