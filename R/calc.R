@@ -906,9 +906,12 @@ get_procedure_category <- function(x)
 
     # Lung/pleural space/thoracic surgery
     ############################################################################
-    target == "MCX" & means %in% c("AA","AB") ~ "lung_pleural_space_thoracic_surgery",
-
-    x == "JBF.LL.AA" ~ "lung_pleural_space_thoracic_surgery",
+    target %in% c(
+      "MCX",# Interventions on diaphragm
+      "JBF",# Interventions on lung parenchyma
+      "JCH"# Interventions on thoracic cavity
+      ) &
+      means %in% c("AA","AB") ~ "lung_pleural_space_thoracic_surgery",
 
     # Oesophageal surgery
     ############################################################################
@@ -919,11 +922,12 @@ get_procedure_category <- function(x)
     target %in% c("KBF","KBK","KBP","KBZ","KMA","PAK","PAL") &
       means %in% c("AA","AB") ~ "abdominal_surgery",
 
+    x == "KMA.JB.AE" ~ "abdominal_surgery",
+    x == "PAK.JB.AE" ~ "abdominal_surgery",# Percutaneous abdominal drainage
+
     target %in% c("PTA","PTB") &
       action == "LA" &
       means == "AC" ~ "abdominal_surgery",
-
-    x == "KMA.JB.AE" ~ "abdominal_surgery",
 
     # Inguinal hernia surgery
     ############################################################################
@@ -944,7 +948,13 @@ get_procedure_category <- function(x)
 
     # Not considered as surgery (remove)
     ############################################################################
-    x %in% c("KBA.LG.AD","KBK.LD.AH","PTB.SN.AC") ~ "not_surgery",
+    x %in% c(
+      "JBB.AE.AD",# Bronchoscopy
+      "KBA.LG.AD",
+      "KBF.KA.AC",# Replacement of gastric device
+      "KBK.LD.AH",
+      "PTB.SN.AC"
+      ) ~ "not_surgery",
 
     # To be categorised (default)
     ############################################################################
