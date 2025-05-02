@@ -366,9 +366,8 @@ get_dev_ass_incidence_density_rate_table <- function(ref, use_cache = TRUE)
       q3 = dplyr::if_else(
         .data$drop_quartiles,
         NA,
-        .data$q3),
-      .keep = "unused") |>
-    dplyr::select(!"drop_quartiles") |>
+        .data$q3)) |>
+    dplyr::select(!c("drop_quartiles","n_deps","median")) |>
     dplyr::arrange(.data$dev) |>
     add_class("neoipcr_tbl_daidr_ref") |>
     cache(ref, "dev_ass_incidence_density_rate_table")
