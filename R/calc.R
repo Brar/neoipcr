@@ -230,6 +230,13 @@ get_incidence_density_rate_table <- function(ref, use_cache = TRUE)
   if(use_cache && !is.null(r <- get_cached(ref, "incidence_density_rate_table")))
     return(r)
 
+  pat_days <- ref |>
+    get_risk_time(group_cols = "department_key", use_cache = use_cache) |>
+    dplyr::pull("patient_days")
+
+  n_deps <- length(pat_days)
+  median_patient_days <- stats::median(pat_days)
+
   expected_levels <- c("si","bsi","hap","nec")
 
   r <- ref |>
@@ -259,7 +266,22 @@ get_incidence_density_rate_table <- function(ref, use_cache = TRUE)
     dplyr::bind_rows(tibble::tibble(inf=missing,n=0L,rate=0))
 
   r |>
-    dplyr::mutate(inf = factor(.data$inf, levels = c("si","bsi","hap","nec"))) |>
+    dplyr::mutate(
+      inf = factor(.data$inf, levels = c("si","bsi","hap","nec")),
+      drop_quartiles = n_deps < 5 | round(1000 / .data$rate) >= median_patient_days,
+      q1 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q1),
+      q2 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q2),
+      q3 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q3)) |>
+    dplyr::select(!"drop_quartiles") |>
     dplyr::arrange(.data$inf) |>
     add_class("neoipcr_tbl_idr_ref") |>
     cache(ref, "incidence_density_rate_table")
