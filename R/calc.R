@@ -131,6 +131,15 @@ get_surgery_rate_table <- function(ref, use_cache = TRUE)
   if(use_cache && !is.null(r <- get_cached(ref, "surgery_rate_table")))
     return(r)
 
+  pats_per_dept <- ref |>
+    get_risk_population(
+      group_cols = "department_key",
+      use_cache = use_cache) |>
+    dplyr::select("department_key", "n_patients")
+
+  n_deps <- nrow(pats_per_dept)
+  median_patients <- stats::median(dplyr::pull(pats_per_dept, "n_patients"))
+
   tibble::tibble(
     procedure_category = "overall",
     n = get_procedures(ref, use_cache = use_cache) |>
@@ -158,11 +167,7 @@ get_surgery_rate_table <- function(ref, use_cache = TRUE)
             group_cols = "department_key",
             use_cache = use_cache)) |>
         dplyr::right_join(
-          get_risk_population(
-            ref,
-            group_cols = "department_key",
-            use_cache = use_cache) |>
-            dplyr::select("department_key", "n_patients"),
+          pats_per_dept,
           dplyr::join_by("department_key")) |>
         dplyr::mutate(
           n = tidyr::replace_na(.data$n, 0),
@@ -186,6 +191,21 @@ get_surgery_rate_table <- function(ref, use_cache = TRUE)
           names_pattern = "^(.+)_(q(?:1|2|3))$",
           names_to = c("procedure_category",".value")),
       dplyr::join_by("procedure_category")) |>
+    dplyr::mutate(
+      drop_quartiles = n_deps < 5 | round(100 / .data$rate) >= median_patients,
+      q1 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q1),
+      q2 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q2),
+      q3 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q3)) |>
+    dplyr::select(!"drop_quartiles") |>
     add_class("neoipcr_tbl_sr_ref") |>
     cache(ref, "surgery_rate_table")
 }
