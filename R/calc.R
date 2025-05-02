@@ -307,6 +307,29 @@ get_dev_ass_incidence_density_rate_table <- function(ref, use_cache = TRUE)
   if(use_cache && !is.null(r <- get_cached(ref, "dev_ass_incidence_density_rate_table")))
     return(r)
 
+  dev_days <- ref |>
+    get_risk_time(group_cols = "department_key", use_cache = use_cache) |>
+    dplyr::select(
+      tidyselect::any_of(
+        c("department_key","cvc"="cvc_days","pvc"="pvc_days","vs"="vs_days",
+          "inv"="inv_days","niv"="niv_days")))
+
+  dep_stats <- dev_days |>
+    tidyr::pivot_longer(cols = !"department_key", names_to = "dev") |>
+    dplyr::filter(.data$value > 0) |>
+    dplyr::group_by(.data$dev) |>
+    dplyr::summarise(n_deps = dplyr::n()) |>
+    dplyr::inner_join(
+      dev_days |>
+        dplyr::select(!"department_key") |>
+        dplyr::summarise(dplyr::across(tidyselect::everything(), stats::median)) |>
+        tidyr::pivot_longer(
+          cols = tidyselect::everything(),
+          names_to = "dev",
+          values_to = "median"),
+      dplyr::join_by("dev")
+    )
+
   ref |>
     get_dev_ass_incidence_density_rates(use_cache = use_cache) |>
     dplyr::inner_join(
@@ -328,8 +351,24 @@ get_dev_ass_incidence_density_rate_table <- function(ref, use_cache = TRUE)
           names_pattern = "^(.+)_(q(?:1|2|3))$",
           names_to = c("dev",".value")),
       dplyr::join_by("dev")) |>
+    dplyr::inner_join(dep_stats, dplyr::join_by("dev")) |>
     dplyr::mutate(
-      dev = factor(.data$dev, levels = c("cvc","pvc","vs","inv","niv"))) |>
+      dev = factor(.data$dev, levels = c("cvc","pvc","vs","inv","niv")),
+      drop_quartiles = .data$n_deps < 5 | round(1000 / .data$rate) >= .data$median,
+      q1 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q1),
+      q2 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q2),
+      q3 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q3),
+      .keep = "unused") |>
+    dplyr::select(!"drop_quartiles") |>
     dplyr::arrange(.data$dev) |>
     add_class("neoipcr_tbl_daidr_ref") |>
     cache(ref, "dev_ass_incidence_density_rate_table")
