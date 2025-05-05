@@ -11,12 +11,19 @@ calculate_reference_data <- function(ds, use_cache = TRUE)
 
   structure(
     list(
-      usage_density_rate_table = get_usage_density_rate_table(ds, use_cache),
-      surgery_rate_table = get_surgery_rate_table(ds, use_cache),
-      incidence_density_rate_table = get_incidence_density_rate_table(ds, use_cache),
-      dev_ass_incidence_density_rate_table = get_dev_ass_incidence_density_rate_table(ds, use_cache),
-      pathogen_detection_rate_table = get_pathogen_detection_rate_table(ds, use_cache)
-      ),
+      usage_density_rate_table =
+        get_usage_density_rate_table(ds, use_cache),
+      surgery_rate_table =
+        get_surgery_rate_table(ds, use_cache),
+      incidence_density_rate_table =
+        get_incidence_density_rate_table(ds, use_cache),
+      dev_ass_incidence_density_rate_table =
+        get_dev_ass_incidence_density_rate_table(ds, use_cache),
+      infectious_agent_detection_rate_per_inf_type_table =
+        get_infectious_agent_detection_rate_per_inf_type_table(ds, use_cache),
+      infectious_agent_detection_rate_per_agent_table =
+        get_infectious_agent_detection_rate_per_agent_table(ds, use_cache)
+    ),
     class = "neoipcr_ref_ds")
 }
 
@@ -56,7 +63,7 @@ get_usage_density_rate_table <- function(ref, use_cache = TRUE)
     dplyr::reframe(
       dplyr::across(
         tidyselect::everything(),
-        ~quantile(.x, prob = c(.25,.5,.75))))
+        ~stats::quantile(.x, prob = c(.25,.5,.75))))
 
   r <- risk_time |>
     dplyr::select(!"patient_days" & tidyselect::ends_with("_days")) |>
@@ -183,7 +190,7 @@ get_surgery_rate_table <- function(ref, use_cache = TRUE)
         dplyr::reframe(
           dplyr::across(
             tidyselect::everything(),
-            ~quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
+            ~stats::quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
         dplyr::bind_cols(tibble::tibble(name = c("q1","q2","q3"))) |>
         tidyr::pivot_wider(values_from = !"name") |>
         tidyr::pivot_longer(
@@ -251,7 +258,7 @@ get_incidence_density_rate_table <- function(ref, use_cache = TRUE)
         dplyr::select(!"department_key") |>
         dplyr::reframe(
           dplyr::across(
-            tidyselect::everything(), ~quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
+            tidyselect::everything(), ~stats::quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
         dplyr::bind_cols(tibble::tibble(name = c("q1","q2","q3"))) |>
         tidyr::pivot_wider(values_from = !"name") |>
         tidyr::pivot_longer(
@@ -343,7 +350,7 @@ get_dev_ass_incidence_density_rate_table <- function(ref, use_cache = TRUE)
         dplyr::reframe(
           dplyr::across(
             tidyselect::everything(),
-            ~quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
+            ~stats::quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
         dplyr::bind_cols(tibble::tibble(name = c("q1","q2","q3"))) |>
         tidyr::pivot_wider(values_from = !"name") |>
         tidyr::pivot_longer(
@@ -374,23 +381,132 @@ get_dev_ass_incidence_density_rate_table <- function(ref, use_cache = TRUE)
 
 }
 
-#' Get the table with pathogen detection rates of the pathogens in a somewhat
-#'  meaningful taxonomic structure
+#' Get the table with infectious agent detection rates per type of infection
 #'
 #' @param ref The reference data set which can be either a neoipcr_ref_ds or a
 #'  neoipcr_ds object
 #' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
 #'
-#' @returns A table containing pathogen detection rates
+#' @returns A table containing infectious agent detection rates per type of
+#'  infection
 #' @export
-get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
+get_infectious_agent_detection_rate_per_inf_type_table <- function(ref, use_cache = TRUE)
 {
   check_neoipcr_ds_or_ref_ds(ref)
 
   if(is_neoipcr_ref_ds(ref))
-    return(ref$pathogen_detection_rate_table)
+    return(ref$infectious_agent_detection_rate_per_inf_type_table)
 
-  if(use_cache && !is.null(r <- get_cached(ref, "pathogen_detection_rate_table")))
+  if(use_cache && !is.null(r <- get_cached(ref, "infectious_agent_detection_rate_per_inf_type_table")))
+    return(r)
+
+
+  dep_stats <- dplyr::bind_rows(
+    dplyr::bind_cols(
+      event_type_key = "all",
+      ref |>
+        get_infection_counts(group_cols = "department_key") |>
+        dplyr::filter(.data$n > 0)
+      ),
+    ref |>
+      get_infection_counts(group_cols = c("event_type_key","department_key")) |>
+      dplyr::filter(.data$n > 0)
+    ) |>
+    dplyr::group_by(.data$event_type_key) |>
+    dplyr::summarise(
+      median = stats::median(.data$n),
+      n = dplyr::n())
+
+  dplyr::bind_rows(
+    dplyr::bind_cols(
+      event_type_key = "all",
+      ref |>
+        get_infectious_agent_detection_rates(
+          use_cache = use_cache) |>
+        dplyr::select("inf_with_pathogen","rate"="iwp_per_t"),
+      ref |>
+        get_infectious_agent_detection_rates(
+          group_cols = "department_key",
+          use_cache = use_cache) |>
+        dplyr::reframe(
+          value = stats::quantile(
+            .data$iwp_per_t,
+            prob = c(.25,.5,.75),
+            na.rm = TRUE)) |>
+        dplyr::mutate(
+          name=names(.data$value),
+          name=dplyr::case_match(
+            .data$name,
+            "25%"~"q1",
+            "50%"~"q2",
+            "75%"~"q3")) |>
+        tidyr::pivot_wider()),
+    ref |>
+      get_infectious_agent_detection_rates(
+        group_cols = "event_type_key",
+        use_cache = use_cache) |>
+      dplyr::select("event_type_key","inf_with_pathogen","rate"="iwp_per_t") |>
+      dplyr::inner_join(
+        ref |>
+          get_infectious_agent_detection_rates(
+            group_cols = c("department_key","event_type_key"),
+            use_cache = use_cache) |>
+          dplyr::group_by(.data$event_type_key) |>
+          dplyr::reframe(
+            value = stats::quantile(
+              .data$iwp_per_t,
+              prob = c(.25,.5,.75),
+              na.rm = TRUE)) |>
+          dplyr::mutate(
+            name=names(.data$value),
+            name=dplyr::case_match(
+              .data$name,
+              "25%"~"q1",
+              "50%"~"q2",
+              "75%"~"q3")) |>
+          tidyr::pivot_wider(),
+        dplyr::join_by("event_type_key"))
+    ) |>
+    dplyr::inner_join(
+      dep_stats,
+      dplyr::join_by("event_type_key")) |>
+    dplyr::mutate(
+      drop_quartiles = .data$n < 5 | round(100 / .data$rate) >= .data$median,
+      q1 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q1),
+      q2 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q2),
+      q3 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q3)
+      ) |>
+    dplyr::select(!c("drop_quartiles","n","median")) |>
+    add_class("neoipcr_tbl_iadrpit_ref") |>
+    cache(ref, "infectious_agent_detection_rate_per_inf_type_table")
+}
+
+#' Get the table with infectious agent detection rates of the pathogens in a
+#'  somewhat meaningful taxonomic structure
+#'
+#' @param ref The reference data set which can be either a neoipcr_ref_ds or a
+#'  neoipcr_ds object
+#' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#'
+#' @returns A table containing infectious agent detection rates
+#' @export
+get_infectious_agent_detection_rate_per_agent_table <- function(ref, use_cache = TRUE)
+{
+  check_neoipcr_ds_or_ref_ds(ref)
+
+  if(is_neoipcr_ref_ds(ref))
+    return(ref$infectious_agent_detection_rate_per_agent_table)
+
+  if(use_cache && !is.null(r <- get_cached(ref, "infectious_agent_detection_rate_per_agent_table")))
     return(r)
 
   lv0 <- dplyr::bind_cols(
@@ -542,7 +658,8 @@ get_pathogen_detection_rate_table <- function(ref, use_cache = TRUE)
   }
 
   lv0 |>
-    cache(ref, "pathogen_detection_rate_table")
+    add_class("neoipcr_tbl_iadrpa_ref") |>
+    cache(ref, "infectious_agent_detection_rate_per_agent_table")
 }
 
 #' Prettyf the names of a neoipcr object
@@ -716,60 +833,6 @@ get_incidence_density_rates <- function(x, group_cols = NULL, use_cache = TRUE)
     cache(x, cache_key)
 }
 
-get_infectious_agent_detection_rates <- function(x, group_cols = NULL, use_cache = TRUE)
-{
-  if(is.null(group_cols))
-    cache_key <- "infectious_agent_detection_rates"
-  else
-    cache_key <- paste0("infectious_agent_detection_rates_by.", paste0(group_cols, collapse = "."))
-
-  if(use_cache && !is.null(r <- get_cached(x, cache_key)))
-    return(r)
-
-  r <- x$events |>
-    dplyr::inner_join(
-      x$infectiousAgentFindings |>
-        dplyr::inner_join(
-          get_pathogen_taxonomy(
-            x$infectiousAgentFindings$pathogen_key |> unique()),
-          dplyr::join_by("pathogen_key" == "input_id")),
-      dplyr::join_by("event_key")) |>
-    dplyr::group_by(dplyr::across(tidyselect::all_of(c(group_cols)))) |>
-    dplyr::summarise(n = dplyr::n(), .groups = "drop")
-
-  # get_infection_counts cannot access specific pathogen related information
-  # since this would lead to counting infections with multiple pathogens
-  # multiple times
-  inf_groups <- setdiff(group_cols, c(names(x$infectiousAgentFindings),names(get_pathogen_taxonomy(-1))))
-
-  inf_counts <- x |>
-    get_infection_counts(
-      group_cols = c(inf_groups,"with_pathogen"),
-      use_cache = use_cache) |>
-    dplyr::mutate(
-      name = factor(as.character(.data$with_pathogen), levels = c("TRUE","FALSE")),
-      value=.data$n,
-      .keep="unused") |>
-    tidyr::pivot_wider(names_expand = TRUE, values_fill = 0L) |>
-    dplyr::mutate(
-      inf_with_pathogen = .data$`TRUE`,
-      total_inf = .data$`TRUE` + .data$`FALSE`,
-      .keep = "unused")
-
-  if(is.null(group_cols))
-    r <- r |> dplyr::bind_cols(inf_counts)
-  else
-    r <- r |>
-    dplyr::inner_join(inf_counts, by = inf_groups)
-
-  r |>
-    dplyr::mutate(
-      rate1 = .data$n / .data$inf_with_pathogen * 100,
-      rate2 = .data$n / .data$total_inf * 100
-    ) |>
-    cache(x, cache_key)
-}
-
 get_infectious_agent_detection_rates_with_department_quartiles <- function(x, group_cols = NULL, use_cache = TRUE)
 {
   if(is.null(group_cols))
@@ -794,7 +857,7 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(x, gr
     get_infectious_agent_detection_rates(
       group_cols = group_cols,
       use_cache = use_cache) |>
-    dplyr::select(c(group_cols,"n","rate"="rate1")) |>
+    dplyr::select(c(group_cols,"n","rate"="n_per_iwp")) |>
     dplyr::mutate(
       drop_quartiles = n_deps < 5 | round(100 / .data$rate) >= median_inf_with_pathogen)
 
@@ -819,14 +882,14 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(x, gr
     get_infectious_agent_detection_rates(
       group_cols = c("department_key", group_cols),
       use_cache = use_cache) |>
-    dplyr::select(c("department_key", group_cols,"rate1"))
+    dplyr::select(c("department_key", group_cols,"n_per_iwp"))
 
   if (!is.null(group_cols))
   {
     r2 <- r2 |>
     tidyr::pivot_wider(
       names_from = group_cols,
-      values_from = "rate1",
+      values_from = "n_per_iwp",
       values_fill = 0)
 
     glue_spec <- "{.value}_{name}"
@@ -838,7 +901,7 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(x, gr
     dplyr::reframe(
       dplyr::across(
         tidyselect::everything(),
-        ~quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
+        ~stats::quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
     dplyr::bind_cols(tibble::tibble(name = c("q1","q2","q3"))) |>
     tidyr::pivot_wider(values_from = !"name", names_glue = glue_spec) |>
     tidyr::pivot_longer(
@@ -873,6 +936,58 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(x, gr
     cache(x, cache_key)
 }
 
+get_infectious_agent_detection_rates <- function(x, group_cols = NULL, use_cache = TRUE)
+{
+  if(is.null(group_cols))
+    cache_key <- "infectious_agent_detection_rates"
+  else
+    cache_key <- paste0("infectious_agent_detection_rates_by.", paste0(group_cols, collapse = "."))
+
+  if(use_cache && !is.null(r <- get_cached(x, cache_key)))
+    return(r)
+
+  r <- x$events |>
+    dplyr::inner_join(
+      x$infectiousAgentFindings |>
+        dplyr::inner_join(
+          get_pathogen_taxonomy(
+            x$infectiousAgentFindings$pathogen_key |> unique()),
+          dplyr::join_by("pathogen_key" == "input_id")),
+      dplyr::join_by("event_key")) |>
+    dplyr::group_by(dplyr::across(tidyselect::all_of(c(group_cols)))) |>
+    dplyr::summarise(n = dplyr::n(), .groups = "drop")
+
+  # get_infection_counts cannot access specific pathogen related information
+  # since this would lead to counting infections with multiple pathogens
+  # multiple times
+  inf_groups <- setdiff(group_cols, c(names(x$infectiousAgentFindings),names(get_pathogen_taxonomy(-1))))
+
+  inf_counts <- x |>
+    get_infection_counts(
+      group_cols = c(inf_groups,"with_pathogen"),
+      use_cache = use_cache) |>
+    tidyr::pivot_wider(names_from = "with_pathogen", values_from = "n") |>
+    dplyr::mutate(
+      inf_with_pathogen = .data$`TRUE`,
+      total_inf = .data$`TRUE` + .data$`FALSE`,
+      .keep = "unused")
+
+  if(is.null(group_cols))
+    r <- r |> dplyr::bind_cols(inf_counts)
+  else
+    r <- r |>
+    dplyr::right_join(inf_counts, by = inf_groups) |>
+    dplyr::mutate(n = tidyr::replace_na(.data$n, 0))
+
+  r |>
+    dplyr::mutate(
+      n_per_iwp = .data$n / .data$inf_with_pathogen * 100,
+      n_per_t = .data$n / .data$total_inf * 100,
+      iwp_per_t = .data$inf_with_pathogen / .data$total_inf * 100
+    ) |>
+    cache(x, cache_key)
+}
+
 get_infection_counts <- function(x, group_cols = NULL, use_cache = TRUE)
 {
   if(is.null(group_cols))
@@ -883,11 +998,43 @@ get_infection_counts <- function(x, group_cols = NULL, use_cache = TRUE)
   if(use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
-  x$events |>
-    dplyr::filter(.data$event_type_key %in% c("bsi","nec","hap","ssi")) |>
-    dplyr::mutate(with_pathogen = .data$event_key %in% x$infectiousAgentFindings$event_key ) |>
+  inf_events <- c("bsi","nec","hap","ssi")
+
+  event_base <- x$events |>
+    dplyr::filter(.data$event_type_key %in% inf_events) |>
+    dplyr::mutate(
+      event_type_key = factor(
+        as.character(.data$event_type_key),
+        levels = inf_events
+      ),
+      with_pathogen = .data$event_key %in% x$infectiousAgentFindings$event_key)
+
+  counts <- event_base |>
     dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
-    dplyr::summarise(n = dplyr::n(), .groups = "drop") |>
+    dplyr::summarise(n = dplyr::n(), .groups = "drop")
+
+  if(is.null(group_cols))
+    return(counts |>
+             cache(x, cache_key))
+
+  ee_intersect <- intersect(
+    intersect(names(event_base), group_cols),
+    names(x$enrollments))
+
+  expanded <- x$enrollments |>
+    dplyr::left_join(
+      event_base |>
+        dplyr::select(
+          tidyselect::all_of(
+            setdiff(c("enrollment_key","event_key",group_cols), ee_intersect))),
+      dplyr::join_by("enrollment_key")) |>
+    tidyr::expand(!!! dplyr::syms(group_cols)) |>
+    tidyr::drop_na()
+
+  expanded |>
+    dplyr::left_join(counts, by = group_cols) |>
+    dplyr::mutate(
+      n = tidyr::replace_na(.data$n, 0)) |>
     cache(x, cache_key)
 }
 
