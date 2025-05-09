@@ -1028,6 +1028,8 @@ get_infection_counts <- function(x, group_cols = NULL, use_cache = TRUE)
           tidyselect::all_of(
             setdiff(c("enrollment_key","event_key",group_cols), ee_intersect))),
       dplyr::join_by("enrollment_key")) |>
+    # Make sure both values for with_pathogen are expanded if necessary
+    dplyr::bind_rows(list(with_pathogen = c(TRUE,FALSE))) |>
     tidyr::expand(!!! dplyr::syms(group_cols)) |>
     tidyr::drop_na()
 
