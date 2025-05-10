@@ -1040,6 +1040,125 @@ get_infection_counts <- function(x, group_cols = NULL, use_cache = TRUE)
     cache(x, cache_key)
 }
 
+get_resistance_test_rate_with_department_quartiles <- function(x, resistance, group_cols = NULL, use_cache = TRUE)
+{
+  rate <- x |>
+    get_resistance_test_rate(
+      resistance = resistance,
+      group_cols = group_cols,
+      use_cache = use_cache)
+
+  deps <- x |>
+    get_resistance_test_rate(
+      resistance = resistance,
+      group_cols = c("department_key", group_cols),
+      use_cache = use_cache) |>
+    dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols)))
+
+  dep_stats <- deps |>
+    dplyr::summarise(
+      n_deps = dplyr::n(),
+      median = stats::median(.data$total),
+      .groups = "drop")
+
+  quartiles <- deps |>
+    dplyr::reframe(
+      value = stats::quantile(
+        .data$rate,
+        prob = c(.25,.5,.75),
+        na.rm = TRUE)) |>
+    dplyr::mutate(
+      name=names(.data$value),
+      name=dplyr::case_match(
+        .data$name,
+        "25%"~"q1",
+        "50%"~"q2",
+        "75%"~"q3")) |>
+    tidyr::pivot_wider()
+
+  if(is.null(group_cols))
+    rate <- rate |>
+    dplyr::bind_cols(dep_stats) |>
+    dplyr::bind_cols(quartiles)
+  else
+    rate <- rate |>
+    dplyr::inner_join(dep_stats, by = group_cols) |>
+    dplyr::inner_join(quartiles, by = group_cols)
+
+  rate |>
+    dplyr::mutate(
+      drop_quartiles = .data$n_deps < 5 | round(100 / .data$rate) >= median,
+      q1 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q1),
+      q2 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q2),
+      q3 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q3)) |>
+    dplyr::select(!c("n_deps","median", "drop_quartiles"))
+}
+
+get_resistance_test_rate <- function(x, resistance, group_cols = NULL, use_cache = TRUE)
+{
+  res_names <- c("3gcr","car","cor","mrsa","vre")
+  resistance <- rlang::arg_match(
+    arg = resistance,
+    res_names)
+
+  check_character(group_cols, allow_na = FALSE, allow_null = TRUE)
+
+  check_bool(use_cache)
+
+  if(is.null(group_cols))
+    cache_key <- paste0("resistance_test_rate_", resistance)
+  else
+    cache_key <- paste0("resistance_test_rate_", resistance, "_by.", paste0(group_cols, collapse = "."))
+
+  if(use_cache && !is.null(r <- get_cached(x, cache_key)))
+    return(r)
+
+  x$events |>
+    dplyr::inner_join(x$infectiousAgentFindings, dplyr::join_by("event_key")) |>
+    dplyr::mutate(
+      dplyr::across(
+        tidyselect::all_of(resistance),
+        ~ factor(
+          dplyr::case_match(
+            as.character(.x),
+            "yes" ~ "tested",
+            "no" ~ "tested",
+            "not_tested" ~ "not_tested"),
+          levels = c("tested","not_tested"))),
+      # For the grouping columns that are resistances, we assume NA to be yes
+      # because if we don't ask for resistance that's typically because of a
+      # primary resistance
+      dplyr::across(
+        tidyselect::all_of(intersect(group_cols, res_names)),
+        ~ tidyr::replace_na(.x, "yes")
+      )) |>
+    dplyr::group_by(dplyr::across(tidyselect::all_of(c(group_cols, resistance)))) |>
+    dplyr::summarise(
+      value=dplyr::n(),
+      .groups = "drop") |>
+    dplyr::filter(!is.na(.data[[resistance]])) |>
+    tidyr::pivot_wider(
+      names_from = resistance,
+      values_fill = 0L,
+      names_expand = TRUE) |>
+    dplyr::mutate(
+      tested = .data$tested,
+      not_tested = .data$not_tested,
+      total = .data$tested + .data$not_tested,
+      rate = .data$tested / .data$total * 100,
+      .keep = "unused") |>
+    cache(x, cache_key)
+}
+
 get_risk_population <- function(x, group_cols = NULL, use_cache = TRUE)
 {
   if(is.null(group_cols))

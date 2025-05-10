@@ -371,7 +371,7 @@ read_infectious_agent_findings <- function(events_raw, processed_events, metadat
       dplyr::across(
         tidyselect::any_of(
           c("3gcr","car","cor","mrsa","vre")),
-        ~ as.logical(dplyr::na_if(as.integer(.x), -1))),
+        ~ factor(dplyr::case_match(as.integer(.x), 0 ~ "no", 1 ~ "yes", -1 ~ "not_tested"), levels = c("no","yes","not_tested"))),
       dplyr::across(tidyselect::any_of(c("multiple")), as.logical),
       pathogen_key = as.integer(.data$pathogen),
       source = factor(dplyr::case_when(
