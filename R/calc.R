@@ -22,7 +22,9 @@ calculate_reference_data <- function(ds, use_cache = TRUE)
       infectious_agent_detection_rate_per_inf_type_table =
         get_infectious_agent_detection_rate_per_inf_type_table(ds, use_cache),
       infectious_agent_detection_rate_per_agent_table =
-        get_infectious_agent_detection_rate_per_agent_table(ds, use_cache)
+        get_infectious_agent_detection_rate_per_agent_table(ds, use_cache),
+      resistance_test_rate_table =
+        get_resistance_test_rate_table(ds, use_cache)
     ),
     class = "neoipcr_ref_ds")
 }
@@ -662,6 +664,52 @@ get_infectious_agent_detection_rate_per_agent_table <- function(ref, use_cache =
     cache(ref, "infectious_agent_detection_rate_per_agent_table")
 }
 
+#' Get the table with resistance test rates of the recorded resistance
+#'  mechanisms
+#'
+#' @param ref The reference data set which can be either a neoipcr_ref_ds or a
+#'  neoipcr_ds object
+#' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#'
+#' @returns A table containing resistance test rates
+#' @export
+get_resistance_test_rate_table <- function(ref, use_cache = TRUE)
+{
+  check_neoipcr_ds_or_ref_ds(ref)
+
+  if(is_neoipcr_ref_ds(ref))
+    return(ref$resistance_test_rate_table)
+
+  if(use_cache && !is.null(r <- get_cached(ref, "resistance_test_rate_table")))
+    return(r)
+
+  c("3gcr","car","cor","mrsa","vre") |>
+    lapply(\(r) dplyr::bind_cols(res = r, type = "routine", get_resistance_test_rate_with_department_quartiles(ref, r))) |>
+    dplyr::bind_rows() |>
+    dplyr::bind_rows(
+      ref |>
+        get_resistance_test_rate_with_department_quartiles(
+          resistance = "car",
+          group_cols = "3gcr") |>
+        dplyr::filter(.data$`3gcr` == "yes") |>
+        dplyr::mutate(type = "if_3gcr", res = "car")) |>
+    dplyr::bind_rows(
+      ref |>
+        get_resistance_test_rate_with_department_quartiles(
+          resistance = "cor",
+          group_cols = c("3gcr","car")) |>
+        dplyr::filter(.data$`3gcr` == "yes" & .data$car == "yes") |>
+        dplyr::mutate(type = "if_3gcr&car", res = "cor")) |>
+    dplyr::mutate(
+      res = factor(.data$res, levels = c("3gcr","car","cor","mrsa","vre")),
+      type = factor(.data$type, levels = c("routine","if_3gcr","if_3gcr&car"))
+    ) |>
+    dplyr::select("res","type","tested","rate","q1","q2","q3") |>
+    dplyr::arrange(.data$res, .data$type) |>
+    add_class("neoipcr_tbl_rtr_ref") |>
+    cache(ref, "resistance_test_rate_table")
+}
+
 #' Prettyf the names of a neoipcr object
 #'
 #' @param x an object used to select a method.
@@ -1087,7 +1135,7 @@ get_resistance_test_rate_with_department_quartiles <- function(x, resistance, gr
 
   rate |>
     dplyr::mutate(
-      drop_quartiles = .data$n_deps < 5 | round(100 / .data$rate) >= median,
+      drop_quartiles = .data$n_deps < 5 | round(100 / .data$rate) >= .data$median,
       q1 = dplyr::if_else(
         .data$drop_quartiles,
         NA,
