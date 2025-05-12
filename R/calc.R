@@ -1218,6 +1218,10 @@ get_risk_population <- function(x, group_cols = NULL, use_cache = TRUE)
     return(r)
 
   x$patients |>
+    dplyr::inner_join(
+      x$enrollments |>
+        dplyr::select(tidyselect::all_of(c("patient_key",setdiff(names(x$enrollments),names(x$patients))))),
+      dplyr::join_by("patient_key")) |>
     dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
     dplyr::summarise(
       n_enrollments = dplyr::n(),
@@ -1388,7 +1392,11 @@ get_procedure_category <- function(x)
   dplyr::case_when(
     # Neurosurgery
     ############################################################################
-    target %in% c("AAE","MAA") &
+    target %in% c(
+      "AAE",# Interventions on ventricles of brain
+      "ABG",# Interventions on spinal canal
+      "MAA" # Interventions on skull
+      ) &
       means %in% c("AA","AB") ~ "neurosurgery",
 
     # Cardiac/large vessel surgery
@@ -1443,10 +1451,11 @@ get_procedure_category <- function(x)
     ############################################################################
     x %in% c(
       "JBB.AE.AD",# Bronchoscopy
-      "KBA.LG.AD",
+      "KBA.LG.AD",# Endoscopic dilatation of oesophagus
       "KBF.KA.AC",# Replacement of gastric device
-      "KBK.LD.AH",
-      "PTB.SN.AC"
+      "KBK.LD.AH",# Manual reduction of ileostomy prolapse
+      "PTB.SN.AC",# Management of enterostomy
+      "PZA.BA.BH" # Magnetic resonance imaging of whole body
       ) ~ "not_surgery",
 
     # To be categorised (default)
