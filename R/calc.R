@@ -1207,6 +1207,71 @@ get_resistance_test_rate <- function(x, resistance, group_cols = NULL, use_cache
     cache(x, cache_key)
 }
 
+get_resistance_rate <- function(x, resistance, group_cols = NULL, use_cache = TRUE)
+{
+  res_names <- c("3gcr","car","cor","mrsa","vre")
+  resistance <- rlang::arg_match(
+    arg = resistance,
+    res_names)
+
+  check_character(group_cols, allow_na = FALSE, allow_null = TRUE)
+
+  check_bool(use_cache)
+
+  if(is.null(group_cols))
+    cache_key <- paste0("resistance_rate_", resistance)
+  else
+    cache_key <- paste0("resistance_rate_", resistance, "_by.", paste0(group_cols, collapse = "."))
+
+  if(use_cache && !is.null(r <- get_cached(x, cache_key)))
+    return(r)
+
+  x$patients |>
+    dplyr::inner_join(
+      x$enrollments |>
+        dplyr::select(
+          c(
+            "patient_key",
+            !tidyselect::any_of(c(names(x$patients))))
+        ) |>
+        dplyr::inner_join(
+          x$events |>
+            dplyr::select(
+              c(
+                "enrollment_key",
+                !tidyselect::any_of(c(names(x$enrollments))))
+            ) |>
+            dplyr::inner_join(
+              x$infectiousAgentFindings |>
+                dplyr::select(
+                  c(
+                    "event_key","secondary_bsi","pathogen_key","index",
+                    "source",tidyselect::all_of(resistance))
+                ) |>
+                dplyr::inner_join(
+                  get_pathogen_taxonomy(),
+                  dplyr::join_by("pathogen_key" == "input_id")),
+              dplyr::join_by("event_key")),
+          dplyr::join_by("enrollment_key")),
+      dplyr::join_by("patient_key")) |>
+    dplyr::group_by(dplyr::across(tidyselect::all_of(c(group_cols, resistance)))) |>
+    dplyr::summarise(
+      value=dplyr::n(),
+      .groups = "drop") |>
+    dplyr::filter(!is.na(.data[[resistance]]) & .data[[resistance]] != "not_tested") |>
+    tidyr::pivot_wider(
+      names_from = resistance,
+      values_fill = 0L,
+      names_expand = TRUE) |> dplyr::select(!"not_tested") |>
+    dplyr::mutate(
+      resistant = .data$yes,
+      not_resistant = .data$no,
+      total = .data$resistant + .data$not_resistant,
+      rate = .data$resistant / .data$total * 100,
+      .keep = "unused") |>
+    cache(x, cache_key)
+}
+
 get_risk_population <- function(x, group_cols = NULL, use_cache = TRUE)
 {
   if(is.null(group_cols))
