@@ -243,9 +243,34 @@ apply_postfilter <- function(x)
 
 apply_data_removal <- function(x, dataset_options)
 {
+  if(!dataset_options$include_patient_id)
+  {
+    x$patients <- x$patients |>
+      dplyr::select(!tidyselect::any_of("patient_id"))
+  }
+
+  if(!("patients" %in% dataset_options$include_dhis2_ids))
+  {
+    x$patients <- x$patients |>
+      dplyr::select(!tidyselect::any_of("trackedEntity"))
+  }
+
+  if(!("enrollments" %in% dataset_options$include_dhis2_ids))
+  {
+    x$enrollments <- x$enrollments |>
+      dplyr::select(!tidyselect::any_of("enrollment"))
+  }
+
+  if(!("departments" %in% dataset_options$include_dhis2_ids))
+  {
+    x$metadata$departments <- x$metadata$departments |>
+      dplyr::select(!tidyselect::any_of("orgUnit"))
+  }
+
   if(dataset_options$include_department == "no")
   {
     x$metadata$departments <- NULL
+
     x$patients <- x$patients |>
       dplyr::select(!tidyselect::any_of("department_key"))
     x$enrollments <- x$enrollments |>
@@ -253,8 +278,14 @@ apply_data_removal <- function(x, dataset_options)
     x$events <- x$events |>
       dplyr::select(!tidyselect::any_of("department_key"))
   }
-  if(dataset_options$include_department == "pseudonymised")
-    x$metadata$departments <- NULL
+  else if(dataset_options$include_department == "pseudonymised")
+  {
+    if("departments" %in% dataset_options$include_dhis2_ids)
+      x$metadata$departments <- x$metadata$departments |>
+        dplyr::select(tidyselect::all_of(c("department_key","orgUnit")))
+    else
+      x$metadata$departments <- NULL
+  }
 
   if(dataset_options$include_hospital == "no")
   {

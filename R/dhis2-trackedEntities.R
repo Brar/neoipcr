@@ -29,7 +29,8 @@ get_trackedEntities_request <- function(
      dataset_options$include_department != "no" ||
      dataset_options$include_hospital != "no" ||
      dataset_options$include_country != "no" ||
-     dataset_options$include_world_bank_class != "no")
+     dataset_options$include_world_bank_class != "no" ||
+     length(dataset_options$include_invalid_patients) > 1)
     fields <- paste0(fields,",orgUnit")
 
   if(dataset_options$include_deleted)
@@ -65,7 +66,7 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
       dplyr::join_by("optionSet" == "optionSet_code")) |>
     dplyr::select(!c("attributes_attribute", "optionSet"))
 
-  if(!dataset_options$include_patient_id)
+  if(!dataset_options$include_patient_id && length(dataset_options$include_invalid_patients) <= 1)
     patients <- patients |>
       dplyr::filter(.data$code != "NEOIPC_PATIENT_ID")
 
@@ -129,7 +130,8 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
   if(dataset_options$include_department != "no" ||
      dataset_options$include_hospital != "no" ||
      dataset_options$include_country != "no" ||
-     dataset_options$include_world_bank_class != "no")
+     dataset_options$include_world_bank_class != "no" ||
+     length(dataset_options$include_invalid_patients) > 1)
   {
     if(dataset_options$include_world_bank_class != "no")
       patients <- patients |>
@@ -161,14 +163,15 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
           metadata$departments |>
             dplyr::select("orgUnit", "department_key", "hospital_key"),
           dplyr::join_by("orgUnit"))
-    else if(dataset_options$include_department != "no")
+    else if(dataset_options$include_department != "no" ||
+            length(dataset_options$include_invalid_patients) > 1)
       patients <- patients |>
         dplyr::inner_join(
           metadata$departments |>
             dplyr::select("orgUnit", "department_key"),
           dplyr::join_by("orgUnit"))
 
-    exclusions <- NULL
+    exclusions <- "orgUnit"
 
     if(dataset_options$include_world_bank_class == "no")
       exclusions <- c(exclusions, "world_bank_class_key")
@@ -176,11 +179,10 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
       exclusions <- c(exclusions, "country_key")
     if(dataset_options$include_hospital == "no")
       exclusions <- c(exclusions, "hospital_key")
-    if(dataset_options$include_department == "no")
-      exclusions <- c(exclusions, "department_key")
 
     patients <- patients |>
       dplyr::select(!tidyselect::any_of(exclusions))
   }
+
   return(patients)
 }

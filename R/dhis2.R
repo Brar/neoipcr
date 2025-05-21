@@ -25,7 +25,7 @@
 #' @param include_user Include the World Bank class into the dataset. Possible
 #'  values are "no", "pseudonymised" and "yes"
 #' @param include_patient_id Include the NeoIPC Patient ID into the dataset.
-#' @param include_dhis2_id Include the DHIS2 ids into the dataset.
+#' @param include_dhis2_ids Include the DHIS2 ids into the dataset.
 #' @param include_timestamps Include the createdAt and modifiedAt timestamps
 #'  into the dataset.
 #' @param include_ineligible_patients Include data from patients that don't meet
@@ -33,6 +33,11 @@
 #' @param include_unenrolled_patients Include data from unenrolled NeoIPC
 #'  patient records into the dataset.
 #' @param include_test_data Include data from test units into the dataset.
+#' @param include_ineligible_patients Include data from patients that do not
+#'  meet the NeoIPC Core patient case eligibility criteria.
+#' @param include_unenrolled_patients Include patients without enrollments.
+#' @param include_invalid_patients Include data from patient records that
+#'  could have validation errors
 #' @param include_incomplete Include incomplete records into the dataset.
 #'  Possible values are "enrollments" and "events"
 #' @param include_notes Include notes into the dataset. Possible values are
@@ -57,11 +62,12 @@ dhis2_dataset_options <- function(
     include_department = c("no","pseudonymised","yes"),
     include_user = c("no","pseudonymised","yes"),
     include_patient_id = FALSE,
-    include_dhis2_id = FALSE,
+    include_dhis2_ids = rlang::chr(),
     include_timestamps = FALSE,
     include_test_data = FALSE,
     include_ineligible_patients = FALSE,
     include_unenrolled_patients = FALSE,
+    include_invalid_patients = FALSE,
     include_incomplete = rlang::chr(),
     include_notes = rlang::chr(),
     include_deleted = FALSE,
@@ -75,11 +81,11 @@ dhis2_dataset_options <- function(
   check_number_whole(gestational_age_to, allow_null = TRUE)
   check_character(country_filter, allow_null = TRUE)
   check_bool(include_patient_id)
-  check_bool(include_dhis2_id)
   check_bool(include_timestamps)
   check_bool(include_test_data)
   check_bool(include_ineligible_patients)
   check_bool(include_unenrolled_patients)
+  #check_bool(include_invalid_patients) # ToDo: validate
   check_bool(include_deleted)
   check_bool(translate)
 
@@ -103,11 +109,15 @@ dhis2_dataset_options <- function(
     include_department = rlang::arg_match(include_department),
     include_user = rlang::arg_match(include_user),
     include_patient_id = include_patient_id,
-    include_dhis2_id = include_dhis2_id,
+    include_dhis2_ids = rlang::arg_match(
+      include_dhis2_ids,
+      c("departments","patients","enrollments"),
+      multiple = TRUE),
     include_timestamps = include_timestamps,
     include_test_data = include_test_data,
     include_ineligible_patients = include_ineligible_patients,
     include_unenrolled_patients = include_unenrolled_patients,
+    include_invalid_patients = include_invalid_patients,
     include_incomplete = rlang::arg_match(
       include_incomplete,
       c("enrollments","events"),
@@ -229,7 +239,7 @@ import_dhis2 <- function(
   class(infectiousAgentFindings) <- c("neoipcr_iaf", class(infectiousAgentFindings))
   class(metadata) <- c("neoipcr_metadata", class(metadata))
 
-  structure(
+  r <- structure(
     list(
       patients = patients,
       enrollments = enrollments,
@@ -245,9 +255,71 @@ import_dhis2 <- function(
       infectiousAgentFindings = infectiousAgentFindings,
       metadata = metadata,
       `.cache` = new.env(parent = emptyenv())),
-    class = c("neoipcr_ds", "list")) |>
+    class = c("neoipcr_ds", "list"))
+
+  if(!rlang::is_bool(dataset_options$include_invalid_patients) ||
+     dataset_options$include_invalid_patients == FALSE)
+  {
+    if(!rlang::is_bool(dataset_options$include_invalid_patients))
+      exceptions <- dataset_options$include_invalid_patients |>
+        transform_user_exceptions(r)
+    else exceptions <- NULL
+
+    v <- r |> validate(exceptions = exceptions)
+    r$validationResults <- v
+    r$patients <- r$patients |>
+      dplyr::anti_join(v, dplyr::join_by("patient_key"))
+  }
+
+  r |>
     apply_postfilter() |>
     apply_data_removal(dataset_options)
+}
+
+is_single_department <- function(ds) ds$metadata$departments |>
+  dplyr::pull("code") |>
+  length() == 1
+
+transform_user_exceptions <- function(ex, ds)
+{
+  ex <- ex |>
+    dplyr::mutate(
+      event_type_key = factor(
+        tolower(.data$EVENT_TYPE),
+        levels = c("adm","pro","bsi","nec","ssi","hap","end")),
+      .keep = "unused")
+
+  if(is_single_department(ds))
+    ex <- ex |>
+      dplyr::left_join(
+        ds$patients |>
+          dplyr::select("patient_key","patient_id"),
+        dplyr::join_by("NEOIPC_PATIENT_ID"=="patient_id")) |>
+      dplyr::left_join(
+        ds$enrollments |>
+          dplyr::select("patient_key","enrollment_key","enrolledAt"),
+        dplyr::join_by("patient_key","ENROLMENT_DATE"=="enrolledAt"))
+  else
+    ex <- ex |>
+      dplyr::inner_join(
+        ds$metadata$departments |>
+          dplyr::select("department_key","code"),
+        dplyr::join_by("DEPARTMENT_CODE" == "code")) |>
+      dplyr::left_join(
+        ds$patients |>
+          dplyr::select("department_key","patient_key","patient_id"),
+        dplyr::join_by("department_key","NEOIPC_PATIENT_ID"=="patient_id")) |>
+      dplyr::left_join(
+        ds$enrollments |>
+          dplyr::select("department_key","patient_key","enrollment_key","enrolledAt"),
+        dplyr::join_by("department_key","patient_key","ENROLMENT_DATE"=="enrolledAt"))
+
+  ex |>
+    dplyr::left_join(
+      ds$events |>
+        dplyr::select("event_key","enrollment_key","event_type_key","occurredAt"),
+      dplyr::join_by("enrollment_key","event_type_key","EVENT_DATE"=="occurredAt")) |>
+    dplyr::select("rule_id"="RULE_ID",tidyselect::any_of("department_key"),"patient_key","enrollment_key","event_key")
 }
 
 dhis2_request <- function(connection_options)

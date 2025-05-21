@@ -19,7 +19,8 @@ get_enrollments_request <- function(req_base, dataset_options, programId)
      dataset_options$include_department != "no" ||
      dataset_options$include_hospital != "no" ||
      dataset_options$include_country != "no" ||
-     dataset_options$include_world_bank_class != "no")
+     dataset_options$include_world_bank_class != "no" ||
+     length(dataset_options$include_invalid_patients) > 1)
     fields <- paste0(fields,",orgUnit")
 
   if(dataset_options$include_deleted)
@@ -87,13 +88,15 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
         dplyr::join_by("hospital_key"))
   else if(dataset_options$include_test_data ||
           dataset_options$include_hospital != "no" ||
-          dataset_options$include_department != "no")
+          dataset_options$include_department != "no" ||
+          length(dataset_options$include_invalid_patients) > 1)
   {
     fields <- "orgUnit"
 
     if(dataset_options$include_hospital != "no")
       fields <- c(fields, "department_key", "hospital_key")
-    else if(dataset_options$include_department != "no")
+    else if(dataset_options$include_department != "no" ||
+            length(dataset_options$include_invalid_patients) > 1)
       fields <- c(fields, "department_key")
 
     if(dataset_options$include_test_data)
@@ -138,5 +141,6 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
       dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
 
   enrollments |>
+    dplyr::select(!"orgUnit") |>
     add_key_column("enrollment_key")
 }

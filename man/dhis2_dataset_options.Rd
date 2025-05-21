@@ -18,11 +18,12 @@ dhis2_dataset_options(
   include_department = c("no", "pseudonymised", "yes"),
   include_user = c("no", "pseudonymised", "yes"),
   include_patient_id = FALSE,
-  include_dhis2_id = FALSE,
+  include_dhis2_ids = rlang::chr(),
   include_timestamps = FALSE,
   include_test_data = FALSE,
   include_ineligible_patients = FALSE,
   include_unenrolled_patients = FALSE,
+  include_invalid_patients = FALSE,
   include_incomplete = rlang::chr(),
   include_notes = rlang::chr(),
   include_deleted = FALSE,
@@ -70,18 +71,20 @@ values are "no", "pseudonymised" and "yes"}
 
 \item{include_patient_id}{Include the NeoIPC Patient ID into the dataset.}
 
-\item{include_dhis2_id}{Include the DHIS2 ids into the dataset.}
+\item{include_dhis2_ids}{Include the DHIS2 ids into the dataset.}
 
 \item{include_timestamps}{Include the createdAt and modifiedAt timestamps
 into the dataset.}
 
 \item{include_test_data}{Include data from test units into the dataset.}
 
-\item{include_ineligible_patients}{Include data from patients that don't meet
-the NeoIPC core case eligibility criteria into the dataset.}
+\item{include_ineligible_patients}{Include data from patients that do not
+meet the NeoIPC Core patient case eligibility criteria.}
 
-\item{include_unenrolled_patients}{Include data from unenrolled NeoIPC
-patient records into the dataset.}
+\item{include_unenrolled_patients}{Include patients without enrollments.}
+
+\item{include_invalid_patients}{Include data from patient records that
+could have validation errors}
 
 \item{include_incomplete}{Include incomplete records into the dataset.
 Possible values are "enrollments" and "events"}

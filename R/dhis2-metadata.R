@@ -123,6 +123,9 @@ get_organisationUnit_request <- function(req_base, user_info, dataset_options)
 
   if(dataset_options$include_department == "yes")
     fields <- paste0(fields, ",code,displayName,displayShortName,displayDescription,openingDate,comment,geometry")
+  # We need the code in this case to transform the supplied exceptions
+  else if(length(dataset_options$include_invalid_patients) > 1)
+    fields <- paste0(fields, ",code")
 
   if(!is.null(dataset_options$country_filter) ||
      dataset_options$include_country != "no" ||
