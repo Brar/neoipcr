@@ -1048,7 +1048,29 @@ get_infection_counts <- function(x, group_cols = NULL, use_cache = TRUE)
 
   inf_events <- c("bsi","nec","hap","ssi")
 
-  event_base <- x$events |>
+  event_base <- x$patients |>
+    dplyr::mutate(
+      bw50 = bw50(.data$birth_weight),
+      bw125 = bw125(.data$birth_weight),
+      bw250 = bw250(.data$birth_weight),
+      bw500 = bw500(.data$birth_weight),
+      comp_gw = as.integer(.data$total_gestation_days / 7)) |>
+    dplyr::inner_join(
+      x$enrollments |>
+        dplyr::select(
+          c(
+            "patient_key",
+            !tidyselect::any_of(c(names(x$patients))))
+        ) |>
+        dplyr::inner_join(
+          x$events |>
+            dplyr::select(
+              c(
+                "enrollment_key",
+                !tidyselect::any_of(c(names(x$patients),names(x$enrollments))))
+            ),
+          dplyr::join_by("enrollment_key")),
+      dplyr::join_by("patient_key")) |>
     dplyr::filter(.data$event_type_key %in% inf_events) |>
     dplyr::mutate(
       event_type_key = factor(
@@ -1226,7 +1248,27 @@ get_resistance_rate <- function(x, resistance, group_cols = NULL, use_cache = TR
   if(use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
-  x$patients |>
+  inf_group_cols <- c(
+    names(x$patients),
+    names(x$enrollments),
+    names(x$events)) |>
+    unique() |>
+    intersect(group_cols)
+
+  inf_w_ia <- x |>
+    get_infection_counts(
+      group_cols = c("with_pathogen", inf_group_cols),
+      use_cache = use_cache) |>
+    dplyr::filter(.data$with_pathogen) |>
+    dplyr::select(!"with_pathogen")
+
+  r <- x$patients |>
+    dplyr::mutate(
+      bw50 = bw50(.data$birth_weight),
+      bw125 = bw125(.data$birth_weight),
+      bw250 = bw250(.data$birth_weight),
+      bw500 = bw500(.data$birth_weight),
+      comp_gw = as.integer(.data$total_gestation_days / 7)) |>
     dplyr::inner_join(
       x$enrollments |>
         dplyr::select(
@@ -1239,7 +1281,7 @@ get_resistance_rate <- function(x, resistance, group_cols = NULL, use_cache = TR
             dplyr::select(
               c(
                 "enrollment_key",
-                !tidyselect::any_of(c(names(x$enrollments))))
+                !tidyselect::any_of(c(names(x$patients),names(x$enrollments))))
             ) |>
             dplyr::inner_join(
               x$infectiousAgentFindings |>
@@ -1256,18 +1298,35 @@ get_resistance_rate <- function(x, resistance, group_cols = NULL, use_cache = TR
       dplyr::join_by("patient_key")) |>
     dplyr::group_by(dplyr::across(tidyselect::all_of(c(group_cols, resistance)))) |>
     dplyr::summarise(
-      value=dplyr::n(),
+      inf = dplyr::n_distinct(.data$event_key),
+      ia_dtct = dplyr::n(),
       .groups = "drop") |>
     dplyr::filter(!is.na(.data[[resistance]]) & .data[[resistance]] != "not_tested") |>
     tidyr::pivot_wider(
       names_from = resistance,
+      values_from = c("inf","ia_dtct"),
       values_fill = 0L,
-      names_expand = TRUE) |> dplyr::select(!"not_tested") |>
+      names_expand = TRUE) |>
+    dplyr::select(!tidyselect::ends_with("not_tested"))
+
+  if(length(inf_group_cols) < 1)
+    r <- r |>
+    dplyr::bind_cols(inf_w_ia)
+  else
+    r <- r |>
+    dplyr::inner_join(inf_w_ia, by = inf_group_cols)
+
+  r |>
     dplyr::mutate(
-      resistant = .data$yes,
-      not_resistant = .data$no,
-      total = .data$resistant + .data$not_resistant,
-      rate = .data$resistant / .data$total * 100,
+      inf_rs = .data$inf_yes,
+      inf_nrs = .data$inf_no,
+      inf_tst_tot = .data$inf_rs + .data$inf_nrs,
+      inf_w_ia = .data$n,
+      ia_rs = .data$ia_dtct_yes,
+      ia_nrs = .data$ia_dtct_no,
+      ia_tst_tot = .data$ia_rs + .data$ia_nrs,
+      ia_rs_rate = .data$ia_rs / .data$ia_tst_tot * 100,
+      inf_rs_rate = .data$inf_rs / .data$inf_w_ia * 100,
       .keep = "unused") |>
     cache(x, cache_key)
 }
