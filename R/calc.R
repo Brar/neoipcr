@@ -23,6 +23,8 @@ calculate_reference_data <- function(ds, use_cache = TRUE)
         get_infectious_agent_detection_rate_per_inf_type_table(ds, use_cache),
       infectious_agent_detection_rate_per_agent_table =
         get_infectious_agent_detection_rate_per_agent_table(ds, use_cache),
+      abr_infection_rate_table =
+        get_abr_infection_rate_table(ds, use_cache),
       resistance_test_rate_table =
         get_resistance_test_rate_table(ds, use_cache)
     ),
@@ -149,7 +151,7 @@ get_surgery_rate_table <- function(ref, use_cache = TRUE)
   n_deps <- nrow(pats_per_dept)
   median_patients <- stats::median(dplyr::pull(pats_per_dept, "n_patients"))
 
-  tibble::tibble(
+  r <- tibble::tibble(
     procedure_category = "overall",
     n = get_procedures(ref, use_cache = use_cache) |>
       dplyr::pull()) |>
@@ -164,7 +166,15 @@ get_surgery_rate_table <- function(ref, use_cache = TRUE)
         dplyr::select("n_patients")
     ) |>
     dplyr::mutate(rate = .data$n / .data$n_patients * 100) |>
-    dplyr::select(!"n_patients") |>
+    dplyr::select(!"n_patients")
+
+  if(nrow(r) == 1 && r$n == 0)
+    return(
+      dplyr::bind_cols(r, q1 = NA, q2 = NA, q3 = NA) |>
+        add_class("neoipcr_tbl_sr_ref") |>
+        cache(ref, "surgery_rate_table"))
+
+  r |>
     dplyr::inner_join(
       get_procedures(
         ref,
@@ -663,6 +673,177 @@ get_infectious_agent_detection_rate_per_agent_table <- function(ref, use_cache =
     add_class("neoipcr_tbl_iadrpa_ref") |>
     cache(ref, "infectious_agent_detection_rate_per_agent_table")
 }
+
+#' Get the table of infection rates with antibiotic resistant bacteria in a
+#'  somewhat meaningful taxonomic structure
+#'
+#' @param ref The reference data set which can be either a neoipcr_ref_ds or a
+#'  neoipcr_ds object
+#' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#'
+#' @returns A table containing infection rates with antibiotic resistant
+#'  bacteria
+#' @export
+get_abr_infection_rate_table <- function(ref, use_cache = TRUE)
+{
+  check_neoipcr_ds_or_ref_ds(ref)
+
+  if(is_neoipcr_ref_ds(ref))
+    return(ref$abr_infection_rate_table)
+
+  if(use_cache && !is.null(r <- get_cached(ref, "abr_infection_rate_table")))
+    return(r)
+
+  abr_types <- c("3gcr","car","cor")
+  tbl <- NULL
+
+  for (abr_type in abr_types) {
+    t <- ref |>
+      get_resistance_rate_with_department_quartiles(
+        resistance = abr_type,
+        use_cache = use_cache) |>
+      dplyr::select("n","rate","q1","q2","q3")
+
+    lv0 <- dplyr::bind_cols(
+      abr_type = abr_type,
+      lv = 0L,
+      tl = "none",
+      group = "Total",
+      t)
+
+    if(t$n > 0) {
+      o <- ref |>
+        get_resistance_rate_with_department_quartiles(
+          resistance = abr_type,
+          group_cols = "order",
+          use_cache = use_cache) |>
+        dplyr::select("group"="order","n","rate","q1","q2","q3") |>
+        dplyr::arrange(dplyr::desc(.data$rate))
+
+      for (j in 1:nrow(o)) {
+        oj <- o[j,]
+
+        if(oj$n > 0) {
+          lv1 <- dplyr::bind_cols(
+            abr_type = abr_type,
+            lv = 2L,
+            tl = "order",
+            oj)
+          g <- ref |>
+            get_resistance_rate_with_department_quartiles(
+              resistance = abr_type,
+              group_cols = c("order","genus"),
+              use_cache = use_cache) |>
+            dplyr::filter(.data$order == oj$group) |>
+            dplyr::select("group"="genus","n","rate","q1","q2","q3") |>
+            dplyr::arrange(dplyr::desc(.data$rate))
+
+          for (k in 1:nrow(g)) {
+            gk <- g[k,]
+
+            if(gk$n > 0) {
+              lv2 <- dplyr::bind_cols(
+                abr_type = abr_type,
+                lv = 3L,
+                tl = "genus",
+                gk |>
+                  dplyr::mutate(group = paste(.data$group, "spp.")))
+              s <- ref |>
+                get_resistance_rate_with_department_quartiles(
+                  resistance = abr_type,
+                  group_cols = c("genus","species"),
+                  use_cache = use_cache) |>
+                dplyr::filter(.data$genus == gk$group) |>
+                dplyr::select("group"="species","n","rate","q1","q2","q3") |>
+                dplyr::arrange(dplyr::desc(.data$rate))
+              lv3 <- dplyr::bind_rows(
+                dplyr::bind_cols(
+                  abr_type = abr_type,
+                  lv = 4L,
+                  tl = "species",
+                  s |>
+                    dplyr::filter(!is.na(.data$group) & .data$n > 0)),
+                dplyr::bind_cols(
+                  abr_type = abr_type,
+                  lv = 4L,
+                  tl = "species_nos",
+                  s |>
+                    dplyr::filter(is.na(.data$group) & .data$n > 0) |>
+                    dplyr::mutate(group = paste(gk$group,"spp. n.o.s."))))
+              lv2 <- dplyr::bind_rows(lv2,lv3)
+              lv1 <- dplyr::bind_rows(lv1,lv2)
+            }
+          }
+          lv0 <- dplyr::bind_rows(lv0,lv1)
+          }
+        }
+      }
+    tbl <- dplyr::bind_rows(tbl,lv0)
+  }
+
+  # MRSA only has one species
+  tbl <-dplyr::bind_rows(
+    tbl,
+    dplyr::bind_cols(
+      abr_type = "mrsa",
+      lv = 0L,
+      tl = "species",
+      ref |>
+        get_resistance_rate_with_department_quartiles(
+          resistance = "mrsa",
+          group_cols = "species",
+          use_cache = use_cache) |>
+        dplyr::select("group"="species","n","rate","q1","q2","q3")))
+
+  # VRE only has one genus
+  g <- ref |>
+    get_resistance_rate_with_department_quartiles(
+      resistance = "vre",
+      group_cols = "genus",
+      use_cache = use_cache) |>
+    dplyr::select("group"="genus","n","rate","q1","q2","q3") |>
+    dplyr::mutate(group = paste(.data$group, "spp."))
+
+  lv0 <- dplyr::bind_cols(
+    abr_type = "vre",
+    lv = 0L,
+    tl = "genus",
+    g)
+
+  if(g$n > 0) {
+    s <- ref |>
+      get_resistance_rate_with_department_quartiles(
+        resistance = "vre",
+        group_cols = c("species"),
+        use_cache = use_cache) |>
+      dplyr::select("group"="species","n","rate","q1","q2","q3") |>
+      dplyr::arrange(dplyr::desc(.data$rate))
+
+    lv1 <- dplyr::bind_rows(
+      dplyr::bind_cols(
+        abr_type = abr_type,
+        lv = 1L,
+        tl = "species",
+        s |>
+          dplyr::filter(!is.na(.data$group) & .data$n > 0)),
+      dplyr::bind_cols(
+        abr_type = abr_type,
+        lv = 1L,
+        tl = "species_nos",
+        s |>
+          dplyr::filter(is.na(.data$group) & .data$n > 0) |>
+          dplyr::mutate(group = paste(gk$group,"spp. n.o.s."))))
+
+    lv0 <- dplyr::bind_rows(lv0,lv1)
+  }
+
+  tbl <-dplyr::bind_rows(tbl,lv0)
+
+  tbl |>
+    add_class("neoipcr_tbl_abr_ir_ref") |>
+    cache(ref, "abr_infection_rate_table")
+}
+
 
 #' Get the table with resistance test rates of the recorded resistance
 #'  mechanisms
@@ -1229,6 +1410,72 @@ get_resistance_test_rate <- function(x, resistance, group_cols = NULL, use_cache
     cache(x, cache_key)
 }
 
+get_resistance_rate_with_department_quartiles <- function(x, resistance, group_cols = NULL, use_cache = TRUE)
+{
+  rate <- x |>
+    get_resistance_rate(
+      resistance = resistance,
+      group_cols = group_cols,
+      use_cache = use_cache)
+
+  deps <- x |>
+    get_resistance_rate(
+      resistance = resistance,
+      group_cols = c("department_key", group_cols),
+      use_cache = use_cache) |>
+    dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols)))
+
+  dep_stats <- deps |>
+    dplyr::summarise(
+      n_deps = dplyr::n(),
+      median = stats::median(.data$inf_w_ia),
+      .groups = "drop")
+
+  quartiles <- deps |>
+    dplyr::reframe(
+      value = stats::quantile(
+        .data$inf_rs_rate,
+        prob = c(.25,.5,.75),
+        na.rm = TRUE)) |>
+    dplyr::mutate(
+      name=names(.data$value),
+      name=dplyr::case_match(
+        .data$name,
+        "25%"~"q1",
+        "50%"~"q2",
+        "75%"~"q3")) |>
+    tidyr::pivot_wider()
+
+  if(is.null(group_cols))
+    rate <- rate |>
+    dplyr::bind_cols(dep_stats) |>
+    dplyr::bind_cols(quartiles)
+  else
+    rate <- rate |>
+    dplyr::inner_join(dep_stats, by = group_cols) |>
+    dplyr::inner_join(quartiles, by = group_cols)
+
+  rate |>
+    dplyr::mutate(
+      drop_quartiles = .data$n_deps < 5 | round(100 / .data$inf_rs_rate) >= .data$median,
+      q1 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q1),
+      q2 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q2),
+      q3 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q3)) |>
+    dplyr::select(!c("inf_nrs", "inf_tst_tot", "inf_w_ia", "ia_rs", "ia_nrs",
+                     "ia_tst_tot", "ia_rs_rate","n_deps","median",
+                     "drop_quartiles")) |>
+    dplyr::rename("n"="inf_rs","rate"="inf_rs_rate")
+}
+
 get_resistance_rate <- function(x, resistance, group_cols = NULL, use_cache = TRUE)
 {
   res_names <- c("3gcr","car","cor","mrsa","vre")
@@ -1366,16 +1613,35 @@ get_risk_time <- function(x, group_cols = NULL, use_cache = TRUE)
 
   aware_days <- get_aware_days(x, use_cache)
 
-  x$surveillanceEndData |>
-    dplyr::inner_join(aware_days, dplyr::join_by("event_key")) |>
-    dplyr::inner_join(
-      x$events |>
-        dplyr::select("event_key","enrollment_key"),
-      dplyr::join_by("event_key")) |>
+  x$patients |>
+    dplyr::mutate(
+      bw50 = bw50(.data$birth_weight),
+      bw125 = bw125(.data$birth_weight),
+      bw250 = bw250(.data$birth_weight),
+      bw500 = bw500(.data$birth_weight),
+      comp_gw = as.integer(.data$total_gestation_days / 7)) |>
     dplyr::inner_join(
       x$enrollments |>
-        dplyr::select(tidyselect::any_of(c("enrollment_key", group_cols))),
-      dplyr::join_by("enrollment_key")) |>
+        dplyr::select(
+          c(
+            "patient_key",
+            !tidyselect::any_of(c(names(x$patients))))
+        ) |>
+        dplyr::inner_join(
+          x$events |>
+            dplyr::select(
+              c(
+                "enrollment_key",
+                !tidyselect::any_of(c(names(x$patients),names(x$enrollments))))
+            ) |>
+            dplyr::inner_join(
+              x$surveillanceEndData |>
+                dplyr::inner_join(
+                  aware_days,
+                  dplyr::join_by("event_key")),
+              dplyr::join_by("event_key")),
+          dplyr::join_by("enrollment_key")),
+      dplyr::join_by("patient_key")) |>
     dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
     dplyr::summarise(dplyr::across(tidyselect::ends_with("_days"), sum), .groups = "drop") |>
     dplyr::mutate(
@@ -1628,7 +1894,7 @@ bw50 <- function(x, as_factor = TRUE)
   ordered(
     m,
     levels = seq(min(m), max(m), 50),
-    labels = paste0(format(seq(min(lb), max(lb), 50))," g - ",format(seq(min(ub), max(ub), 50))," g"))
+    labels = paste0(format(seq(min(lb), max(lb), 50))," g - ",format(seq(min(ub), max(ub), 50))," g"))
 }
 
 bw125 <- function(x, as_factor = TRUE)
@@ -1642,7 +1908,7 @@ bw125 <- function(x, as_factor = TRUE)
   ordered(
     m,
     levels = seq(min(m), max(m), 125),
-    labels = paste0(format(seq(min(lb), max(lb), 125))," g - ",format(seq(min(ub), max(ub), 125))," g"))
+    labels = paste0(format(seq(min(lb), max(lb), 125))," g - ",format(seq(min(ub), max(ub), 125))," g"))
 }
 
 bw250 <- function(x, as_factor = TRUE)
@@ -1656,7 +1922,7 @@ bw250 <- function(x, as_factor = TRUE)
   ordered(
     m,
     levels = seq(min(m), max(m), 250),
-    labels = paste0(format(seq(min(lb), max(lb), 250))," g - ",format(seq(min(ub), max(ub), 250))," g"))
+    labels = paste0(format(seq(min(lb), max(lb), 250))," g - ",format(seq(min(ub), max(ub), 250))," g"))
 }
 
 bw500 <- function(x, as_factor = TRUE)
@@ -1670,7 +1936,7 @@ bw500 <- function(x, as_factor = TRUE)
   ordered(
     m,
     levels = seq(min(m), max(m), 500),
-    labels = paste0(format(seq(min(lb), max(lb), 500))," g - ",format(seq(min(ub), max(ub), 500))," g"))
+    labels = paste0(format(seq(min(lb), max(lb), 500))," g - ",format(seq(min(ub), max(ub), 500))," g"))
 }
 
 add_class <- function(x, class_name)
@@ -1684,6 +1950,11 @@ cache <- function(x, container, key)
 {
   container$.cache[[key]] = x
   return(x)
+}
+
+clean_cache <- function(x)
+{
+  rm(list = ls(envir = x$.cache), envir = x$.cache)
 }
 
 new_cache <- function(x)
