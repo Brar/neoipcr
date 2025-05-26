@@ -683,7 +683,7 @@ validation_rule_25 <- function(x, exceptions)
           ~ .x == "COMPLETED")) |>
       dplyr::anti_join(
         x$events |>
-          dplyr::filter(event_type_key == "end"),
+          dplyr::filter(.data$event_type_key == "end"),
         dplyr::join_by("enrollment_key")) |>
       dplyr::select(
         tidyselect::any_of(
@@ -714,7 +714,7 @@ validation_rule_26 <- function(x, exceptions)
           ~ .x == "COMPLETED")) |>
       dplyr::anti_join(
         x$events |>
-          dplyr::filter(event_type_key == "adm"),
+          dplyr::filter(.data$event_type_key == "adm"),
         dplyr::join_by("enrollment_key")) |>
       dplyr::select(
         tidyselect::any_of(
