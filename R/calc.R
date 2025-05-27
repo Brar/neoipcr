@@ -1800,8 +1800,10 @@ get_procedure_category <- function(x)
     target %in% c(
       "MCX",# Interventions on diaphragm
       "JBF",# Interventions on lung parenchyma
-      "JCH"# Interventions on thoracic cavity
-      ) &
+      "JCA",# Interventions on pleura
+      "JCB",# Interventions on pleura
+      "JCH" # Interventions on thoracic cavity
+    ) &
       means %in% c("AA","AB") ~ "lung_pleural_space_thoracic_surgery",
 
     # Oesophageal surgery
@@ -1810,15 +1812,27 @@ get_procedure_category <- function(x)
 
     # Abdominal surgery
     ############################################################################
-    target %in% c("KBF","KBK","KBP","KBZ","KMA","PAK","PAL") &
+    target %in% c(
+      "KBF",# Interventions on stomach
+      "KBK",# Interventions on small intestine, not elsewhere classified
+      "KBP",# Interventions on colon
+      "KBZ",# Interventions on large intestine, not elsewhere classified
+      "KMA",# Interventions on peritoneum
+      "PAK",# Interventions on abdomen, not otherwise specified
+      "PAL"#  Interventions on abdominal wall, not otherwise specified
+      ) &
       means %in% c("AA","AB") ~ "abdominal_surgery",
 
-    x == "KMA.JB.AE" ~ "abdominal_surgery",
-    x == "PAK.JB.AE" ~ "abdominal_surgery",# Percutaneous abdominal drainage
-
-    target %in% c("PTA","PTB") &
+    target %in% c(
+      "PTA",
+      "PTB"
+      ) &
       action == "LA" &
       means == "AC" ~ "abdominal_surgery",
+
+    x == "KMA.JB.AE" ~ "abdominal_surgery",# Percutaneous drainage of peritoneal cavity
+    x == "KZZ.MK.AA" ~ "abdominal_surgery",# Repair of intestine, not elsewhere classified
+    x == "PAK.JB.AE" ~ "abdominal_surgery",# Percutaneous abdominal drainage
 
     # Inguinal hernia surgery
     ############################################################################
@@ -1835,7 +1849,8 @@ get_procedure_category <- function(x)
       "KAB.FB.AC",
       "LAB.JG.AH",
       "LCA.JG.AA",
-      "PAW.JB.AA") ~ "other",
+      "PAW.JB.AA"
+      ) ~ "other",
 
     # Not considered as surgery (remove)
     ############################################################################
