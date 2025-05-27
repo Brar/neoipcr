@@ -1643,7 +1643,7 @@ get_risk_time <- function(x, group_cols = NULL, use_cache = TRUE)
           dplyr::join_by("enrollment_key")),
       dplyr::join_by("patient_key")) |>
     dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
-    dplyr::summarise(dplyr::across(tidyselect::ends_with("_days"), sum), .groups = "drop") |>
+    dplyr::summarise(dplyr::across(!"total_gestation_days" & tidyselect::ends_with("_days"), sum), .groups = "drop") |>
     dplyr::mutate(
       dplyr::across(
         !tidyselect::all_of(c(group_cols,"patient_days")),
