@@ -19,12 +19,12 @@ calculate_reference_data <- function(ds, use_cache = TRUE)
         get_incidence_density_rate_table(ds, use_cache),
       dev_ass_incidence_density_rate_table =
         get_dev_ass_incidence_density_rate_table(ds, use_cache),
-      infectious_agent_detection_rate_per_inf_type_table =
-        get_infectious_agent_detection_rate_per_inf_type_table(ds, use_cache),
       infectious_agent_detection_rate_per_agent_table =
         get_infectious_agent_detection_rate_per_agent_table(ds, use_cache),
       abr_infection_rate_table =
         get_abr_infection_rate_table(ds, use_cache),
+      infectious_agent_detection_rate_per_inf_type_table =
+        get_infectious_agent_detection_rate_per_inf_type_table(ds, use_cache),
       resistance_test_rate_table =
         get_resistance_test_rate_table(ds, use_cache)
     ),
@@ -73,7 +73,7 @@ get_usage_density_rate_table <- function(ref, use_cache = TRUE)
     dplyr::select(!"patient_days" & tidyselect::ends_with("_days")) |>
     tidyr::pivot_longer(
       cols = tidyselect::ends_with("_days"),
-      values_to = "days") |>
+      values_to = "n") |>
     dplyr::mutate(
       factor = .data$name,
       .before = 1,
@@ -83,7 +83,7 @@ get_usage_density_rate_table <- function(ref, use_cache = TRUE)
         dplyr::select(tidyselect::ends_with("_rate")) |>
         tidyr::pivot_longer(
           cols = tidyselect::ends_with("_rate"),
-          values_to = "mean")) |>
+          values_to = "pooled")) |>
     dplyr::bind_cols(
       risk_rate_quartiles |>
         dplyr::bind_cols(tibble::tibble(name = c("q1","q2","q3"))) |>
@@ -98,14 +98,14 @@ get_usage_density_rate_table <- function(ref, use_cache = TRUE)
   missing <- setdiff(paste0(expected_levels, "_days"), r$factor)
   if(length(missing) > 0)
     r <- r |>
-    dplyr::bind_rows(tibble::tibble(factor=missing,days=0L,mean=0))
+    dplyr::bind_rows(tibble::tibble(factor=missing,n=0L,pooled=0))
 
   r |>
     dplyr::mutate(
       factor = factor(
         stringr::str_extract(.data$factor,"^(.+)_days", 1),
         levels = expected_levels),
-      drop_quartiles = n_deps < 5 | round(100 / .data$mean) >= median_patient_days,
+      drop_quartiles = n_deps < 5 | round(100 / .data$pooled) >= median_patient_days,
       q1 = dplyr::if_else(
         .data$drop_quartiles,
         NA,
@@ -152,20 +152,20 @@ get_surgery_rate_table <- function(ref, use_cache = TRUE)
   median_patients <- stats::median(dplyr::pull(pats_per_dept, "n_patients"))
 
   r <- tibble::tibble(
-    procedure_category = "overall",
+    pro_cat = "overall",
     n = get_procedures(ref, use_cache = use_cache) |>
       dplyr::pull()) |>
     dplyr::bind_rows(
       get_procedures(
         ref,
-        group_cols = "procedure_category",
+        group_cols = "pro_cat",
         use_cache = use_cache)
     ) |>
     dplyr::bind_cols(
       get_risk_population(ref, use_cache = use_cache) |>
         dplyr::select("n_patients")
     ) |>
-    dplyr::mutate(rate = .data$n / .data$n_patients * 100) |>
+    dplyr::mutate(pooled = .data$n / .data$n_patients * 100) |>
     dplyr::select(!"n_patients")
 
   if(nrow(r) == 1 && r$n == 0)
@@ -178,7 +178,7 @@ get_surgery_rate_table <- function(ref, use_cache = TRUE)
     dplyr::inner_join(
       get_procedures(
         ref,
-        group_cols = c("department_key", "procedure_category"),
+        group_cols = c("department_key", "pro_cat"),
         use_cache = use_cache) |>
         dplyr::bind_rows(
           get_procedures(
@@ -190,13 +190,13 @@ get_surgery_rate_table <- function(ref, use_cache = TRUE)
           dplyr::join_by("department_key")) |>
         dplyr::mutate(
           n = tidyr::replace_na(.data$n, 0),
-          procedure_category = tidyr::replace_na(
-            as.character(.data$procedure_category), "overall"),
-          rate = .data$n / .data$n_patients * 100) |>
+          pro_cat = tidyr::replace_na(
+            as.character(.data$pro_cat), "overall"),
+          pooled = .data$n / .data$n_patients * 100) |>
         dplyr::select(!c("n","n_patients")) |>
         tidyr::pivot_wider(
-          names_from = "procedure_category",
-          values_from = "rate",
+          names_from = "pro_cat",
+          values_from = "pooled",
           values_fill = 0) |>
         dplyr::select(!"department_key") |>
         dplyr::reframe(
@@ -208,10 +208,10 @@ get_surgery_rate_table <- function(ref, use_cache = TRUE)
         tidyr::pivot_longer(
           tidyselect::everything(),
           names_pattern = "^(.+)_(q(?:1|2|3))$",
-          names_to = c("procedure_category",".value")),
-      dplyr::join_by("procedure_category")) |>
+          names_to = c("pro_cat",".value")),
+      dplyr::join_by("pro_cat")) |>
     dplyr::mutate(
-      drop_quartiles = n_deps < 5 | round(100 / .data$rate) >= median_patients,
+      drop_quartiles = n_deps < 5 | round(100 / .data$pooled) >= median_patients,
       q1 = dplyr::if_else(
         .data$drop_quartiles,
         NA,
@@ -301,6 +301,7 @@ get_incidence_density_rate_table <- function(ref, use_cache = TRUE)
         NA,
         .data$q3)) |>
     dplyr::select(!"drop_quartiles") |>
+    dplyr::rename("pooled"="rate") |>
     dplyr::arrange(.data$inf) |>
     add_class("neoipcr_tbl_idr_ref") |>
     cache(ref, "incidence_density_rate_table")
@@ -386,6 +387,7 @@ get_dev_ass_incidence_density_rate_table <- function(ref, use_cache = TRUE)
         .data$drop_quartiles,
         NA,
         .data$q3)) |>
+    dplyr::rename("pooled"="rate") |>
     dplyr::select(!c("drop_quartiles","n_deps","median")) |>
     dplyr::arrange(.data$dev) |>
     add_class("neoipcr_tbl_daidr_ref") |>
@@ -435,7 +437,7 @@ get_infectious_agent_detection_rate_per_inf_type_table <- function(ref, use_cach
       ref |>
         get_infectious_agent_detection_rates(
           use_cache = use_cache) |>
-        dplyr::select("inf_with_pathogen","rate"="iwp_per_t"),
+        dplyr::select("inf_with_pathogen","pooled"="iwp_per_t"),
       ref |>
         get_infectious_agent_detection_rates(
           group_cols = "department_key",
@@ -457,7 +459,7 @@ get_infectious_agent_detection_rate_per_inf_type_table <- function(ref, use_cach
       get_infectious_agent_detection_rates(
         group_cols = "event_type_key",
         use_cache = use_cache) |>
-      dplyr::select("event_type_key","inf_with_pathogen","rate"="iwp_per_t") |>
+      dplyr::select("event_type_key","inf_with_pathogen","pooled"="iwp_per_t") |>
       dplyr::inner_join(
         ref |>
           get_infectious_agent_detection_rates(
@@ -483,7 +485,7 @@ get_infectious_agent_detection_rate_per_inf_type_table <- function(ref, use_cach
       dep_stats,
       dplyr::join_by("event_type_key")) |>
     dplyr::mutate(
-      drop_quartiles = .data$n < 5 | round(100 / .data$rate) >= .data$median,
+      drop_quartiles = .data$n < 5 | round(100 / .data$pooled) >= .data$median,
       q1 = dplyr::if_else(
         .data$drop_quartiles,
         NA,
@@ -498,6 +500,7 @@ get_infectious_agent_detection_rate_per_inf_type_table <- function(ref, use_cach
         .data$q3)
       ) |>
     dplyr::select(!c("drop_quartiles","n","median")) |>
+    dplyr::rename("inf"="event_type_key","n"="inf_with_pathogen") |>
     add_class("neoipcr_tbl_iadrpit_ref") |>
     cache(ref, "infectious_agent_detection_rate_per_inf_type_table")
 }
@@ -670,6 +673,7 @@ get_infectious_agent_detection_rate_per_agent_table <- function(ref, use_cache =
   }
 
   lv0 |>
+    dplyr::rename("level"="lv","taxon"="tl","pooled"="rate") |>
     add_class("neoipcr_tbl_iadrpa_ref") |>
     cache(ref, "infectious_agent_detection_rate_per_agent_table")
 }
@@ -840,6 +844,7 @@ get_abr_infection_rate_table <- function(ref, use_cache = TRUE)
   tbl <-dplyr::bind_rows(tbl,lv0)
 
   tbl |>
+    dplyr::rename("abr"="abr_type","level"="lv","taxon"="tl","pooled"="rate") |>
     add_class("neoipcr_tbl_abr_ir_ref") |>
     cache(ref, "abr_infection_rate_table")
 }
@@ -882,11 +887,12 @@ get_resistance_test_rate_table <- function(ref, use_cache = TRUE)
         dplyr::filter(.data$`3gcr` == "yes" & .data$car == "yes") |>
         dplyr::mutate(type = "if_3gcr&car", res = "cor")) |>
     dplyr::mutate(
-      res = factor(.data$res, levels = c("3gcr","car","cor","mrsa","vre")),
-      type = factor(.data$type, levels = c("routine","if_3gcr","if_3gcr&car"))
+      abr = factor(.data$res, levels = c("3gcr","car","cor","mrsa","vre")),
+      cond = factor(.data$type, levels = c("routine","if_3gcr","if_3gcr&car")),
+      .keep = "unused"
     ) |>
-    dplyr::select("res","type","tested","rate","q1","q2","q3") |>
-    dplyr::arrange(.data$res, .data$type) |>
+    dplyr::select("abr","cond","n"="tested","pooled"="rate","q1","q2","q3") |>
+    dplyr::arrange(.data$abr, .data$cond) |>
     add_class("neoipcr_tbl_rtr_ref") |>
     cache(ref, "resistance_test_rate_table")
 }
@@ -910,29 +916,28 @@ pretty_names.default <- function(x, ...) x
 pretty_names.neoipcr_tbl_sr_ref <- function(x, ...)
 {
   col_names <- stats::setNames(
-    gettext("Procedure category","Number of procedures","Pooled rate","Q1",
-            "Q2","Q3"),
-    c("procedure_category","n","rate","q1","q2","q3"))
+    gettext("Procedure category","N","Pooled","Q1","Q2","Q3"),
+    c("pro_cat","n","pooled","q1","q2","q3"))
 
   pairs <- x |>
-    dplyr::select("procedure_category") |>
+    dplyr::select("pro_cat") |>
     dplyr::mutate(
-      pretty_name = get_procedure_category_pretty(.data$procedure_category))
+      pretty_name = get_procedure_category_pretty(.data$pro_cat))
 
-  row_names <- stats::setNames(pairs$pretty_name, pairs$procedure_category)
+  row_names <- stats::setNames(pairs$pretty_name, pairs$pro_cat)
 
   attr(x, "names.pretty") <- col_names
   attr(x, "row.names.pretty") <- row_names
 
   x |>
-    dplyr::inner_join(pairs, dplyr::join_by("procedure_category")) |>
-    dplyr::mutate(procedure_category = .data$pretty_name, .keep = "unused") |>
+    dplyr::inner_join(pairs, dplyr::join_by("pro_cat")) |>
+    dplyr::mutate(pro_cat = .data$pretty_name, .keep = "unused") |>
     dplyr::rename_with(
       ~ dplyr::case_match(
         .x,
-        "procedure_category"~col_names[["procedure_category"]],
+        "pro_cat"~col_names[["pro_cat"]],
         "n"~col_names[["n"]],
-        "rate"~col_names[["rate"]],
+        "pooled"~col_names[["pooled"]],
         "q1"~col_names[["q1"]],
         "q2"~col_names[["q2"]],
         "q3"~col_names[["q3"]],
@@ -1670,7 +1675,7 @@ get_procedures <- function(x, group_cols = NULL, use_cache = TRUE)
           get_procedure_categories(x, use_cache = use_cache),
           dplyr::join_by("main_procedure_code" == "procedure_code")),
       dplyr::join_by("event_key")) |>
-    dplyr::filter(.data$procedure_category != "not_surgery") |>
+    dplyr::filter(.data$pro_cat != "not_surgery") |>
     dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
     dplyr::summarise(n = dplyr::n(), .groups = "drop") |>
     cache(x, cache_key)
@@ -1737,32 +1742,32 @@ get_procedure_categories <- function(x, pretty = FALSE, include_iche = FALSE,
       x$surgeryData$side_procedure_code_2) |>
       unique() |>
       sort()) |>
-    dplyr::mutate(procedure_category = get_procedure_category(.data$procedure_code))
+    dplyr::mutate(pro_cat = get_procedure_category(.data$procedure_code))
 
   if(pretty)
   {
 
     with_pretty <- r |>
-      dplyr::select("procedure_category") |>
+      dplyr::select("pro_cat") |>
       dplyr::mutate(
-        pretty_name = get_procedure_category_pretty(.data$procedure_category))
+        pretty_name = get_procedure_category_pretty(.data$pro_cat))
 
     pairs <- with_pretty |> dplyr::distinct()
 
     col_names <- stats::setNames(
       gettext("Procedure code","Procedure category"),
-      c("procedure_code","procedure_category"))
-    row_names <- stats::setNames(pairs$pretty_name, pairs$procedure_category)
+      c("procedure_code","pro_cat"))
+    row_names <- stats::setNames(pairs$pretty_name, pairs$pro_cat)
 
     attr(r, "names.pretty") <- col_names
     attr(r, "row.names.pretty") <- row_names
 
     r <- r |>
     dplyr::mutate(
-      procedure_category = with_pretty$pretty_name) |>
+      pro_cat = with_pretty$pretty_name) |>
     dplyr::rename(
       !!col_names[["procedure_code"]] := .data$procedure_code,
-      !!col_names[["procedure_category"]] := .data$procedure_category)
+      !!col_names[["pro_cat"]] := .data$pro_cat)
   }
 
   # if(include_iche)
