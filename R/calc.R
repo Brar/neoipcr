@@ -821,13 +821,13 @@ get_abr_infection_rate_table <- function(ref, use_cache = TRUE)
 
     lv1 <- dplyr::bind_rows(
       dplyr::bind_cols(
-        abr_type = abr_type,
+        abr_type = "vre",
         lv = 1L,
         tl = "species",
         s |>
           dplyr::filter(!is.na(.data$group) & .data$n > 0)),
       dplyr::bind_cols(
-        abr_type = abr_type,
+        abr_type = "vre",
         lv = 1L,
         tl = "species_nos",
         s |>
