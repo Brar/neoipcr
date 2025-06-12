@@ -628,6 +628,10 @@ validation_rule_24 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
 
+  if (!('side_procedure_code_2' %in% names(x$surgeryData))) {
+    return(NULL)
+  }
+
   valid_iche_codes <- readr::read_csv("../ICHE-Health-Intervention-Codes.csv", col_names = FALSE, col_types = "c") |>
     dplyr::pull(1)
 
@@ -912,6 +916,10 @@ validation_rule_37 <- function(x, exceptions)
 validation_rule_38 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
+
+  if (nrow(x$necData) < 1) {
+    return(NULL)
+  }
 
   r <- dplyr::bind_cols(
     rule_id = c(38L),

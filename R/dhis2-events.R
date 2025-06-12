@@ -312,15 +312,15 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
         c("event_key","dev_ass","los","dol", sort(tidyselect::peek_vars()))))
   else if(event_type_key == "nec")
     events <- events |>
-    dplyr::rename(sec_bsi = .data$secondary_bsi) |>
+    dplyr::rename(tidyselect::any_of(c(sec_bsi = "secondary_bsi"))) |>
     dplyr::select(
       tidyselect::any_of(
         c("event_key","los","dol","sec_bsi", sort(tidyselect::peek_vars()))))
   else if(event_type_key == "hap")
     events <- events |>
-    dplyr::rename(
-      dev_ass = .data$device_association,
-      sec_bsi = .data$secondary_bsi) |>
+    dplyr::rename(tidyselect::any_of(c(
+      dev_ass = "device_association",
+      sec_bsi = "secondary_bsi"))) |>
     dplyr::select(
       tidyselect::any_of(
         c("event_key","dev_ass","los","dol","sec_bsi","microbiological_test_result", sort(tidyselect::peek_vars()))))
