@@ -225,7 +225,7 @@ get_benchmark_table <- function(...)
     if ("usage_density_rate_table" %in% elements) {
       tbl <- ds$usage_density_rate_table
       tbl <- tbl |>
-        dplyr::rename_with(~ paste0(.x, suffix))
+        dplyr::rename_with(~ paste0(.x, suffix), !"factor")
 
       if (is.null(output$usage_density_rate_table)) {
         output$usage_density_rate_table <- tbl
