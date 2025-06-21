@@ -199,6 +199,26 @@ get_benchmark_table <- function(x)
 
       output$n_patient_days <- dplyr::bind_cols(output$n_patient_days, tbl)
     }
+    if ("n_surgical_patients" %in% elements) {
+      tbl <- ds$n_surgical_patients
+      if (!is.data.frame(tbl)) {
+        tbl <- tibble::tibble(n = tbl)
+      }
+      tbl <- tbl |>
+        dplyr::rename_with(~ paste0(.x, suffix))
+
+      output$n_surgical_patients <- dplyr::bind_cols(output$n_surgical_patients, tbl)
+    }
+    if ("n_surgical_procedures" %in% elements) {
+      tbl <- ds$n_surgical_procedures
+      if (!is.data.frame(tbl)) {
+        tbl <- tibble::tibble(n = tbl)
+      }
+      tbl <- tbl |>
+        dplyr::rename_with(~ paste0(.x, suffix))
+
+      output$n_surgical_procedures <- dplyr::bind_cols(output$n_surgical_procedures, tbl)
+    }
     if ("usage_density_rate_table" %in% elements) {
       tbl <- ds$usage_density_rate_table
       tbl <- tbl |>
@@ -1835,12 +1855,17 @@ get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE)
               x$surgeryData |>
                 dplyr::mutate(
                   main_procedure_category = get_procedure_category(.data$main_procedure_code, not_surgery_na = TRUE),
-                  side_procedure_1_category = get_procedure_category(.data$side_procedure_code_1, not_surgery_na = TRUE),
-                  side_procedure_2_category = get_procedure_category(.data$side_procedure_code_2, not_surgery_na = TRUE)) |>
-                dplyr::filter(
-                  !is.na(.data$main_procedure_category) |
-                    !is.na(.data$side_procedure_1_category) |
-                    !is.na(.data$side_procedure_2_category)),
+                  dplyr::across(
+                    tidyselect::any_of(
+                      "side_procedure_code_1"),
+                    ~ get_procedure_category(.x, not_surgery_na = TRUE),
+                    .names = "side_procedure_1_category"),
+                  dplyr::across(
+                    tidyselect::any_of(
+                      "side_procedure_code_2"),
+                    ~ get_procedure_category(.x, not_surgery_na = TRUE),
+                    .names = "side_procedure_2_category")) |>
+                dplyr::filter(dplyr::if_any(tidyselect::matches("procedure_(\\d_)?category$"), ~ !is.na(.x))),
               dplyr::join_by("event_key")),
           dplyr::join_by("enrollment_key")),
       dplyr::join_by("patient_key")) |>
