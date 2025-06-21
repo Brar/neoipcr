@@ -1,56 +1,240 @@
 #' Calculate a NeoIPC reference data set
 #'
-#' @param ds The neoipcr_ds object containing the data
+#' @param x The neoipcr_ds object containing the data
 #' @param use_cache Use the cache
 #'
 #' @returns A NeoIPC reference data set
 #' @export
-calculate_reference_data <- function(ds, use_cache = TRUE)
+calculate_reference_data <- function(x, use_cache = TRUE)
 {
-  check_neoipcr_ds(ds)
+  check_neoipcr_ds(x)
+
+  quartile_probs <- c(0.25,0.5,0.75)
+
+  pd <- get_risk_time(x, use_cache = use_cache)$patient_days
+  pd_dept <- get_risk_time(
+    x,
+    group_cols = "department_key",
+    use_cache = use_cache)$patient_days
+  pd_q <- pd_dept |>
+    stats::quantile(probs = quartile_probs) |>
+    as.integer()
+
+  rp <- x |>
+    get_risk_population(use_cache = use_cache)
+  rp_dept <- x |>
+    get_risk_population(group_cols = "department_key", use_cache = use_cache)
+  pat_q <- rp_dept$n_patients |>
+    stats::quantile(probs = quartile_probs) |>
+    as.integer()
+  enr_q <- rp_dept$n_enrollments |>
+    stats::quantile(probs = quartile_probs) |>
+    as.integer()
+
+  sr <- x |>
+    get_surgery_risk(use_cache = use_cache)
+  sr_dept <- x |>
+    get_surgery_risk(
+      group_cols = "department_key",
+      use_cache = use_cache) |>
+    dplyr::full_join(
+      x$enrollments |>
+        dplyr::select("department_key") |>
+        dplyr::distinct(),
+      dplyr::join_by("department_key")) |>
+    dplyr::mutate(
+      n_patients = tidyr::replace_na(.data$n_patients, 0L),
+      n_procedures = tidyr::replace_na(.data$n_procedures, 0L))
+  sur_pat_q <- sr_dept$n_patients |>
+    stats::quantile(probs = quartile_probs) |>
+    as.integer()
+  sur_proc_q <- sr_dept$n_procedures |>
+    stats::quantile(probs = quartile_probs) |>
+    as.integer()
 
   structure(
     list(
+      n_departments = x$enrollments$department_key |> unique() |> length(),
+      n_patients = tibble::tibble(
+        total = rp$n_patients,
+        pooled_mean = rp_dept$n_patients |> mean() |> round() |> as.integer(),
+        q1 = pat_q[1],
+        q2 = pat_q[2],
+        q3 = pat_q[3]),
+      n_enrollments = tibble::tibble(
+        total = rp$n_enrollments,
+        pooled_mean = rp_dept$n_enrollments |> mean() |> round() |> as.integer(),
+        q1 = enr_q[1],
+        q2 = enr_q[2],
+        q3 = enr_q[3]),
+      n_patient_days = tibble::tibble(
+        total = pd,
+        pooled_mean = pd_dept |> mean() |> round() |> as.integer(),
+        q1 = pd_q[1],
+        q2 = pd_q[2],
+        q3 = pd_q[3]),
+      n_surgical_departments = sr$n_departments,
+      n_surgical_patients = tibble::tibble(
+        total = sr$n_patients,
+        pooled_mean = sr_dept$n_patients |> mean() |> round() |> as.integer(),
+        q1 = sur_pat_q[1],
+        q2 = sur_pat_q[2],
+        q3 = sur_pat_q[3]),
+      n_surgical_procedures = tibble::tibble(
+        total = sr$n_procedures,
+        pooled_mean = sr_dept$n_procedures |> mean() |> round() |> as.integer(),
+        q1 = sur_proc_q[1],
+        q2 = sur_proc_q[2],
+        q3 = sur_proc_q[3]),
       usage_density_rate_table =
-        get_usage_density_rate_table(ds, use_cache),
+        get_usage_density_rate_table(x, use_cache),
       surgery_rate_table =
-        get_surgery_rate_table(ds, use_cache),
+        get_surgery_rate_table(x, use_cache),
       incidence_density_rate_table =
-        get_incidence_density_rate_table(ds, use_cache),
+        get_incidence_density_rate_table(x, use_cache),
       dev_ass_incidence_density_rate_table =
-        get_dev_ass_incidence_density_rate_table(ds, use_cache),
+        get_dev_ass_incidence_density_rate_table(x, use_cache),
       infectious_agent_detection_rate_per_agent_table =
-        get_infectious_agent_detection_rate_per_agent_table(ds, use_cache),
+        get_infectious_agent_detection_rate_per_agent_table(x, use_cache),
       abr_infection_rate_table =
-        get_abr_infection_rate_table(ds, use_cache),
+        get_abr_infection_rate_table(x, use_cache),
       infectious_agent_detection_rate_per_inf_type_table =
-        get_infectious_agent_detection_rate_per_inf_type_table(ds, use_cache),
+        get_infectious_agent_detection_rate_per_inf_type_table(x, use_cache),
       resistance_test_rate_table =
-        get_resistance_test_rate_table(ds, use_cache)
+        get_resistance_test_rate_table(x, use_cache)
     ),
     class = "neoipcr_ref_ds")
 }
 
+calculate_department_data <- function(x, use_cache = TRUE)
+{
+  check_neoipcr_ds(x)
+
+  rt <- x |>
+    get_risk_time(use_cache = use_cache)
+  rp <- x |>
+    get_risk_population(use_cache = use_cache)
+  sr <- x |>
+    get_surgery_risk(use_cache = use_cache)
+
+  usage_density_rate_table <- rt |>
+    dplyr::select(!"patient_days") |>
+    tidyr::pivot_longer(
+      cols = tidyselect::everything(),
+      names_to = c("factor","name"),
+      names_pattern = "^(.+)_([^_]+)$") |>
+    tidyr::pivot_wider() |>
+    dplyr::mutate(
+      factor = factor(.data$factor,
+        levels = c("cvc","pvc","vs","inv","niv","human_milk","probiotic",
+                   "kangaroo_care","ab","a","w","r"))
+    ) |>
+    dplyr::arrange(.data$factor)
+
+  structure(
+    list(
+      n_patients = rp$n_patients,
+      n_enrollments = rp$n_enrollments,
+      n_patient_days = rt$patient_days,
+      n_surgical_departments = sr$n_departments,
+      n_surgical_patients = sr$n_patients,
+      n_surgical_procedures = sr$n_procedures,
+      usage_density_rate_table = usage_density_rate_table
+      # surgery_rate_table =
+      #   get_surgery_rate_table(x, use_cache),
+      # incidence_density_rate_table =
+      #   get_incidence_density_rate_table(x, use_cache),
+      # dev_ass_incidence_density_rate_table =
+      #   get_dev_ass_incidence_density_rate_table(x, use_cache),
+      # infectious_agent_detection_rate_per_agent_table =
+      #   get_infectious_agent_detection_rate_per_agent_table(x, use_cache),
+      # abr_infection_rate_table =
+      #   get_abr_infection_rate_table(x, use_cache),
+      # infectious_agent_detection_rate_per_inf_type_table =
+      #   get_infectious_agent_detection_rate_per_inf_type_table(x, use_cache),
+      # resistance_test_rate_table =
+      #   get_resistance_test_rate_table(x, use_cache)
+    ),
+    class = "neoipcr_dept_ds")
+}
+
+get_benchmark_table <- function(x)
+{
+  output <- list()
+  suffixes = rlang::names2(x) |>
+    sapply(\(x)ifelse(x=="",x,paste0("_",x)), USE.NAMES = FALSE)
+
+  for (i in 1:length(x)) {
+    ds <- x[[i]]
+    suffix <- suffixes[i]
+    elements <- names(ds)
+
+    if ("n_patients" %in% elements) {
+      tbl <- ds$n_patients
+      if (!is.data.frame(tbl)) {
+        tbl <- tibble::tibble(n = tbl)
+      }
+      tbl <- tbl |>
+        dplyr::rename_with(~ paste0(.x, suffix))
+
+      output$n_patients <- dplyr::bind_cols(output$n_patients, tbl)
+    }
+    if ("n_enrollments" %in% elements) {
+      tbl <- ds$n_enrollments
+      if (!is.data.frame(tbl)) {
+        tbl <- tibble::tibble(n = tbl)
+      }
+      tbl <- tbl |>
+        dplyr::rename_with(~ paste0(.x, suffix))
+
+      output$n_enrollments <- dplyr::bind_cols(output$n_enrollments, tbl)
+    }
+    if ("n_patient_days" %in% elements) {
+      tbl <- ds$n_patient_days
+      if (!is.data.frame(tbl)) {
+        tbl <- tibble::tibble(n = tbl)
+      }
+      tbl <- tbl |>
+        dplyr::rename_with(~ paste0(.x, suffix))
+
+      output$n_patient_days <- dplyr::bind_cols(output$n_patient_days, tbl)
+    }
+    if ("usage_density_rate_table" %in% elements) {
+      tbl <- ds$usage_density_rate_table
+      tbl <- tbl |>
+        dplyr::rename_with(~ paste0(.x, suffix))
+
+      if (is.null(output$usage_density_rate_table)) {
+        output$usage_density_rate_table <- tbl
+      } else {
+        output$usage_density_rate_table <- output$usage_density_rate_table |>
+          dplyr::full_join(tbl, dplyr::join_by("factor"))
+      }
+    }
+  }
+  output
+}
+
 #' Get the table with usage density rates of the time dependent risk factors
 #'
-#' @param ref The reference data set which can be either a neoipcr_ref_ds or a
+#' @param x The reference data set which can be either a neoipcr_ref_ds or a
 #'  neoipcr_ds object
 #' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
 #'
 #' @returns A table containing usage density rates of the time dependent risk
 #'  factors
 #' @export
-get_usage_density_rate_table <- function(ref, use_cache = TRUE)
+get_usage_density_rate_table <- function(x, use_cache = TRUE)
 {
-  check_neoipcr_ds_or_ref_ds(ref)
+  check_neoipcr_ds_or_ref_ds(x)
 
-  if(is_neoipcr_ref_ds(ref))
-    return(ref$usage_density_rate_table)
+  if(is_neoipcr_ref_ds(x))
+    return(x$usage_density_rate_table)
 
-  if(use_cache && !is.null(r <- get_cached(ref, "usage_density_rate_table")))
+  if(use_cache && !is.null(r <- get_cached(x, "usage_density_rate_table")))
     return(r)
 
-  pat_days <- ref |>
+  pat_days <- x |>
     get_risk_time(group_cols = "department_key", use_cache = use_cache) |>
     dplyr::pull("patient_days")
 
@@ -60,9 +244,9 @@ get_usage_density_rate_table <- function(ref, use_cache = TRUE)
   expected_levels <- c("cvc","pvc","vs","inv","niv","human_milk","probiotic",
                        "kangaroo_care","ab","a","w","r")
 
-  risk_time <- get_risk_time(ref, use_cache = use_cache)
+  risk_time <- get_risk_time(x, use_cache = use_cache)
   risk_rate_quartiles <- get_risk_time(
-    ref, group_cols = "department_key", use_cache = use_cache) |>
+    x, group_cols = "department_key", use_cache = use_cache) |>
     dplyr::select(tidyselect::ends_with("_rate")) |>
     dplyr::reframe(
       dplyr::across(
@@ -121,7 +305,7 @@ get_usage_density_rate_table <- function(ref, use_cache = TRUE)
     dplyr::arrange(.data$factor) |>
     dplyr::select(!"drop_quartiles") |>
     add_class("neoipcr_tbl_udr_ref") |>
-    cache(ref, "usage_density_rate_table")
+    cache(x, "usage_density_rate_table")
 }
 
 #' Get the table with rates of surgical precedues
@@ -1606,17 +1790,15 @@ get_risk_population <- function(x, group_cols = NULL, use_cache = TRUE)
     cache(x, cache_key)
 }
 
-get_risk_time <- function(x, group_cols = NULL, use_cache = TRUE)
+get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE)
 {
   if(is.null(group_cols))
-    cache_key <- "risk_time"
+    cache_key <- "risk_population"
   else
-    cache_key <- paste0("risk_time_by.", paste0(group_cols, collapse = "."))
+    cache_key <- paste0("risk_population_by.", paste0(group_cols, collapse = "."))
 
   if(use_cache && !is.null(r <- get_cached(x, cache_key)))
-      return(r)
-
-  aware_days <- get_aware_days(x, use_cache)
+    return(r)
 
   x$patients |>
     dplyr::mutate(
@@ -1642,7 +1824,70 @@ get_risk_time <- function(x, group_cols = NULL, use_cache = TRUE)
             dplyr::inner_join(
               x$surveillanceEndData |>
                 dplyr::inner_join(
-                  aware_days,
+                  get_aware_days(x, use_cache),
+                  dplyr::join_by("event_key")),
+              dplyr::join_by("event_key")),
+          dplyr::join_by("enrollment_key")) |>
+        dplyr::inner_join(
+          x$events |>
+            dplyr::select(c("enrollment_key","event_key")) |>
+            dplyr::inner_join(
+              x$surgeryData |>
+                dplyr::mutate(
+                  main_procedure_category = get_procedure_category(.data$main_procedure_code, not_surgery_na = TRUE),
+                  side_procedure_1_category = get_procedure_category(.data$side_procedure_code_1, not_surgery_na = TRUE),
+                  side_procedure_2_category = get_procedure_category(.data$side_procedure_code_2, not_surgery_na = TRUE)) |>
+                dplyr::filter(
+                  !is.na(.data$main_procedure_category) |
+                    !is.na(.data$side_procedure_1_category) |
+                    !is.na(.data$side_procedure_2_category)),
+              dplyr::join_by("event_key")),
+          dplyr::join_by("enrollment_key")),
+      dplyr::join_by("patient_key")) |>
+    dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
+    dplyr::summarise(
+      dplyr::across(tidyselect::any_of("department_key"), ~ dplyr::n_distinct(.x), .names = "n_departments"),
+      dplyr::across(tidyselect::any_of("patient_key"), ~ dplyr::n_distinct(.x), .names = "n_patients"),
+      n_procedures = dplyr::n(),
+      .groups = "drop") |>
+    cache(x, cache_key)
+}
+
+get_risk_time <- function(x, group_cols = NULL, use_cache = TRUE)
+{
+  if(is.null(group_cols))
+    cache_key <- "risk_time"
+  else
+    cache_key <- paste0("risk_time_by.", paste0(group_cols, collapse = "."))
+
+  if(use_cache && !is.null(r <- get_cached(x, cache_key)))
+      return(r)
+
+  x$patients |>
+    dplyr::mutate(
+      bw50 = bw50(.data$birth_weight),
+      bw125 = bw125(.data$birth_weight),
+      bw250 = bw250(.data$birth_weight),
+      bw500 = bw500(.data$birth_weight),
+      comp_gw = as.integer(.data$total_gestation_days / 7)) |>
+    dplyr::inner_join(
+      x$enrollments |>
+        dplyr::select(
+          c(
+            "patient_key",
+            !tidyselect::any_of(c(names(x$patients))))
+        ) |>
+        dplyr::inner_join(
+          x$events |>
+            dplyr::select(
+              c(
+                "enrollment_key",
+                !tidyselect::any_of(c(names(x$patients),names(x$enrollments))))
+            ) |>
+            dplyr::inner_join(
+              x$surveillanceEndData |>
+                dplyr::inner_join(
+                  get_aware_days(x, use_cache),
                   dplyr::join_by("event_key")),
               dplyr::join_by("event_key")),
           dplyr::join_by("enrollment_key")),
@@ -1779,12 +2024,18 @@ get_procedure_categories <- function(x, pretty = FALSE, include_iche = FALSE,
     cache(x, cache_key)
 }
 
-get_procedure_category <- function(x)
+get_procedure_category <- function(x, not_surgery_na = FALSE)
 {
   target <- stringr::str_extract(x, "^([A-Za-z]{3})\\.", 1)
   action <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})", 2)
   means <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})\\.([A-Za-z]{2})", 3)
+  if (not_surgery_na) {
+    not_surgery <- NA
+  } else {
+    not_surgery <- "not_surgery"
+  }
   dplyr::case_when(
+    is.na(x) ~ NA,
     # Neurosurgery
     ############################################################################
     target %in% c(
@@ -1866,7 +2117,7 @@ get_procedure_category <- function(x)
       "KBK.LD.AH",# Manual reduction of ileostomy prolapse
       "PTB.SN.AC",# Management of enterostomy
       "PZA.BA.BH" # Magnetic resonance imaging of whole body
-      ) ~ "not_surgery",
+      ) ~ not_surgery,
 
     # To be categorised (default)
     ############################################################################
@@ -1881,7 +2132,7 @@ get_procedure_category <- function(x)
         "lung_pleural_space_thoracic_surgery",
         "oesophageal_surgery",
         "other",
-        "not_surgery",
+        not_surgery,
         "to_be_categorised"))
 }
 

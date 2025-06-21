@@ -4,10 +4,10 @@
 \alias{calculate_reference_data}
 \title{Calculate a NeoIPC reference data set}
 \usage{
-calculate_reference_data(ds, use_cache = TRUE)
+calculate_reference_data(x, use_cache = TRUE)
 }
 \arguments{
-\item{ds}{The neoipcr_ds object containing the data}
+\item{x}{The neoipcr_ds object containing the data}
 
 \item{use_cache}{Use the cache}
 }

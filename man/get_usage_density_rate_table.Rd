@@ -4,10 +4,10 @@
 \alias{get_usage_density_rate_table}
 \title{Get the table with usage density rates of the time dependent risk factors}
 \usage{
-get_usage_density_rate_table(ref, use_cache = TRUE)
+get_usage_density_rate_table(x, use_cache = TRUE)
 }
 \arguments{
-\item{ref}{The reference data set which can be either a neoipcr_ref_ds or a
+\item{x}{The reference data set which can be either a neoipcr_ref_ds or a
 neoipcr_ds object}
 
 \item{use_cache}{Use the cache. Ignored if ref is a neoipcr_ref_ds object}
