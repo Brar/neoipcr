@@ -158,13 +158,16 @@ calculate_department_data <- function(x, use_cache = TRUE)
     class = "neoipcr_dept_ds")
 }
 
-get_benchmark_table <- function(x)
+get_benchmark_table <- function(...)
 {
+  x <- list(...)
+  n_ds <- length(x)
+  # Todo: throw if n_ds < 2
   output <- list()
   suffixes = rlang::names2(x) |>
     sapply(\(x)ifelse(x=="",x,paste0("_",x)), USE.NAMES = FALSE)
 
-  for (i in 1:length(x)) {
+  for (i in 1:n_ds) {
     ds <- x[[i]]
     suffix <- suffixes[i]
     elements <- names(ds)
