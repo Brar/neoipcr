@@ -158,7 +158,7 @@ calculate_department_data <- function(x, use_cache = TRUE)
     class = "neoipcr_dept_ds")
 }
 
-get_benchmark_table <- function(...)
+get_benchmark_data <- function(...)
 {
   x <- list(...)
   n_ds <- length(x)
