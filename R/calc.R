@@ -33,6 +33,7 @@ calculate_reference_data <- function(x, use_cache = TRUE)
 
   sr <- x |>
     get_surgery_risk(use_cache = use_cache)
+
   sr_dept <- x |>
     get_surgery_risk(
       group_cols = "department_key",
@@ -1816,9 +1817,9 @@ get_risk_population <- function(x, group_cols = NULL, use_cache = TRUE)
 get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE)
 {
   if(is.null(group_cols))
-    cache_key <- "risk_population"
+    cache_key <- "surgery_risk"
   else
-    cache_key <- paste0("risk_population_by.", paste0(group_cols, collapse = "."))
+    cache_key <- paste0("surgery_risk_by.", paste0(group_cols, collapse = "."))
 
   if(use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
