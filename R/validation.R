@@ -1,3 +1,4 @@
+# Find patient records without enrollment.
 validation_rule_1 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -26,6 +27,8 @@ validation_rule_1 <- function(x, exceptions)
   return(r)
 }
 
+# Find enrollments where the surveillance end event is completed but the
+# admission event is still open.
 validation_rule_2 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -70,6 +73,7 @@ validation_rule_2 <- function(x, exceptions)
   return(r)
 }
 
+# Find admission events where the event date differs from the enrolment date.
 validation_rule_3 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -107,6 +111,8 @@ validation_rule_3 <- function(x, exceptions)
   return(r)
 }
 
+# Find enrolments where the admission date and the surveillance end date are the
+# same.
 validation_rule_4 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -149,6 +155,7 @@ validation_rule_4 <- function(x, exceptions)
   return(r)
 }
 
+# Find incomplete admission events
 validation_rule_5 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -193,6 +200,7 @@ validation_rule_5 <- function(x, exceptions)
   return(r)
 }
 
+# Find completed enrolments where the surveillance end event is incomplete.
 validation_rule_6 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -238,6 +246,7 @@ validation_rule_6 <- function(x, exceptions)
   return(r)
 }
 
+# Find completed enrolments where a sepsis end event is incomplete.
 validation_rule_7 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -252,6 +261,7 @@ validation_rule_7 <- function(x, exceptions)
   return(r)
 }
 
+# Find completed enrolments where a NEC end event is incomplete.
 validation_rule_8 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -266,6 +276,7 @@ validation_rule_8 <- function(x, exceptions)
   return(r)
 }
 
+# Find completed enrolments where a pneumonia end event is incomplete.
 validation_rule_9 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -280,6 +291,7 @@ validation_rule_9 <- function(x, exceptions)
   return(r)
 }
 
+# Find completed enrolments where a surgical procedure end event is incomplete.
 validation_rule_10 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -294,6 +306,7 @@ validation_rule_10 <- function(x, exceptions)
   return(r)
 }
 
+# Find completed enrolments where a SSI end event is incomplete.
 validation_rule_11 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -308,6 +321,8 @@ validation_rule_11 <- function(x, exceptions)
   return(r)
 }
 
+# Find sepsis events whose event date is not between the enrollment date and the
+# event date of the surveillance end event.
 validation_rule_12 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -322,6 +337,8 @@ validation_rule_12 <- function(x, exceptions)
   return(r)
 }
 
+# Find NEC events whose event date is not between the enrollment date and the
+# event date of the surveillance end event.
 validation_rule_13 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -374,6 +391,8 @@ validation_rule_13 <- function(x, exceptions)
   return(r)
 }
 
+# Find pneumonia events whose event date is not between the enrollment date and
+# the event date of the surveillance end event.
 validation_rule_14 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -388,6 +407,8 @@ validation_rule_14 <- function(x, exceptions)
   return(r)
 }
 
+# Find surgical procedure events whose event date is not between the enrollment
+# date and the event date of the surveillance end event.
 validation_rule_15 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -402,6 +423,8 @@ validation_rule_15 <- function(x, exceptions)
   return(r)
 }
 
+# Find SSI events whose event date is not between the enrollment date and the
+# event date of the surveillance end event.
 validation_rule_16 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -416,6 +439,9 @@ validation_rule_16 <- function(x, exceptions)
   return(r)
 }
 
+# Find overlapping enrolments (an enrolment's enrolment date or surveillance end
+# date is in the interval between the enrolment data and the surveillance end
+# date of another enrolment).
 validation_rule_17 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -479,6 +505,8 @@ validation_rule_17 <- function(x, exceptions)
   return(r)
 }
 
+# Find surveillance end events where the stored number of patient days does not
+# match the value calculated from the enrolment date and the event date.
 validation_rule_18 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -493,6 +521,8 @@ validation_rule_18 <- function(x, exceptions)
   return(r)
 }
 
+# Find surgical site infections where the event date is not within the follow-up
+# period of a previous surgical procedure event.
 validation_rule_19 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -507,6 +537,7 @@ validation_rule_19 <- function(x, exceptions)
   return(r)
 }
 
+# Find infection events where the unknown pathogen is recorded.
 validation_rule_20 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -521,6 +552,8 @@ validation_rule_20 <- function(x, exceptions)
   return(r)
 }
 
+# Find surveillance end events where the sum of all individual antibiotic
+# substance days is less than the number of antibiotic days.
 validation_rule_21 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -535,6 +568,8 @@ validation_rule_21 <- function(x, exceptions)
   return(r)
 }
 
+# Find surgical procedure events with a main procedure code that is not a valid
+# ICHE procedure code.
 validation_rule_22 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -579,6 +614,8 @@ validation_rule_22 <- function(x, exceptions)
   return(r)
 }
 
+# Find surgical procedure events with a first side procedure code that is not a
+# valid ICHE procedure code.
 validation_rule_23 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -624,6 +661,8 @@ validation_rule_23 <- function(x, exceptions)
   return(r)
 }
 
+# Find surgical procedure events with a second side procedure code that is not a
+# valid ICHE procedure code.
 validation_rule_24 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -673,7 +712,7 @@ validation_rule_24 <- function(x, exceptions)
   return(r)
 }
 
-# The patient has a completed enrollment but no surveillance end event
+# Find completed enrollments without surveillance end event.
 validation_rule_25 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -704,7 +743,7 @@ validation_rule_25 <- function(x, exceptions)
   return(r)
 }
 
-# The patient has a completed enrollment but no admission event
+# Find completed enrollments without admission event.
 validation_rule_26 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -735,6 +774,8 @@ validation_rule_26 <- function(x, exceptions)
   return(r)
 }
 
+# Find sepsis events where the stored day of life does not match the value
+# calculated from the enrolment date and the event date.
 validation_rule_27 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -749,6 +790,8 @@ validation_rule_27 <- function(x, exceptions)
   return(r)
 }
 
+# Find sepsis events where the stored length of stay does not match the value
+# calculated from the enrolment date and the event date.
 validation_rule_28 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -763,6 +806,7 @@ validation_rule_28 <- function(x, exceptions)
   return(r)
 }
 
+# Find sepsis events where the event date is within the first 3 days of life
 validation_rule_29 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -801,6 +845,8 @@ validation_rule_29 <- function(x, exceptions)
   return(r)
 }
 
+# Find sepsis events where the event date is within the first two days of
+# hospitalisation of a referred or (re-)admitted patient
 validation_rule_30 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -815,6 +861,8 @@ validation_rule_30 <- function(x, exceptions)
   return(r)
 }
 
+# Find pneumonia events where the stored day of life does not match the value
+# calculated from the enrolment date and the event date.
 validation_rule_31 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -829,6 +877,8 @@ validation_rule_31 <- function(x, exceptions)
   return(r)
 }
 
+# Find pneumonia events where the stored length of stay does not match the value
+# calculated from the enrolment date and the event date.
 validation_rule_32 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -843,6 +893,7 @@ validation_rule_32 <- function(x, exceptions)
   return(r)
 }
 
+# Find pneumonia events where the event date is within the first 3 days of life
 validation_rule_33 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -857,6 +908,8 @@ validation_rule_33 <- function(x, exceptions)
   return(r)
 }
 
+# Find pneumonia events where the event date is within the first two days of
+# hospitalisation of a referred or (re-)admitted patient
 validation_rule_34 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -871,6 +924,8 @@ validation_rule_34 <- function(x, exceptions)
   return(r)
 }
 
+# Find NEC events where the stored day of life does not match the value
+# calculated from the enrolment date and the event date.
 validation_rule_35 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -885,6 +940,8 @@ validation_rule_35 <- function(x, exceptions)
   return(r)
 }
 
+# Find NEC events where the stored length of stay does not match the value
+# calculated from the enrolment date and the event date.
 validation_rule_36 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -899,6 +956,7 @@ validation_rule_36 <- function(x, exceptions)
   return(r)
 }
 
+# Find NEC events where the event date is within the first 3 days of life
 validation_rule_37 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -913,6 +971,8 @@ validation_rule_37 <- function(x, exceptions)
   return(r)
 }
 
+# Find NEC events where the event date is within the first two days of
+# hospitalisation of a referred or (re-)admitted patient
 validation_rule_38 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -968,6 +1028,8 @@ validation_rule_38 <- function(x, exceptions)
   return(r)
 }
 
+# Find surgical procedure events where the stored day of life does not match the
+# value calculated from the enrolment date and the event date.
 validation_rule_39 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -982,6 +1044,8 @@ validation_rule_39 <- function(x, exceptions)
   return(r)
 }
 
+# Find surgical procedure events where the stored length of stay does not match
+# the value calculated from the enrolment date and the event date.
 validation_rule_40 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -996,6 +1060,8 @@ validation_rule_40 <- function(x, exceptions)
   return(r)
 }
 
+# Find SSI events where the stored day of life does not match the value
+# calculated from the enrolment date and the event date.
 validation_rule_41 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -1010,6 +1076,8 @@ validation_rule_41 <- function(x, exceptions)
   return(r)
 }
 
+# Find SSI events where the stored length of stay does not match the value
+# calculated from the enrolment date and the event date.
 validation_rule_42 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
