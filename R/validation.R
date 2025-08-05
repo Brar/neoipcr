@@ -482,12 +482,50 @@ validation_rule_12 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
 
-  # TODO: Implement
   r <- dplyr::bind_cols(
-    rule_id = c(12L),
+    rule_id = c(13L),
     x$enrollments |>
-      dplyr::select("enrollment_key") |>
-      dplyr::filter(.data$enrollment_key == -1))
+      dplyr::select(
+        tidyselect::any_of(c("hospital_key","department_key","patient_key")),
+        "enrollment_key","enrolledAt") |>
+      dplyr::inner_join(
+        x$events |>
+          dplyr::filter(.data$event_type_key == "adm") |>
+          dplyr::select("enrollment_key","occurredAt"),
+        dplyr::join_by("enrollment_key")) |>
+      dplyr::inner_join(
+        x$events |>
+          dplyr::filter(.data$event_type_key == "end") |>
+          dplyr::select("enrollment_key","occurredAt"),
+        dplyr::join_by("enrollment_key"),
+        suffix = c(".adm",".end")) |>
+      dplyr::inner_join(
+        x$events |>
+          dplyr::filter(.data$event_type_key == "bsi") |>
+          dplyr::select("event_key","enrollment_key","occurredAt.bsi"="occurredAt"),
+        dplyr::join_by("enrollment_key")) |>
+      dplyr::filter(.data$occurredAt.bsi < .data$enrolledAt |
+                      .data$occurredAt.bsi < .data$occurredAt.adm |
+                      .data$occurredAt.bsi > .data$occurredAt.end) |>
+      dplyr::select(
+        tidyselect::any_of(
+          c("hospital_key",
+            "department_key",
+            "patient_key")),"enrollment_key","event_key","enrolledAt","occurredAt.adm","occurredAt.end","occurredAt.bsi")) |>
+    dplyr::group_by(dplyr::across(!c("enrolledAt","occurredAt.adm","occurredAt.end","occurredAt.bsi"))) |>
+    dplyr::summarise(
+      context = list(
+        list(
+          enrolledAt = .data$enrolledAt,
+          occurredAt.adm = .data$occurredAt.adm,
+          occurredAt.end = .data$occurredAt.end,
+          occurredAt.bsi = .data$occurredAt.bsi)))
+
+  if(!is.null(exceptions))
+    r <- r |>
+    dplyr::anti_join(
+      exceptions,
+      dplyr::join_by("rule_id","event_key"))
 
   return(r)
 }
@@ -552,12 +590,50 @@ validation_rule_14 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
 
-  # TODO: Implement
   r <- dplyr::bind_cols(
-    rule_id = c(14L),
+    rule_id = c(13L),
     x$enrollments |>
-      dplyr::select("enrollment_key") |>
-      dplyr::filter(.data$enrollment_key == -1))
+      dplyr::select(
+        tidyselect::any_of(c("hospital_key","department_key","patient_key")),
+        "enrollment_key","enrolledAt") |>
+      dplyr::inner_join(
+        x$events |>
+          dplyr::filter(.data$event_type_key == "adm") |>
+          dplyr::select("enrollment_key","occurredAt"),
+        dplyr::join_by("enrollment_key")) |>
+      dplyr::inner_join(
+        x$events |>
+          dplyr::filter(.data$event_type_key == "end") |>
+          dplyr::select("enrollment_key","occurredAt"),
+        dplyr::join_by("enrollment_key"),
+        suffix = c(".adm",".end")) |>
+      dplyr::inner_join(
+        x$events |>
+          dplyr::filter(.data$event_type_key == "hap") |>
+          dplyr::select("event_key","enrollment_key","occurredAt.hap"="occurredAt"),
+        dplyr::join_by("enrollment_key")) |>
+      dplyr::filter(.data$occurredAt.hap < .data$enrolledAt |
+                      .data$occurredAt.hap < .data$occurredAt.adm |
+                      .data$occurredAt.hap > .data$occurredAt.end) |>
+      dplyr::select(
+        tidyselect::any_of(
+          c("hospital_key",
+            "department_key",
+            "patient_key")),"enrollment_key","event_key","enrolledAt","occurredAt.adm","occurredAt.end","occurredAt.hap")) |>
+    dplyr::group_by(dplyr::across(!c("enrolledAt","occurredAt.adm","occurredAt.end","occurredAt.hap"))) |>
+    dplyr::summarise(
+      context = list(
+        list(
+          enrolledAt = .data$enrolledAt,
+          occurredAt.adm = .data$occurredAt.adm,
+          occurredAt.end = .data$occurredAt.end,
+          occurredAt.hap = .data$occurredAt.hap)))
+
+  if(!is.null(exceptions))
+    r <- r |>
+    dplyr::anti_join(
+      exceptions,
+      dplyr::join_by("rule_id","event_key"))
 
   return(r)
 }
@@ -568,12 +644,50 @@ validation_rule_15 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
 
-  # TODO: Implement
   r <- dplyr::bind_cols(
-    rule_id = c(15L),
+    rule_id = c(13L),
     x$enrollments |>
-      dplyr::select("enrollment_key") |>
-      dplyr::filter(.data$enrollment_key == -1))
+      dplyr::select(
+        tidyselect::any_of(c("hospital_key","department_key","patient_key")),
+        "enrollment_key","enrolledAt") |>
+      dplyr::inner_join(
+        x$events |>
+          dplyr::filter(.data$event_type_key == "adm") |>
+          dplyr::select("enrollment_key","occurredAt"),
+        dplyr::join_by("enrollment_key")) |>
+      dplyr::inner_join(
+        x$events |>
+          dplyr::filter(.data$event_type_key == "end") |>
+          dplyr::select("enrollment_key","occurredAt"),
+        dplyr::join_by("enrollment_key"),
+        suffix = c(".adm",".end")) |>
+      dplyr::inner_join(
+        x$events |>
+          dplyr::filter(.data$event_type_key == "pro") |>
+          dplyr::select("event_key","enrollment_key","occurredAt.pro"="occurredAt"),
+        dplyr::join_by("enrollment_key")) |>
+      dplyr::filter(.data$occurredAt.pro < .data$enrolledAt |
+                      .data$occurredAt.pro < .data$occurredAt.adm |
+                      .data$occurredAt.pro > .data$occurredAt.end) |>
+      dplyr::select(
+        tidyselect::any_of(
+          c("hospital_key",
+            "department_key",
+            "patient_key")),"enrollment_key","event_key","enrolledAt","occurredAt.adm","occurredAt.end","occurredAt.pro")) |>
+    dplyr::group_by(dplyr::across(!c("enrolledAt","occurredAt.adm","occurredAt.end","occurredAt.pro"))) |>
+    dplyr::summarise(
+      context = list(
+        list(
+          enrolledAt = .data$enrolledAt,
+          occurredAt.adm = .data$occurredAt.adm,
+          occurredAt.end = .data$occurredAt.end,
+          occurredAt.pro = .data$occurredAt.pro)))
+
+  if(!is.null(exceptions))
+    r <- r |>
+    dplyr::anti_join(
+      exceptions,
+      dplyr::join_by("rule_id","event_key"))
 
   return(r)
 }
@@ -584,12 +698,50 @@ validation_rule_16 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
 
-  # TODO: Implement
   r <- dplyr::bind_cols(
-    rule_id = c(16L),
+    rule_id = c(13L),
     x$enrollments |>
-      dplyr::select("enrollment_key") |>
-      dplyr::filter(.data$enrollment_key == -1))
+      dplyr::select(
+        tidyselect::any_of(c("hospital_key","department_key","patient_key")),
+        "enrollment_key","enrolledAt") |>
+      dplyr::inner_join(
+        x$events |>
+          dplyr::filter(.data$event_type_key == "adm") |>
+          dplyr::select("enrollment_key","occurredAt"),
+        dplyr::join_by("enrollment_key")) |>
+      dplyr::inner_join(
+        x$events |>
+          dplyr::filter(.data$event_type_key == "end") |>
+          dplyr::select("enrollment_key","occurredAt"),
+        dplyr::join_by("enrollment_key"),
+        suffix = c(".adm",".end")) |>
+      dplyr::inner_join(
+        x$events |>
+          dplyr::filter(.data$event_type_key == "ssi") |>
+          dplyr::select("event_key","enrollment_key","occurredAt.ssi"="occurredAt"),
+        dplyr::join_by("enrollment_key")) |>
+      dplyr::filter(.data$occurredAt.ssi < .data$enrolledAt |
+                      .data$occurredAt.ssi < .data$occurredAt.adm |
+                      .data$occurredAt.ssi > .data$occurredAt.end) |>
+      dplyr::select(
+        tidyselect::any_of(
+          c("hospital_key",
+            "department_key",
+            "patient_key")),"enrollment_key","event_key","enrolledAt","occurredAt.adm","occurredAt.end","occurredAt.ssi")) |>
+    dplyr::group_by(dplyr::across(!c("enrolledAt","occurredAt.adm","occurredAt.end","occurredAt.ssi"))) |>
+    dplyr::summarise(
+      context = list(
+        list(
+          enrolledAt = .data$enrolledAt,
+          occurredAt.adm = .data$occurredAt.adm,
+          occurredAt.end = .data$occurredAt.end,
+          occurredAt.ssi = .data$occurredAt.ssi)))
+
+  if(!is.null(exceptions))
+    r <- r |>
+    dplyr::anti_join(
+      exceptions,
+      dplyr::join_by("rule_id","event_key"))
 
   return(r)
 }
