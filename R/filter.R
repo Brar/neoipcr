@@ -157,6 +157,7 @@ apply_postfilter <- function(x)
           admissionData, dplyr::join_by("event_key")),
       dplyr::join_by("enrollment_key"))
 
+  # Todo: make country_filter work without include_country
   # Filtering by country will only work if we have country information
   if(!is.null(countries) && "country_key" %in% names(enrollments))
     enrollments <- enrollments |>

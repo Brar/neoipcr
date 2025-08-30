@@ -1014,7 +1014,7 @@ get_abr_infection_rate_table <- function(ref, use_cache = TRUE)
       group_cols = "genus",
       use_cache = use_cache) |>
     dplyr::select("group"="genus","n","rate","q1","q2","q3") |>
-    dplyr::mutate(group = paste(.data$group, "spp."))
+    dplyr::mutate(group = "Enterococcus spp.")
 
   lv0 <- dplyr::bind_cols(
     abr_type = "vre",
@@ -1638,28 +1638,42 @@ get_resistance_rate_with_department_quartiles <- function(x, resistance, group_c
       use_cache = use_cache) |>
     dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols)))
 
-  dep_stats <- deps |>
-    dplyr::summarise(
-      n_deps = dplyr::n(),
-      median = stats::median(.data$inf_w_ia),
-      .groups = "drop")
+  if (nrow(deps) < 1) {
+    return(
+      tibble::tibble(!!!group_cols, .rows = 1, .name_repair = ~ group_cols) |>
+        dplyr::bind_cols(
+          tibble::tibble(
+            n = 0L,
+            rate = 0,
+            q1 = NA_real_,
+            q2 = NA_real_,
+            q3 = NA_real_
+          ))
+    )
+  } else {
+    dep_stats <- deps |>
+      dplyr::summarise(
+        n_deps = dplyr::n(),
+        median = stats::median(.data$inf_w_ia),
+        .groups = "drop")
 
-  quartiles <- deps |>
-    dplyr::reframe(
-      value = stats::quantile(
-        .data$inf_rs_rate,
-        prob = c(.25,.5,.75),
-        na.rm = TRUE)) |>
-    dplyr::mutate(
-      name=names(.data$value),
-      name=dplyr::case_match(
-        .data$name,
-        "25%"~"q1",
-        "50%"~"q2",
-        "75%"~"q3")) |>
-    tidyr::pivot_wider()
+    quartiles <- deps |>
+      dplyr::reframe(
+        value = stats::quantile(
+          .data$inf_rs_rate,
+          prob = c(.25,.5,.75),
+          na.rm = TRUE)) |>
+      dplyr::mutate(
+        name=names(.data$value),
+        name=dplyr::case_match(
+          .data$name,
+          "25%"~"q1",
+          "50%"~"q2",
+          "75%"~"q3")) |>
+      tidyr::pivot_wider()
+  }
 
-  if(is.null(group_cols))
+  if (is.null(group_cols))
     rate <- rate |>
     dplyr::bind_cols(dep_stats) |>
     dplyr::bind_cols(quartiles)
