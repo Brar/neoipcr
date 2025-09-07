@@ -200,7 +200,7 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
 
   if(!is.null(dataset_options$trial_keys))
     metadata$departments <- metadata$departments |>
-      dplyr::anti_join(
+      dplyr::semi_join(
         metadata$trials |>
           dplyr::select("organisationUnits") |>
           tidyr::unnest_longer("organisationUnits") |>
