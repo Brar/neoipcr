@@ -913,6 +913,21 @@ validation_rule_22 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
 
+  if (nrow(x$surgeryData) < 1)
+    return(dplyr::bind_cols(
+      rule_id = c(22L),
+      x$enrollments |>
+        dplyr::select("enrollment_key") |>
+        dplyr::filter(.data$enrollment_key == -1)))
+  if (!file.exists("../ICHE-Health-Intervention-Codes.csv")) {
+    warn("Skipping validation of ICHE codes due to missing ICHE Health Intervention Code information.")
+    return(dplyr::bind_cols(
+      rule_id = c(22L),
+      x$enrollments |>
+        dplyr::select("enrollment_key") |>
+        dplyr::filter(.data$enrollment_key == -1)))
+  }
+
   valid_iche_codes <- readr::read_csv("../ICHE-Health-Intervention-Codes.csv", col_names = FALSE, col_types = "c") |>
     dplyr::pull(1)
 
@@ -958,6 +973,21 @@ validation_rule_22 <- function(x, exceptions)
 validation_rule_23 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
+
+  if (nrow(x$surgeryData) < 1)
+    return(dplyr::bind_cols(
+      rule_id = c(23L),
+      x$enrollments |>
+        dplyr::select("enrollment_key") |>
+        dplyr::filter(.data$enrollment_key == -1)))
+  if (!file.exists("../ICHE-Health-Intervention-Codes.csv")) {
+    warn("Skipping validation of ICHE codes due to missing ICHE Health Intervention Code information.")
+    return(dplyr::bind_cols(
+      rule_id = c(23L),
+      x$enrollments |>
+        dplyr::select("enrollment_key") |>
+        dplyr::filter(.data$enrollment_key == -1)))
+  }
 
   valid_iche_codes <- readr::read_csv("../ICHE-Health-Intervention-Codes.csv", col_names = FALSE, col_types = "c") |>
     dplyr::pull(1)
@@ -1008,6 +1038,21 @@ validation_rule_24 <- function(x, exceptions)
 
   if (!('side_procedure_code_2' %in% names(x$surgeryData))) {
     return(NULL)
+  }
+
+  if (nrow(x$surgeryData) < 1)
+    return(dplyr::bind_cols(
+      rule_id = c(24L),
+      x$enrollments |>
+        dplyr::select("enrollment_key") |>
+        dplyr::filter(.data$enrollment_key == -1)))
+  if (!file.exists("../ICHE-Health-Intervention-Codes.csv")) {
+    warn("Skipping validation of ICHE codes due to missing ICHE Health Intervention Code information.")
+    return(dplyr::bind_cols(
+      rule_id = c(24L),
+      x$enrollments |>
+        dplyr::select("enrollment_key") |>
+        dplyr::filter(.data$enrollment_key == -1)))
   }
 
   valid_iche_codes <- readr::read_csv("../ICHE-Health-Intervention-Codes.csv", col_names = FALSE, col_types = "c") |>
