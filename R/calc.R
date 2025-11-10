@@ -104,7 +104,7 @@ calculate_reference_data <- function(x, use_cache = TRUE)
       resistance_test_rate_table =
         get_resistance_test_rate_table(x, use_cache)
     ),
-    class = "neoipcr_ref_ds")
+    class = c("neoipcr_ref_ds", "list"))
 }
 
 calculate_department_data <- function(x, use_cache = TRUE)
