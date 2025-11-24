@@ -2073,12 +2073,12 @@ get_procedure_category <- function(x, not_surgery_na = FALSE)
   action <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})", 2)
   means <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})\\.([A-Za-z]{2})", 3)
   if (not_surgery_na) {
-    not_surgery <- NA
+    not_surgery <- NA_character_
   } else {
     not_surgery <- "not_surgery"
   }
   dplyr::case_when(
-    is.na(x) ~ NA,
+    is.na(x) ~ NA_character_,
     # Neurosurgery
     ############################################################################
     target %in% c(
