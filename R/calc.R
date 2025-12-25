@@ -11,6 +11,30 @@ calculate_reference_data <- function(x, use_cache = TRUE)
 
   quartile_probs <- c(0.25,0.5,0.75)
 
+  bw_refq <- x$patients$birth_weight |>
+    stats::quantile(seq(0.25, 0.75, 0.25)) |>
+    unname() |>
+    as.integer()
+
+  bw_scale_min <- as.integer(min(x$patients$birth_weight) / 50L) * 50L - 50L
+  bw_scale_max <- as.integer(max(x$patients$birth_weight) / 50L) * 50L + 100L
+
+  bw_refd <- x$patients$birth_weight |>
+    bw50(as_factor = F) |>
+    stats::density(from = bw_scale_min, to = bw_scale_max)
+
+  ga_refq <- x$patients$total_gestation_days |>
+    stats::quantile(seq(0.25, 0.75, 0.25)) |>
+    unname() |>
+    as.integer()
+
+  ga_scale_min = as.integer(min(x$patients$total_gestation_days) / 7L) * 7L - 7L
+  ga_scale_max = as.integer(max(x$patients$total_gestation_days) / 7L) * 7L + 14L
+
+  ga_refd <- x$patients$total_gestation_days |>
+    ga7() |>
+    stats::density(from = ga_scale_min, to = ga_scale_max)
+
   pd <- get_risk_time(x, use_cache = use_cache)$patient_days
   pd_dept <- get_risk_time(
     x,
@@ -55,6 +79,50 @@ calculate_reference_data <- function(x, use_cache = TRUE)
 
   structure(
     list(
+      birth_weight = list(
+        density = data.frame(
+          bw50 = bw_refd$x,
+          density = bw_refd$y / sum(bw_refd$y)
+        ),
+        frequency = data.frame(
+          bw50 = x$patients$birth_weight |>
+            bw50(as_factor = F)
+          ) |>
+          dplyr::group_by(bw50) |>
+          dplyr::summarise(n = dplyr::n()),
+        q1 = bw_refq[1],
+        q2 = bw_refq[2],
+        q3 = bw_refq[3],
+        mean = x$patients$birth_weight |>
+          mean() |>
+          as.integer(),
+        scale = list(
+          min = bw_scale_min,
+          max = bw_scale_max
+        )
+      ),
+      gestational_age = list(
+        density = data.frame(
+          ga7 = ga_refd$x,
+          density = ga_refd$y / sum(ga_refd$y)
+        ),
+        frequency = data.frame(
+          ga7 = x$patients$total_gestation_days |>
+            ga7()
+        ) |>
+          dplyr::group_by(ga7) |>
+          dplyr::summarise(n = dplyr::n()),
+        q1 = ga_refq[1],
+        q2 = ga_refq[2],
+        q3 = ga_refq[3],
+        mean = x$patients$total_gestation_days |>
+          mean() |>
+          as.integer(),
+        scale = list(
+          min = ga_scale_min,
+          max = ga_scale_max
+        )
+      ),
       n_departments = x$enrollments$department_key |> unique() |> length(),
       n_patients = tibble::tibble(
         total = rp$n_patients,
@@ -2196,6 +2264,16 @@ get_procedure_category_pretty <- function(x)
     .default = x
   )
 }
+
+ga7 <- function(x) 7 * dplyr::case_match(
+  as.integer(x %% 7),
+  0L ~ as.integer(x / 7),
+  1L ~ as.integer(x / 7),
+  2L ~ as.integer(x / 7),
+  3L ~ as.integer(x / 7),
+  4L ~ as.integer(x / 7) + 1,
+  5L ~ as.integer(x / 7) + 1,
+  6L ~ as.integer(x / 7) + 1)
 
 bw50 <- function(x, as_factor = TRUE)
 {
