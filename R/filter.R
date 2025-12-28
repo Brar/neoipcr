@@ -170,12 +170,12 @@ apply_postfilter <- function(x)
       dplyr::join_by("enrollment_key"))
 
   # Filtering by country will only work if we have country information
-  if(!is.null(countries))
+  if(!is.null(countries) && "country_key" %in% names(enrollments))
     enrollments <- enrollments |>
     dplyr::semi_join(countries, dplyr::join_by("country_key"))
 
   # Filtering by unit will only work if we have unit information
-  if(!is.null(departments))
+  if(!is.null(departments) && "department_key" %in% names(enrollments))
     enrollments <- enrollments |>
     dplyr::semi_join(departments, dplyr::join_by("department_key"))
 

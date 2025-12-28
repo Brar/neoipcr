@@ -98,6 +98,7 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
     if(dataset_options$include_hospital != "no")
       fields <- c(fields, "department_key", "hospital_key")
     else if(dataset_options$include_department != "no" ||
+            length(dataset_options$department_filter) > 0 ||
             length(dataset_options$include_invalid_patients) > 1)
       fields <- c(fields, "department_key")
 

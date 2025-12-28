@@ -1,3 +1,5 @@
+quartile_probs <- c(0.25,0.5,0.75)
+
 #' Calculate a NeoIPC reference data set
 #'
 #' @param x The neoipcr_ds object containing the data
@@ -8,32 +10,6 @@
 calculate_reference_data <- function(x, use_cache = TRUE)
 {
   check_neoipcr_ds(x)
-
-  quartile_probs <- c(0.25,0.5,0.75)
-
-  bw_refq <- x$patients$birth_weight |>
-    stats::quantile(seq(0.25, 0.75, 0.25)) |>
-    unname() |>
-    as.integer()
-
-  bw_scale_min <- as.integer(min(x$patients$birth_weight) / 50L) * 50L - 50L
-  bw_scale_max <- as.integer(max(x$patients$birth_weight) / 50L) * 50L + 100L
-
-  bw_refd <- x$patients$birth_weight |>
-    bw50(as_factor = F) |>
-    stats::density(from = bw_scale_min, to = bw_scale_max)
-
-  ga_refq <- x$patients$total_gestation_days |>
-    stats::quantile(seq(0.25, 0.75, 0.25)) |>
-    unname() |>
-    as.integer()
-
-  ga_scale_min = as.integer(min(x$patients$total_gestation_days) / 7L) * 7L - 7L
-  ga_scale_max = as.integer(max(x$patients$total_gestation_days) / 7L) * 7L + 14L
-
-  ga_refd <- x$patients$total_gestation_days |>
-    ga7() |>
-    stats::density(from = ga_scale_min, to = ga_scale_max)
 
   pd <- get_risk_time(x, use_cache = use_cache)$patient_days
   pd_dept <- get_risk_time(
@@ -79,50 +55,8 @@ calculate_reference_data <- function(x, use_cache = TRUE)
 
   structure(
     list(
-      birth_weight = list(
-        density = data.frame(
-          bw50 = bw_refd$x,
-          density = bw_refd$y / sum(bw_refd$y)
-        ),
-        frequency = data.frame(
-          bw50 = x$patients$birth_weight |>
-            bw50(as_factor = F)
-          ) |>
-          dplyr::group_by(bw50) |>
-          dplyr::summarise(n = dplyr::n()),
-        q1 = bw_refq[1],
-        q2 = bw_refq[2],
-        q3 = bw_refq[3],
-        mean = x$patients$birth_weight |>
-          mean() |>
-          as.integer(),
-        scale = list(
-          min = bw_scale_min,
-          max = bw_scale_max
-        )
-      ),
-      gestational_age = list(
-        density = data.frame(
-          ga7 = ga_refd$x,
-          density = ga_refd$y / sum(ga_refd$y)
-        ),
-        frequency = data.frame(
-          ga7 = x$patients$total_gestation_days |>
-            ga7()
-        ) |>
-          dplyr::group_by(ga7) |>
-          dplyr::summarise(n = dplyr::n()),
-        q1 = ga_refq[1],
-        q2 = ga_refq[2],
-        q3 = ga_refq[3],
-        mean = x$patients$total_gestation_days |>
-          mean() |>
-          as.integer(),
-        scale = list(
-          min = ga_scale_min,
-          max = ga_scale_max
-        )
-      ),
+      birth_weight = x|> get_birthweight_figure_data(),
+      gestational_age = x|> get_gestational_age_figure_data(),
       n_departments = x$enrollments$department_key |> unique() |> length(),
       n_patients = tibble::tibble(
         total = rp$n_patients,
@@ -158,7 +92,7 @@ calculate_reference_data <- function(x, use_cache = TRUE)
       usage_density_rate_table =
         get_usage_density_rate_table(x, use_cache),
       surgery_rate_table =
-        get_surgery_rate_table(x, use_cache),
+        get_ref_surgery_rate_table(x, use_cache),
       incidence_density_rate_table =
         get_incidence_density_rate_table(x, use_cache),
       dev_ass_incidence_density_rate_table =
@@ -202,15 +136,16 @@ calculate_department_data <- function(x, use_cache = TRUE)
 
   structure(
     list(
+      birth_weight = x|> get_birthweight_figure_data(),
+      gestational_age = x|> get_gestational_age_figure_data(),
       n_patients = rp$n_patients,
       n_enrollments = rp$n_enrollments,
       n_patient_days = rt$patient_days,
-      n_surgical_departments = sr$n_departments,
       n_surgical_patients = sr$n_patients,
       n_surgical_procedures = sr$n_procedures,
-      usage_density_rate_table = usage_density_rate_table
-      # surgery_rate_table =
-      #   get_surgery_rate_table(x, use_cache),
+      usage_density_rate_table = usage_density_rate_table,
+      surgery_rate_table =
+       get_surgery_rate_table(x, use_cache)
       # incidence_density_rate_table =
       #   get_incidence_density_rate_table(x, use_cache),
       # dev_ass_incidence_density_rate_table =
@@ -224,7 +159,7 @@ calculate_department_data <- function(x, use_cache = TRUE)
       # resistance_test_rate_table =
       #   get_resistance_test_rate_table(x, use_cache)
     ),
-    class = "neoipcr_dept_ds")
+    class = c("neoipcr_dept_ds", "list"))
 }
 
 get_benchmark_data <- function(...)
@@ -303,8 +238,100 @@ get_benchmark_data <- function(...)
           dplyr::full_join(tbl, dplyr::join_by("factor"))
       }
     }
+    if ("surgery_rate_table" %in% elements) {
+      tbl <- ds$surgery_rate_table
+      tbl <- tbl |>
+        dplyr::rename_with(~ paste0(.x, suffix), !"pro_cat")
+
+      if (is.null(output$surgery_rate_table)) {
+        output$surgery_rate_table <- tbl
+      } else {
+        output$surgery_rate_table <- output$surgery_rate_table |>
+          dplyr::full_join(tbl, dplyr::join_by("pro_cat")) |>
+          dplyr::mutate(
+            dplyr::across(
+              !tidyselect::matches("^q1|2|3", ignore.case = F),
+              ~ tidyr::replace_na(.x, 0)))
+      }
+    }
   }
   output
+}
+
+get_birthweight_figure_data <- function(x)
+{
+  bw_refq <- x$patients$birth_weight |>
+    stats::quantile(quartile_probs) |>
+    unname() |>
+    as.integer()
+
+  bw_scale_min <- as.integer(min(x$patients$birth_weight) / 50L) * 50L - 50L
+  bw_scale_max <- as.integer(max(x$patients$birth_weight) / 50L) * 50L + 100L
+
+  bw_refd <- x$patients$birth_weight |>
+    bw50(as_factor = F) |>
+    stats::density(from = bw_scale_min, to = bw_scale_max)
+
+  list(
+    density = data.frame(
+      bw50 = bw_refd$x,
+      density = bw_refd$y / sum(bw_refd$y)
+    ),
+    frequency = data.frame(
+      bw50 = x$patients$birth_weight |>
+        bw50(as_factor = F)
+    ) |>
+      dplyr::group_by(bw50) |>
+      dplyr::summarise(n = dplyr::n()),
+    q1 = bw_refq[1],
+    q2 = bw_refq[2],
+    q3 = bw_refq[3],
+    mean = x$patients$birth_weight |>
+      mean() |>
+      as.integer(),
+    scale = list(
+      min = bw_scale_min,
+      max = bw_scale_max
+    )
+  )
+}
+
+get_gestational_age_figure_data <- function(x)
+{
+  ga_refq <- x$patients$total_gestation_days |>
+    stats::quantile(quartile_probs) |>
+    unname() |>
+    as.integer()
+
+  ga_scale_min = as.integer(min(x$patients$total_gestation_days) / 7L) * 7L - 7L
+  ga_scale_max = as.integer(max(x$patients$total_gestation_days) / 7L) * 7L + 14L
+
+  ga_refd <- x$patients$total_gestation_days |>
+    ga7() |>
+    stats::density(from = ga_scale_min, to = ga_scale_max)
+
+  list(
+    density = data.frame(
+      ga7 = ga_refd$x,
+      density = ga_refd$y / sum(ga_refd$y)
+    ),
+    frequency = data.frame(
+      ga7 = x$patients$total_gestation_days |>
+        ga7()
+    ) |>
+      dplyr::group_by(ga7) |>
+      dplyr::summarise(n = dplyr::n()),
+    q1 = ga_refq[1],
+    q2 = ga_refq[2],
+    q3 = ga_refq[3],
+    mean = x$patients$total_gestation_days |>
+      mean() |>
+      as.integer(),
+    scale = list(
+      min = ga_scale_min,
+      max = ga_scale_max
+    )
+  )
 }
 
 #' Get the table with usage density rates of the time dependent risk factors
@@ -400,22 +427,62 @@ get_usage_density_rate_table <- function(x, use_cache = TRUE)
     cache(x, "usage_density_rate_table")
 }
 
-#' Get the table with rates of surgical precedues
+#' Get the table with rates of surgical procedues
+#'
+#' @param x The data set which can be either a neoipcr_unit_ds or a
+#'  neoipcr_ds object
+#' @param use_cache Use the cache. Ignored if ref is a neoipcr_unit_ds object
+#'
+#' @returns A table containing the rates of surgical procedues
+#' @export
+get_surgery_rate_table <- function(x, use_cache = TRUE)
+{
+  # check_neoipcr_ds_or_unit_ds(x)
+  #
+  # if(is_neoipcr_unit_ds(x))
+  #   return(x$surgery_rate_table)
+
+  if(use_cache && !is.null(r <- get_cached(x, "surgery_rate_table")))
+    return(r)
+
+  tibble::tibble(
+    pro_cat = "overall",
+    n = get_procedures(x, use_cache = use_cache) |>
+      dplyr::pull()) |>
+    dplyr::bind_rows(
+      get_procedures(
+        x,
+        group_cols = "pro_cat",
+        use_cache = use_cache)
+    ) |>
+    dplyr::bind_cols(
+      get_risk_population(x, use_cache = use_cache) |>
+        dplyr::select("n_patients")
+    ) |>
+    dplyr::mutate(pooled = .data$n / .data$n_patients * 100) |>
+    dplyr::select(!"n_patients") |>
+    add_class("neoipcr_tbl_sr") |>
+    cache(x, "surgery_rate_table")
+}
+
+
+#' Get the reference table with rates of surgical procedues
 #'
 #' @param ref The reference data set which can be either a neoipcr_ref_ds or a
 #'  neoipcr_ds object
 #' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
 #'
-#' @returns A table containing the rates of surgical precedues
+#' @returns A table containing the reference rates of surgical procedues and the
+#'  25%, 50%, and 75% quantiles
 #' @export
-get_surgery_rate_table <- function(ref, use_cache = TRUE)
+get_ref_surgery_rate_table <- function(ref, use_cache = TRUE)
 {
   check_neoipcr_ds_or_ref_ds(ref)
 
   if(is_neoipcr_ref_ds(ref))
     return(ref$surgery_rate_table)
 
-  if(use_cache && !is.null(r <- get_cached(ref, "surgery_rate_table")))
+  if(use_cache && !is.null(r <- get_cached(ref, "ref_surgery_rate_table")))
     return(r)
 
   pats_per_dept <- ref |>
@@ -427,28 +494,14 @@ get_surgery_rate_table <- function(ref, use_cache = TRUE)
   n_deps <- nrow(pats_per_dept)
   median_patients <- stats::median(dplyr::pull(pats_per_dept, "n_patients"))
 
-  r <- tibble::tibble(
-    pro_cat = "overall",
-    n = get_procedures(ref, use_cache = use_cache) |>
-      dplyr::pull()) |>
-    dplyr::bind_rows(
-      get_procedures(
-        ref,
-        group_cols = "pro_cat",
-        use_cache = use_cache)
-    ) |>
-    dplyr::bind_cols(
-      get_risk_population(ref, use_cache = use_cache) |>
-        dplyr::select("n_patients")
-    ) |>
-    dplyr::mutate(pooled = .data$n / .data$n_patients * 100) |>
-    dplyr::select(!"n_patients")
+  r <- ref |>
+    get_surgery_rate_table(use_cache = use_cache)
 
   if(nrow(r) == 1 && r$n == 0)
     return(
       dplyr::bind_cols(r, q1 = NA, q2 = NA, q3 = NA) |>
         add_class("neoipcr_tbl_sr_ref") |>
-        cache(ref, "surgery_rate_table"))
+        cache(ref, "ref_surgery_rate_table"))
 
   r |>
     dplyr::inner_join(
@@ -502,7 +555,7 @@ get_surgery_rate_table <- function(ref, use_cache = TRUE)
         .data$q3)) |>
     dplyr::select(!"drop_quartiles") |>
     add_class("neoipcr_tbl_sr_ref") |>
-    cache(ref, "surgery_rate_table")
+    cache(ref, "ref_surgery_rate_table")
 }
 
 #' Get the table with incidence density rates of the infections with time
@@ -1124,7 +1177,6 @@ get_abr_infection_rate_table <- function(ref, use_cache = TRUE)
     add_class("neoipcr_tbl_abr_ir_ref") |>
     cache(ref, "abr_infection_rate_table")
 }
-
 
 #' Get the table with resistance test rates of the recorded resistance
 #'  mechanisms
@@ -2141,12 +2193,13 @@ get_procedure_category <- function(x, not_surgery_na = FALSE)
   action <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})", 2)
   means <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})\\.([A-Za-z]{2})", 3)
   if (not_surgery_na) {
-    not_surgery <- NA
+    not_surgery <- NA_character_
   } else {
     not_surgery <- "not_surgery"
   }
+
   dplyr::case_when(
-    is.na(x) ~ NA,
+    is.na(x) ~ NA_character_,
     # Neurosurgery
     ############################################################################
     target %in% c(

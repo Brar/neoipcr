@@ -281,7 +281,7 @@ import_dhis2 <- function(
       dplyr::anti_join(v, dplyr::join_by("patient_key"))
   }
 
-  r |>
+  r <- r |>
     apply_postfilter()
 
   r |>
