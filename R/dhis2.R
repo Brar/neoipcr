@@ -14,6 +14,8 @@
 #'  patient records to include into the dataset
 #' @param country_filter ISO 3166 country codes	of the countries the enrolling
 #'  departments are located in to include into the dataset.
+#' @param department_filter NeoIPC department codes of the departments to
+#'  include into the dataset.
 #' @param include_world_bank_class Include the World Bank class into the
 #'  dataset. Possible values are "no", "pseudonymised" and "yes"
 #' @param include_country Include the country into the dataset. Possible values
@@ -56,6 +58,7 @@ dhis2_dataset_options <- function(
     gestational_age_from = NULL,
     gestational_age_to = NULL,
     country_filter = NULL,
+    department_filter = NULL,
     include_world_bank_class = c("no","pseudonymised","yes"),
     include_country = c("no","pseudonymised","yes"),
     include_hospital = c("no","pseudonymised","yes"),
@@ -80,6 +83,7 @@ dhis2_dataset_options <- function(
   check_number_whole(gestational_age_from, allow_null = TRUE)
   check_number_whole(gestational_age_to, allow_null = TRUE)
   check_character(country_filter, allow_null = TRUE)
+  check_character(department_filter, allow_null = TRUE)
   check_bool(include_patient_id)
   check_bool(include_timestamps)
   check_bool(include_test_data)
@@ -103,6 +107,7 @@ dhis2_dataset_options <- function(
     gestational_age_from = gestational_age_from,
     gestational_age_to = gestational_age_to,
     country_filter = country_filter,
+    department_filter = department_filter,
     include_world_bank_class = rlang::arg_match(include_world_bank_class),
     include_country = rlang::arg_match(include_country),
     include_hospital = rlang::arg_match(include_hospital),
@@ -206,6 +211,9 @@ import_dhis2 <- function(
   metadata$countries <- metadata$countries |>
     filter_countries(dataset_options$country_filter)
 
+  metadata$departments <- metadata$departments |>
+    filter_units(dataset_options$department_filter)
+
   # read_enrollment_details
   # read_enrollment_notes
   eventDetails <- read_event_details(events_raw, events, metadata, dataset_options)
@@ -274,7 +282,9 @@ import_dhis2 <- function(
   }
 
   r |>
-    apply_postfilter() |>
+    apply_postfilter()
+
+  r |>
     apply_data_removal(dataset_options)
 }
 

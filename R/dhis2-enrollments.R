@@ -14,8 +14,9 @@ get_enrollments_request <- function(req_base, dataset_options, programId)
       ",occurredAt,createdAt,createdAtClient,updatedAt,updatedAtClient,completedAt")
 
   if(!dataset_options$include_test_data ||
-     !is.null(dataset_options$country_filter) ||
-     !is.null(dataset_options$trial_keys) ||
+     length(dataset_options$country_filter) > 0 ||
+     length(dataset_options$department_filter) > 0 ||
+     length(dataset_options$trial_keys) > 0 ||
      dataset_options$include_department != "no" ||
      dataset_options$include_hospital != "no" ||
      dataset_options$include_country != "no" ||
@@ -76,7 +77,7 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
         metadata$countries |>
           dplyr::select("country_key", "world_bank_class_key"),
         dplyr::join_by("country_key"))
-  else if(dataset_options$include_country != "no")
+  else if(dataset_options$include_country != "no"|| length(dataset_options$country_filter) > 0)
     enrollments <- enrollments |>
       dplyr::inner_join(
         metadata$departments |>
@@ -89,6 +90,7 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
   else if(dataset_options$include_test_data ||
           dataset_options$include_hospital != "no" ||
           dataset_options$include_department != "no" ||
+          length(dataset_options$department_filter) > 0 ||
           length(dataset_options$include_invalid_patients) > 1)
   {
     fields <- "orgUnit"

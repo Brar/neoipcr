@@ -7,6 +7,7 @@ filter_dataset <- function(
     gestational_age_from = NULL,
     gestational_age_to = NULL,
     countries = NULL,
+    units = NULL,
     keep_non_core_patients = FALSE,
     remove_orphans = TRUE)
 {
@@ -113,11 +114,22 @@ filter_countries <- function(
     countries,
     included_countries)
 {
-  if(is.null(included_countries))
+  if(is.null(included_countries) || length(included_countries) < 1)
     return(countries)
 
   countries |>
-    dplyr::filter(countries$code %in% included_countries)
+    dplyr::filter(.data$code %in% included_countries)
+}
+
+filter_units <- function(
+    units,
+    included_units)
+{
+  if(is.null(included_units) || length(included_units) < 1)
+    return(units)
+
+  units |>
+    dplyr::filter(.data$code %in% included_units)
 }
 
 apply_postfilter <- function(x)
@@ -157,11 +169,15 @@ apply_postfilter <- function(x)
           admissionData, dplyr::join_by("event_key")),
       dplyr::join_by("enrollment_key"))
 
-  # Todo: make country_filter work without include_country
   # Filtering by country will only work if we have country information
-  if(!is.null(countries) && "country_key" %in% names(enrollments))
+  if(!is.null(countries))
     enrollments <- enrollments |>
     dplyr::semi_join(countries, dplyr::join_by("country_key"))
+
+  # Filtering by unit will only work if we have unit information
+  if(!is.null(departments))
+    enrollments <- enrollments |>
+    dplyr::semi_join(departments, dplyr::join_by("department_key"))
 
   ########################################################
   ## Second filter all the other elements by enrollments #

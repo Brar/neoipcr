@@ -12,6 +12,7 @@ dhis2_dataset_options(
   gestational_age_from = NULL,
   gestational_age_to = NULL,
   country_filter = NULL,
+  department_filter = NULL,
   include_world_bank_class = c("no", "pseudonymised", "yes"),
   include_country = c("no", "pseudonymised", "yes"),
   include_hospital = c("no", "pseudonymised", "yes"),
@@ -53,6 +54,9 @@ patient records to include into the dataset}
 
 \item{country_filter}{ISO 3166 country codes    of the countries the enrolling
 departments are located in to include into the dataset.}
+
+\item{department_filter}{NeoIPC department codes of the departments to
+include into the dataset.}
 
 \item{include_world_bank_class}{Include the World Bank class into the
 dataset. Possible values are "no", "pseudonymised" and "yes"}
