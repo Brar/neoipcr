@@ -192,10 +192,9 @@ get_benchmark_data <- function(...)
 {
   x <- list(...)
   n_ds <- length(x)
-  # Todo: throw if n_ds < 2
-  output <- list()
   ds_names = rlang::names2(x)
-  suffixes = ds_names |>
+  output <- list(dataset_names = ds_names)
+    suffixes = ds_names |>
     sapply(\(x)ifelse(x=="",x,paste0("_",x)), USE.NAMES = FALSE)
 
   for (i in 1:n_ds) {
@@ -350,7 +349,7 @@ get_birthweight_figure_data <- function(x)
       birth_weight_cat = x$patients$birth_weight |>
         bw50(as_factor = F)
     ) |>
-      dplyr::group_by(birth_weight_cat) |>
+      dplyr::group_by(.data$birth_weight_cat) |>
       dplyr::summarise(n = dplyr::n()),
     location_parameters = tibble::tibble(
       q1 = bw_quartiles[2],
@@ -390,7 +389,7 @@ get_gestational_age_figure_data <- function(x)
       gestational_age_cat = x$patients$total_gestation_days |>
         ga7()
     ) |>
-      dplyr::group_by(gestational_age_cat) |>
+      dplyr::group_by(.data$gestational_age_cat) |>
       dplyr::summarise(n = dplyr::n()),
     location_parameters = tibble::tibble(
       q1 = ga_quartiles[2],
