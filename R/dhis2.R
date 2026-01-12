@@ -402,8 +402,9 @@ add_key_column <- function(table, key_name = "key", as_factor = FALSE)
 
 convert_value <- function(values, valueTypes, levelsLists)
 {
-  ret <- NULL
-  for (i in 1:length(values)) {
+  len <- length(values)
+  convertedValues <- vector(mode = "list", length = len)
+  for (i in 1:len) {
     value <- values[i]
     valueType <- valueTypes[i]
     levels <- unlist(levelsLists[i])
@@ -414,7 +415,7 @@ convert_value <- function(values, valueTypes, levelsLists)
     else if (valueType == "BOOLEAN" || valueType == "TRUE_ONLY")
       value <- as.logical(value)
 
-    ret <- c(ret, list(value))
+    convertedValues[[i]] <- value
   }
-  ret
+  return(convertedValues)
 }

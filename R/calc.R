@@ -11,6 +11,9 @@ calculate_reference_data <- function(x, use_cache = TRUE)
 {
   check_neoipcr_ds(x)
 
+  if(nrow(x$metadata$departments) < 1)
+    rlang::abort("Cannot calculate reference data without departments.")
+
   pd <- get_risk_time(x, use_cache = use_cache)$patient_days
   pd_dept <- get_risk_time(
     x,
@@ -55,8 +58,8 @@ calculate_reference_data <- function(x, use_cache = TRUE)
 
   structure(
     list(
-      birth_weight = x|> get_birthweight_figure_data(),
-      gestational_age = x|> get_gestational_age_figure_data(),
+      birth_weight_figure = x|> get_birthweight_figure_data(),
+      gestational_age_figure = x|> get_gestational_age_figure_data(),
       n_departments = x$enrollments$department_key |> unique() |> length(),
       n_patients = tibble::tibble(
         total = rp$n_patients,
@@ -109,9 +112,20 @@ calculate_reference_data <- function(x, use_cache = TRUE)
     class = c("neoipcr_ref_ds", "list"))
 }
 
+
+#' Calculate a NeoIPC department report data set
+#'
+#' @param x The neoipcr_ds object containing the data
+#' @param use_cache Use the cache
+#'
+#' @returns A NeoIPC reference data set
+#' @export
 calculate_department_data <- function(x, use_cache = TRUE)
 {
   check_neoipcr_ds(x)
+
+  if(nrow(x$metadata$departments) < 1)
+    rlang::abort("Cannot calculate department data without departments.")
 
   rt <- x |>
     get_risk_time(use_cache = use_cache)
@@ -136,8 +150,8 @@ calculate_department_data <- function(x, use_cache = TRUE)
 
   structure(
     list(
-      birth_weight = x|> get_birthweight_figure_data(),
-      gestational_age = x|> get_gestational_age_figure_data(),
+      birth_weight_figure = x|> get_birthweight_figure_data(),
+      gestational_age_figure = x|> get_gestational_age_figure_data(),
       n_patients = rp$n_patients,
       n_enrollments = rp$n_enrollments,
       n_patient_days = rt$patient_days,
@@ -162,18 +176,32 @@ calculate_department_data <- function(x, use_cache = TRUE)
     class = c("neoipcr_dept_ds", "list"))
 }
 
+#' Creates a NeoIPC benchmark data set from department report datasets and a
+#'  reference data set
+#'
+#' @param ... A set of name-value pairs. Each of them should be either a
+#'  neoipcr_dept_ds or a neoipcr_ref_ds (typically it's exactly one
+#'  neoipcr_dept_ds and one neoipcr_ref_ds to benchmark department data against
+#'  reference data but it can also be multiple neoipcr_dept_ds or multiple
+#'  neoipcr_ref_ds to benchmark them agianst each other). The names are used as
+#'  prefixes in the resulting tables
+#'
+#' @returns A neoipcr_bnch_ds
+#' @export
 get_benchmark_data <- function(...)
 {
   x <- list(...)
   n_ds <- length(x)
   # Todo: throw if n_ds < 2
   output <- list()
-  suffixes = rlang::names2(x) |>
+  ds_names = rlang::names2(x)
+  suffixes = ds_names |>
     sapply(\(x)ifelse(x=="",x,paste0("_",x)), USE.NAMES = FALSE)
 
   for (i in 1:n_ds) {
     ds <- x[[i]]
     suffix <- suffixes[i]
+    ds_name <- ds_names[i]
     elements <- names(ds)
 
     if ("n_patients" %in% elements) {
@@ -226,6 +254,44 @@ get_benchmark_data <- function(...)
 
       output$n_surgical_procedures <- dplyr::bind_cols(output$n_surgical_procedures, tbl)
     }
+    if ("birth_weight_figure" %in% elements) {
+      n_tbl <- length(ds$birth_weight_figure)
+      tbl_names <- names(ds$birth_weight_figure)
+      for (j in 1:n_tbl) {
+        tbl_name <- tbl_names[j]
+        tbl <- tibble::tibble(dataset = ds_name) |>
+          dplyr::bind_cols(ds$birth_weight_figure[[j]])
+
+        if (is.null(output$birth_weight_figure)) {
+          output$birth_weight_figure <- list()
+        }
+        if (is.null(output$birth_weight_figure[[tbl_name]])) {
+          output$birth_weight_figure[[tbl_name]] <- tbl
+        } else {
+          output$birth_weight_figure[[tbl_name]] <- output$birth_weight_figure[[tbl_name]] |>
+            dplyr::bind_rows(tbl)
+        }
+      }
+    }
+    if ("gestational_age_figure" %in% elements) {
+      n_tbl <- length(ds$gestational_age_figure)
+      tbl_names <- names(ds$gestational_age_figure)
+      for (j in 1:n_tbl) {
+        tbl_name <- tbl_names[j]
+        tbl <- tibble::tibble(dataset = ds_name) |>
+          dplyr::bind_cols(ds$gestational_age_figure[[j]])
+
+        if (is.null(output$gestational_age_figure)) {
+          output$gestational_age_figure <- list()
+        }
+        if (is.null(output$gestational_age_figure[[tbl_name]])) {
+          output$gestational_age_figure[[tbl_name]] <- tbl
+        } else {
+          output$gestational_age_figure[[tbl_name]] <- output$gestational_age_figure[[tbl_name]] |>
+            dplyr::bind_rows(tbl)
+        }
+      }
+    }
     if ("usage_density_rate_table" %in% elements) {
       tbl <- ds$usage_density_rate_table
       tbl <- tbl |>
@@ -255,41 +321,43 @@ get_benchmark_data <- function(...)
       }
     }
   }
-  output
+  structure(output, class = c("neoipcr_bnch_ds", "list"))
 }
 
 get_birthweight_figure_data <- function(x)
 {
-  bw_refq <- x$patients$birth_weight |>
-    stats::quantile(quartile_probs) |>
-    unname() |>
+  bw_quartiles <- x$patients$birth_weight |>
+    stats::quantile(names = FALSE) |>
     as.integer()
 
-  bw_scale_min <- as.integer(min(x$patients$birth_weight) / 50L) * 50L - 50L
-  bw_scale_max <- as.integer(max(x$patients$birth_weight) / 50L) * 50L + 100L
+  bw_mean = x$patients$birth_weight |>
+    mean() |>
+    as.integer()
 
-  bw_refd <- x$patients$birth_weight |>
+  bw_scale_min <- as.integer(bw_quartiles[1] / 50L) * 50L - 50L
+  bw_scale_max <- as.integer(bw_quartiles[5] / 50L) * 50L + 100L
+
+  bw_density <- x$patients$birth_weight |>
     bw50(as_factor = F) |>
     stats::density(from = bw_scale_min, to = bw_scale_max)
 
   list(
-    density = data.frame(
-      bw50 = bw_refd$x,
-      density = bw_refd$y / sum(bw_refd$y)
+    density = tibble::tibble(
+      birth_weight = bw_density$x,
+      density = bw_density$y / sum(bw_density$y)
     ),
-    frequency = data.frame(
-      bw50 = x$patients$birth_weight |>
+    frequency = tibble::tibble(
+      birth_weight_cat = x$patients$birth_weight |>
         bw50(as_factor = F)
     ) |>
-      dplyr::group_by(bw50) |>
+      dplyr::group_by(birth_weight_cat) |>
       dplyr::summarise(n = dplyr::n()),
-    q1 = bw_refq[1],
-    q2 = bw_refq[2],
-    q3 = bw_refq[3],
-    mean = x$patients$birth_weight |>
-      mean() |>
-      as.integer(),
-    scale = list(
+    location_parameters = tibble::tibble(
+      q1 = bw_quartiles[2],
+      q2 = bw_quartiles[3],
+      q3 = bw_quartiles[4],
+      mean = bw_mean),
+    scale = tibble::tibble(
       min = bw_scale_min,
       max = bw_scale_max
     )
@@ -298,36 +366,38 @@ get_birthweight_figure_data <- function(x)
 
 get_gestational_age_figure_data <- function(x)
 {
-  ga_refq <- x$patients$total_gestation_days |>
-    stats::quantile(quartile_probs) |>
-    unname() |>
+  ga_quartiles <- x$patients$total_gestation_days |>
+    stats::quantile(names = FALSE) |>
     as.integer()
 
-  ga_scale_min = as.integer(min(x$patients$total_gestation_days) / 7L) * 7L - 7L
-  ga_scale_max = as.integer(max(x$patients$total_gestation_days) / 7L) * 7L + 14L
+  ga_mean = x$patients$total_gestation_days |>
+    mean() |>
+    as.integer()
 
-  ga_refd <- x$patients$total_gestation_days |>
+  ga_scale_min = as.integer(ga_quartiles[1] / 7L) * 7L - 7L
+  ga_scale_max = as.integer(ga_quartiles[5] / 7L) * 7L + 14L
+
+  ga_density <- x$patients$total_gestation_days |>
     ga7() |>
     stats::density(from = ga_scale_min, to = ga_scale_max)
 
   list(
-    density = data.frame(
-      ga7 = ga_refd$x,
-      density = ga_refd$y / sum(ga_refd$y)
+    density = tibble::tibble(
+      gestational_age = ga_density$x,
+      density = ga_density$y / sum(ga_density$y)
     ),
-    frequency = data.frame(
-      ga7 = x$patients$total_gestation_days |>
+    frequency = tibble::tibble(
+      gestational_age_cat = x$patients$total_gestation_days |>
         ga7()
     ) |>
-      dplyr::group_by(ga7) |>
+      dplyr::group_by(gestational_age_cat) |>
       dplyr::summarise(n = dplyr::n()),
-    q1 = ga_refq[1],
-    q2 = ga_refq[2],
-    q3 = ga_refq[3],
-    mean = x$patients$total_gestation_days |>
-      mean() |>
-      as.integer(),
-    scale = list(
+    location_parameters = tibble::tibble(
+      q1 = ga_quartiles[2],
+      q2 = ga_quartiles[3],
+      q3 = ga_quartiles[4],
+      mean = ga_mean),
+    scale = tibble::tibble(
       min = ga_scale_min,
       max = ga_scale_max
     )
@@ -2334,6 +2404,9 @@ bw50 <- function(x, as_factor = TRUE)
   if(!as_factor)
     return(m)
 
+  if(length(x) < 1)
+    return(factor())
+
   lb <- m-25
   ub <- m+24
   ordered(
@@ -2347,6 +2420,9 @@ bw125 <- function(x, as_factor = TRUE)
   m <- floor((x-63)/125)*125+125
   if(!as_factor)
     return(m)
+
+  if(length(x) < 1)
+    return(factor())
 
   lb <- m-62
   ub <- m+62
@@ -2362,6 +2438,9 @@ bw250 <- function(x, as_factor = TRUE)
   if(!as_factor)
     return(m)
 
+  if(length(x) < 1)
+    return(factor())
+
   lb <- m-125
   ub <- m+124
   ordered(
@@ -2375,6 +2454,9 @@ bw500 <- function(x, as_factor = TRUE)
   m <- as.integer(x/500)*500+250
   if(!as_factor)
     return(m)
+
+  if(length(x) < 1)
+    return(factor())
 
   lb <- m-250
   ub <- m+249
