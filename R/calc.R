@@ -14,7 +14,7 @@ calculate_reference_data <- function(x, use_cache = TRUE)
   if(is.null(x$enrollments$department_key))
     rlang::abort("Cannot calculate reference data without department information. You need to include at least pseudonymised department information.")
 
-  if(is.null(data$metadata$countries))
+  if(is.null(x$metadata$countries))
     rlang::warn("The data is missing country metadata. The resulting dataset connot be used to create reference reports")
 
   pd <- get_risk_time(x, use_cache = use_cache)$patient_days
