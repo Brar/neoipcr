@@ -214,6 +214,8 @@ import_dhis2 <- function(
   metadata$departments <- metadata$departments |>
     filter_units(dataset_options$department_filter)
 
+  metadata$dataset_options <- dataset_options
+
   # read_enrollment_details
   # read_enrollment_notes
   eventDetails <- read_event_details(events_raw, events, metadata, dataset_options)

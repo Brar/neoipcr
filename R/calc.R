@@ -11,8 +11,11 @@ calculate_reference_data <- function(x, use_cache = TRUE)
 {
   check_neoipcr_ds(x)
 
-  if(nrow(x$metadata$departments) < 1)
-    rlang::abort("Cannot calculate reference data without departments.")
+  if(is.null(x$enrollments$department_key))
+    rlang::abort("Cannot calculate reference data without department information. You need to include at least pseudonymised department information.")
+
+  if(is.null(data$metadata$countries))
+    rlang::warn("The data is missing country metadata. The resulting dataset connot be used to create reference reports")
 
   pd <- get_risk_time(x, use_cache = use_cache)$patient_days
   pd_dept <- get_risk_time(
@@ -58,6 +61,12 @@ calculate_reference_data <- function(x, use_cache = TRUE)
 
   structure(
     list(
+      metadata = list(
+        calculated = lubridate::now("UTC"),
+        dataset_options = x$metadata$dataset_options,
+        data_up_to = x$metadata$system$date,
+        countries = x$metadata$countries$displayName |> sort()
+      ),
       birth_weight_figure = x|> get_birthweight_figure_data(),
       gestational_age_figure = x|> get_gestational_age_figure_data(),
       n_departments = x$enrollments$department_key |> unique() |> length(),
