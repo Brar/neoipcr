@@ -7,7 +7,7 @@ quartile_probs <- c(0.25,0.5,0.75)
 #'
 #' @returns A NeoIPC reference data set
 #' @export
-calculate_reference_data <- function(x, use_cache = TRUE)
+calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE)
 {
   check_neoipcr_ds(x)
 
@@ -59,11 +59,15 @@ calculate_reference_data <- function(x, use_cache = TRUE)
     stats::quantile(probs = quartile_probs) |>
     as.integer()
 
+  ds_opts <- x$metadata$dataset_options
+  if(redact && typeof(ds_opts$include_invalid_patients) != "logical")
+    ds_opts$include_invalid_patients <- "redacted"
+
   structure(
     list(
       metadata = list(
         calculated = lubridate::now("UTC"),
-        dataset_options = x$metadata$dataset_options,
+        dataset_options = ds_opts,
         data_up_to = x$metadata$system$date,
         countries = x$metadata$countries$displayName |> sort()
       ),
