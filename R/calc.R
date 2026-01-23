@@ -4,6 +4,7 @@ quartile_probs <- c(0.25,0.5,0.75)
 #'
 #' @param x The neoipcr_ds object containing the data
 #' @param use_cache Use the cache
+#' @param redact Redact potentially sensitive information
 #'
 #' @returns A NeoIPC reference data set
 #' @export
@@ -63,6 +64,30 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE)
   if(redact && typeof(ds_opts$include_invalid_patients) != "logical")
     ds_opts$include_invalid_patients <- "redacted"
 
+  n_infections <- dplyr::bind_rows(
+    dplyr::bind_cols(
+      tibble::tibble(event_type_key = "overall"),
+      x |>
+        get_infection_counts() |>
+        dplyr::bind_cols(
+          x |>
+            get_infection_counts(group_cols = "department_key") |>
+            dplyr::summarise(
+              q = list(stats::quantile(.data$n, quartile_probs, names = FALSE))) |>
+            tidyr::unnest_wider(q, names_sep = "", transform = as.integer))),
+    x |>
+      get_infection_counts(group_cols = c("event_type_key")) |>
+      dplyr::inner_join(
+        x |>
+          get_infection_counts(
+            group_cols = c("department_key", "event_type_key")) |>
+          dplyr::group_by(.data$event_type_key) |>
+          dplyr::summarise(
+            q = list(stats::quantile(.data$n, quartile_probs, names = FALSE))) |>
+          tidyr::unnest_wider(q, names_sep = "", transform = as.integer),
+        dplyr::join_by("event_type_key"))) |>
+    dplyr::rename(inf_type = "event_type_key", total = "n")
+
   structure(
     list(
       metadata = list(
@@ -105,6 +130,7 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE)
         q1 = sur_proc_q[1],
         q2 = sur_proc_q[2],
         q3 = sur_proc_q[3]),
+      n_infections = n_infections,
       usage_density_rate_table =
         get_usage_density_rate_table(x, use_cache),
       surgery_rate_table =
@@ -124,7 +150,6 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE)
     ),
     class = c("neoipcr_ref_ds", "list"))
 }
-
 
 #' Calculate a NeoIPC department report data set
 #'
