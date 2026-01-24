@@ -73,7 +73,9 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE)
           x |>
             get_infection_counts(group_cols = "department_key") |>
             dplyr::summarise(
-              q = list(stats::quantile(.data$n, quartile_probs, names = FALSE))) |>
+              q = list(
+                pooled_mean = as.integer(round(mean(.data$n))),
+                stats::quantile(.data$n, quartile_probs, names = FALSE))) |>
             tidyr::unnest_wider(q, names_sep = "", transform = as.integer))),
     x |>
       get_infection_counts(group_cols = c("event_type_key")) |>
@@ -83,7 +85,9 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE)
             group_cols = c("department_key", "event_type_key")) |>
           dplyr::group_by(.data$event_type_key) |>
           dplyr::summarise(
-            q = list(stats::quantile(.data$n, quartile_probs, names = FALSE))) |>
+            pooled_mean = as.integer(round(mean(.data$n))),
+            q = list(
+              stats::quantile(.data$n, quartile_probs, names = FALSE))) |>
           tidyr::unnest_wider(q, names_sep = "", transform = as.integer),
         dplyr::join_by("event_type_key"))) |>
     dplyr::rename(inf_type = "event_type_key", total = "n")
@@ -101,32 +105,47 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE)
       n_departments = x$enrollments$department_key |> unique() |> length(),
       n_patients = tibble::tibble(
         total = rp$n_patients,
-        pooled_mean = rp_dept$n_patients |> mean() |> round() |> as.integer(),
+        pooled_mean = rp_dept$n_patients |>
+          mean() |>
+          round() |>
+          as.integer(),
         q1 = pat_q[1],
         q2 = pat_q[2],
         q3 = pat_q[3]),
       n_enrollments = tibble::tibble(
         total = rp$n_enrollments,
-        pooled_mean = rp_dept$n_enrollments |> mean() |> round() |> as.integer(),
+        pooled_mean = rp_dept$n_enrollments |>
+          mean() |>
+          round() |>
+          as.integer(),
         q1 = enr_q[1],
         q2 = enr_q[2],
         q3 = enr_q[3]),
       n_patient_days = tibble::tibble(
         total = pd,
-        pooled_mean = pd_dept |> mean() |> round() |> as.integer(),
+        pooled_mean = pd_dept |>
+          mean() |>
+          round() |>
+          as.integer(),
         q1 = pd_q[1],
         q2 = pd_q[2],
         q3 = pd_q[3]),
       n_surgical_departments = sr$n_departments,
       n_surgical_patients = tibble::tibble(
         total = sr$n_patients,
-        pooled_mean = sr_dept$n_patients |> mean() |> round() |> as.integer(),
+        pooled_mean = sr_dept$n_patients |>
+          mean() |>
+          round() |>
+          as.integer(),
         q1 = sur_pat_q[1],
         q2 = sur_pat_q[2],
         q3 = sur_pat_q[3]),
       n_surgical_procedures = tibble::tibble(
         total = sr$n_procedures,
-        pooled_mean = sr_dept$n_procedures |> mean() |> round() |> as.integer(),
+        pooled_mean = sr_dept$n_procedures |>
+          mean() |>
+          round() |>
+          as.integer(),
         q1 = sur_proc_q[1],
         q2 = sur_proc_q[2],
         q3 = sur_proc_q[3]),
@@ -544,10 +563,10 @@ get_usage_density_rate_table <- function(x, use_cache = TRUE)
 #' @export
 get_surgery_rate_table <- function(x, use_cache = TRUE)
 {
-  # check_neoipcr_ds_or_unit_ds(x)
-  #
-  # if(is_neoipcr_unit_ds(x))
-  #   return(x$surgery_rate_table)
+  check_neoipcr_ds_or_ref_ds(x)
+
+  if(is_neoipcr_ref_ds(x))
+    return(x$surgery_rate_table)
 
   if(use_cache && !is.null(r <- get_cached(x, "surgery_rate_table")))
     return(r)
@@ -2311,10 +2330,12 @@ get_procedure_category <- function(x, not_surgery_na = FALSE)
     ############################################################################
     target %in% c(
       "AAE",# Interventions on ventricles of brain
+      "AAG",# Interventions on intracranial space
+      "ABA",# Interventions on spinal cord
       "ABG",# Interventions on spinal canal
       "MAA" # Interventions on skull
       ) &
-      means %in% c("AA","AB") ~ "neurosurgery",
+      means %in% c("AA","AB","AE") ~ "neurosurgery",
 
     # Cardiac/large vessel surgery
     ############################################################################
@@ -2341,12 +2362,15 @@ get_procedure_category <- function(x, not_surgery_na = FALSE)
     ############################################################################
     target %in% c(
       "KBF",# Interventions on stomach
+      "KBI",# Interventions on duodenum
       "KBK",# Interventions on small intestine, not elsewhere classified
+      "KBO",# Interventions on appendix
       "KBP",# Interventions on colon
       "KBZ",# Interventions on large intestine, not elsewhere classified
       "KMA",# Interventions on peritoneum
       "PAK",# Interventions on abdomen, not otherwise specified
-      "PAL"#  Interventions on abdominal wall, not otherwise specified
+      "PAL",# Interventions on abdominal wall, not otherwise specified
+      "PAO" # Interventions on abdominal wall, umbilical
       ) &
       means %in% c("AA","AB") ~ "abdominal_surgery",
 
@@ -2363,30 +2387,56 @@ get_procedure_category <- function(x, not_surgery_na = FALSE)
 
     # Inguinal hernia surgery
     ############################################################################
-    x == "PAM.MK.AA" ~ "inguinal_hernia_surgery",
+    x %in% c(
+      "PAM.MK.AA",# Repair of inguinal hernia
+      "PAM.MK.AB" # Laparoscopic repair of inguinal hernia
+    ) ~ "inguinal_hernia_surgery",
 
     # Other
     ############################################################################
     x %in% c(
-      "BCD.DB.AE",
-      "IZD.DL.AF",
-      "JAM.ML.AD",
-      "JBA.LI.AA",
-      "JBA.MK.AA",
-      "KAB.FB.AC",
-      "LAB.JG.AH",
-      "LCA.JG.AA",
-      "PAW.JB.AA"
+      "BCC.GA.AA",# Destruction of retina
+      "BCD.DB.AE",# Injection into vitreous body
+      "HDG.LG.AF",# Percutaneous transluminal balloon dilatation of pulmonary valve
+      "HIB.DL.AF",# Percutaneous transluminal insertion of device into superior vena cava
+      "IBD.DL.AF",# Percutaneous transluminal insertion of device into vein of head and neck
+      "IZD.DL.AF",# Insertion of a device into a vein, not elsewhere classified
+      "JAN.AE.AC",# Laryngoscopy
+      "JAN.MK.AD",# Endoscopic repair of larynx
+      "JAM.ML.AD",# Endoscopic reconstruction of nasopharynx
+      "JBA.AE.AB",# Tracheoscopy through artificial stoma
+      "JBA.KA.AC",# Replacement of tracheal device
+      "JBA.LI.AA",# Tracheostomy
+      "JBA.MK.AA",# Repair of trachea
+      "KAA.AD.AA",# Biopsy of lip
+      "KAB.FB.AC",# Lingual fraenotomy
+      "LAB.JG.AH",# Debridement of skin and subcutaneous cell tissue of trunk, without incision
+      "LAB.LL.AA",# Reduction of skin and subcutaneous cell tissue of trunk
+      "LCA.JG.AA",# Debridement of breast with incision
+      "NAM.MK.AA",# Repair of urethra
+      "NGL.LC.AA",# Orchiopexy
+      "NMR.MK.AB",# Endoscopic repair of fetal or embryonic structure
+      "NZZ.ZZ.ZZ",# Interventions on the genitourinary system, unspecified
+      "PAW.JB.AA" # Drainage of perineum
       ) ~ "other",
 
     # Not considered as surgery (remove)
     ############################################################################
     x %in% c(
+      "ABA.BA.BH",# Magnetic resonance imaging of spinal cord
       "JBB.AE.AD",# Bronchoscopy
       "KBA.LG.AD",# Endoscopic dilatation of oesophagus
+      "KBF.DL.AC",# Insertion of device into stomach
       "KBF.KA.AC",# Replacement of gastric device
       "KBK.LD.AH",# Manual reduction of ileostomy prolapse
+      "LZZ.DK.AH",# Application of dressing to skin or subcutaneous cell tissue, not elsewhere classified
+      "MBO.BA.BC",# Computerised tomography of lumbosacral spine, not elsewhere classified
+      "PAB.BA.BH",# Magnetic resonance imaging of head or neck
+      "PAE.BA.BH",# Magnetic resonance imaging of thorax
+      "PAK.BA.BH",# Magnetic resonance imaging of abdomen
       "PTB.SN.AC",# Management of enterostomy
+      "PTA.PM.ZZ",# Gastrostomy education
+      "PTC.PM.ZZ",# Tracheostomy education
       "PZA.BA.BH" # Magnetic resonance imaging of whole body
       ) ~ not_surgery,
 
