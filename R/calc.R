@@ -73,8 +73,8 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE)
           x |>
             get_infection_counts(group_cols = "department_key") |>
             dplyr::summarise(
+              pooled_mean = as.integer(round(mean(.data$n))),
               q = list(
-                pooled_mean = as.integer(round(mean(.data$n))),
                 stats::quantile(.data$n, quartile_probs, names = FALSE))) |>
             tidyr::unnest_wider(q, names_sep = "", transform = as.integer))),
     x |>
@@ -563,10 +563,11 @@ get_usage_density_rate_table <- function(x, use_cache = TRUE)
 #' @export
 get_surgery_rate_table <- function(x, use_cache = TRUE)
 {
-  check_neoipcr_ds_or_ref_ds(x)
+  # ToDo: Class for unit dataset
+  check_neoipcr_ds(x)
 
-  if(is_neoipcr_ref_ds(x))
-    return(x$surgery_rate_table)
+  # if(is_neoipcr_ref_ds(x))
+  #   return(x$surgery_rate_table)
 
   if(use_cache && !is.null(r <- get_cached(x, "surgery_rate_table")))
     return(r)
