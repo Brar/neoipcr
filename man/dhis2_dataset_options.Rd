@@ -67,8 +67,8 @@ are "no", "pseudonymised" and "yes"}
 \item{include_hospital}{Include the hospital into the dataset. Possible
 values are "no", "pseudonymised" and "yes"}
 
-\item{include_department}{Include the World Bank class into the dataset.
-Possible values are "no", "pseudonymised" and "yes"}
+\item{include_department}{Include the department into the dataset. Possible
+values are "no", "pseudonymised" and "yes"}
 
 \item{include_user}{Include the World Bank class into the dataset. Possible
 values are "no", "pseudonymised" and "yes"}

@@ -207,8 +207,8 @@ calculate_department_data <- function(x, use_cache = TRUE)
 
   structure(
     list(
-      birth_weight_figure = x|> get_birthweight_figure_data(),
-      gestational_age_figure = x|> get_gestational_age_figure_data(),
+      birth_weight_figure = get_birthweight_figure_data(x),
+      gestational_age_figure = get_gestational_age_figure_data(x),
       n_patients = rp$n_patients,
       n_enrollments = rp$n_enrollments,
       n_patient_days = rt$patient_days,
@@ -216,9 +216,14 @@ calculate_department_data <- function(x, use_cache = TRUE)
       n_surgical_procedures = sr$n_procedures,
       usage_density_rate_table = usage_density_rate_table,
       surgery_rate_table =
-       get_surgery_rate_table(x, use_cache)
-      # incidence_density_rate_table =
-      #   get_incidence_density_rate_table(x, use_cache),
+        get_surgery_rate_table(
+          x,
+          use_cache),
+      incidence_density_rate_table =
+        get_incidence_density_rate_table(
+          x,
+          use_cache,
+          include_quartiles = FALSE)
       # dev_ass_incidence_density_rate_table =
       #   get_dev_ass_incidence_density_rate_table(x, use_cache),
       # infectious_agent_detection_rate_per_agent_table =
@@ -374,6 +379,18 @@ get_benchmark_data <- function(...)
             dplyr::across(
               !tidyselect::matches("^q1|2|3", ignore.case = F),
               ~ tidyr::replace_na(.x, 0)))
+      }
+    }
+    if ("incidence_density_rate_table" %in% elements) {
+      tbl <- ds$incidence_density_rate_table
+      tbl <- tbl |>
+        dplyr::rename_with(~ paste0(.x, suffix), !"inf")
+
+      if (is.null(output$incidence_density_rate_table)) {
+        output$incidence_density_rate_table <- tbl
+      } else {
+        output$incidence_density_rate_table <- output$incidence_density_rate_table |>
+          dplyr::full_join(tbl, dplyr::join_by("inf"))
       }
     }
   }
@@ -691,76 +708,100 @@ get_ref_surgery_rate_table <- function(ref, use_cache = TRUE)
 #' @param ref The reference data set which can be either a neoipcr_ref_ds or a
 #'  neoipcr_ds object
 #' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#' @param include_quartiles Include quartile columns (q1, q2, q3) in the output.
+#'  Set to FALSE for department-level reports to simplify output.
 #'
 #' @returns A table containing incidence density rates of the infections with
 #'  time dependent risks
 #' @export
-get_incidence_density_rate_table <- function(ref, use_cache = TRUE)
+get_incidence_density_rate_table <- function(ref, use_cache = TRUE, include_quartiles = TRUE)
 {
   check_neoipcr_ds_or_ref_ds(ref)
 
   if(is_neoipcr_ref_ds(ref))
     return(ref$incidence_density_rate_table)
 
-  if(use_cache && !is.null(r <- get_cached(ref, "incidence_density_rate_table")))
+  # Try to get cached version with quartiles first (most common case: Reference Report runs first)
+  if(use_cache && !is.null(r <- get_cached(ref, "incidence_density_rate_table"))) {
+    if(!include_quartiles) {
+      return(r |> dplyr::select(!tidyselect::any_of(c("q1", "q2", "q3"))))
+    }
     return(r)
+  }
 
-  pat_days <- ref |>
-    get_risk_time(group_cols = "department_key", use_cache = use_cache) |>
-    dplyr::pull("patient_days")
-
-  n_deps <- length(pat_days)
-  median_patient_days <- stats::median(pat_days)
+  # If no full cache and we don't need quartiles, check for simplified cache
+  if(!include_quartiles && use_cache && !is.null(r <- get_cached(ref, "incidence_density_rate_table_no_quartiles"))) {
+    return(r)
+  }
 
   expected_levels <- c("si","bsi","hap","nec")
 
   r <- ref |>
     get_incidence_density_rates(use_cache = use_cache) |>
-    dplyr::inner_join(
-      ref |>
-        get_incidence_density_rates(
-          group_cols = "department_key",
-          use_cache = use_cache) |>
-        dplyr::select(!"n") |>
-        tidyr::pivot_wider(names_from = "inf", values_from = "rate") |>
-        dplyr::select(!"department_key") |>
-        dplyr::reframe(
-          dplyr::across(
-            tidyselect::everything(), ~stats::quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
-        dplyr::bind_cols(tibble::tibble(name = c("q1","q2","q3"))) |>
-        tidyr::pivot_wider(values_from = !"name") |>
-        tidyr::pivot_longer(
-          tidyselect::everything(),
-          names_pattern = "^(.+)_(q(?:1|2|3))$",
-          names_to = c("inf",".value")),
-      dplyr::join_by("inf"))
+    dplyr::rename("pooled"="rate")
+
+  if(include_quartiles) {
+    # Calculate quartiles only when needed
+    pat_days <- ref |>
+      get_risk_time(group_cols = "department_key", use_cache = use_cache) |>
+      dplyr::pull("patient_days")
+
+    n_deps <- length(pat_days)
+    median_patient_days <- stats::median(pat_days)
+
+    r <- r |>
+      dplyr::inner_join(
+        ref |>
+          get_incidence_density_rates(
+            group_cols = "department_key",
+            use_cache = use_cache) |>
+          dplyr::select(!"n") |>
+          tidyr::pivot_wider(names_from = "inf", values_from = "rate") |>
+          dplyr::select(!"department_key") |>
+          dplyr::reframe(
+            dplyr::across(
+              tidyselect::everything(), ~stats::quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
+          dplyr::bind_cols(tibble::tibble(name = c("q1","q2","q3"))) |>
+          tidyr::pivot_wider(values_from = !"name") |>
+          tidyr::pivot_longer(
+            tidyselect::everything(),
+            names_pattern = "^(.+)_(q(?:1|2|3))$",
+            names_to = c("inf",".value")),
+        dplyr::join_by("inf")) |>
+      dplyr::mutate(
+        drop_quartiles = n_deps < 5 | round(1000 / .data$pooled) >= median_patient_days,
+        q1 = dplyr::if_else(
+          .data$drop_quartiles,
+          NA,
+          .data$q1),
+        q2 = dplyr::if_else(
+          .data$drop_quartiles,
+          NA,
+          .data$q2),
+        q3 = dplyr::if_else(
+          .data$drop_quartiles,
+          NA,
+          .data$q3)) |>
+      dplyr::select(!"drop_quartiles")
+  }
 
   missing <- setdiff(expected_levels, r$inf)
   if(length(missing) > 0)
     r <- r |>
-    dplyr::bind_rows(tibble::tibble(inf=missing,n=0L,rate=0))
+    dplyr::bind_rows(tibble::tibble(inf=missing,n=0L,pooled=0))
+
+  cache_key <- if(include_quartiles) {
+    "incidence_density_rate_table"
+  } else {
+    "incidence_density_rate_table_no_quartiles"
+  }
 
   r |>
     dplyr::mutate(
-      inf = factor(.data$inf, levels = c("si","bsi","hap","nec")),
-      drop_quartiles = n_deps < 5 | round(1000 / .data$rate) >= median_patient_days,
-      q1 = dplyr::if_else(
-        .data$drop_quartiles,
-        NA,
-        .data$q1),
-      q2 = dplyr::if_else(
-        .data$drop_quartiles,
-        NA,
-        .data$q2),
-      q3 = dplyr::if_else(
-        .data$drop_quartiles,
-        NA,
-        .data$q3)) |>
-    dplyr::select(!"drop_quartiles") |>
-    dplyr::rename("pooled"="rate") |>
+      inf = factor(.data$inf, levels = c("si","bsi","hap","nec"))) |>
     dplyr::arrange(.data$inf) |>
     add_class("neoipcr_tbl_idr_ref") |>
-    cache(ref, "incidence_density_rate_table")
+    cache(ref, cache_key)
 }
 
 #' Get the table with device associated incidence density rates of the

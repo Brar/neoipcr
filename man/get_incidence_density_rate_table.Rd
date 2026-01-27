@@ -5,13 +5,20 @@
 \title{Get the table with incidence density rates of the infections with time
 dependent risks}
 \usage{
-get_incidence_density_rate_table(ref, use_cache = TRUE)
+get_incidence_density_rate_table(
+  ref,
+  use_cache = TRUE,
+  include_quartiles = TRUE
+)
 }
 \arguments{
 \item{ref}{The reference data set which can be either a neoipcr_ref_ds or a
 neoipcr_ds object}
 
 \item{use_cache}{Use the cache. Ignored if ref is a neoipcr_ref_ds object}
+
+\item{include_quartiles}{Include quartile columns (q1, q2, q3) in the output.
+Set to FALSE for department-level reports to simplify output.}
 }
 \value{
 A table containing incidence density rates of the infections with
