@@ -116,7 +116,7 @@ dhis2_dataset_options <- function(
     include_patient_id = include_patient_id,
     include_dhis2_ids = rlang::arg_match(
       include_dhis2_ids,
-      c("departments","patients","enrollments"),
+      c("countries","hospitals","departments","patients","enrollments"),
       multiple = TRUE),
     include_timestamps = include_timestamps,
     include_test_data = include_test_data,

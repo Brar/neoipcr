@@ -340,99 +340,78 @@ read_user_info_table <- function(user_info, include_user)
 
 read_organisationUnits <- function(organisationUnits, dataset_options)
 {
-  ret <- list()
-  hospitals <- read_organisationUnits_hospitals(
-    organisationUnits, dataset_options)
-  if(!rlang::is_null(hospitals))
-    ret <- c(ret, list(hospitals = hospitals) )
+  department_base <- tibble::tibble(units = organisationUnits$organisationUnits) |>
+    tidyr::unnest_wider(1)
 
-  departments <- read_organisationUnits_departments(
-    organisationUnits, dataset_options, hospitals)
-  if(!rlang::is_null(departments))
-    ret <- c(ret, list(departments = departments) )
+  ret <- list()
+
+  # The parent of the department is the hospital
+  if("parent" %in% names(department_base)) {
+    hospital_base <- tibble::tibble(hospital = department_base$parent) |>
+      tidyr::unnest_wider(1)
+    ret$hospitals <- read_organisationUnits_hospitals(
+      hospital_base)
+  }
+
+  ret$departments <- read_organisationUnits_departments(
+    department_base,
+    ret,
+    "hospitals" %in% dataset_options$include_dhis2_ids)
 
   ret
 }
 
-read_organisationUnits_hospitals <- function(organisationUnits, dataset_options)
-{
-  if(dataset_options$include_hospital == "no" &&
-     is.null(dataset_options$country_filter) &&
-     dataset_options$include_country == "no" &&
-     dataset_options$include_world_bank_class == "no")
-    return(NULL)
+read_organisationUnits_hospitals <- function(x) {
+  if("geometry" %in% names(x))
+    x <- x |> tidyr::hoist(
+      "geometry",
+      longitude = list("coordinates", 1),
+      latitude = list("coordinates", 2)) |>
+      dplyr::select(!"geometry")
 
-  hospitals <- organisationUnits |>
-    tibble::tibble() |>
-    tidyr::unnest_longer(1) |>
-    tidyr::unnest_longer(1) |>
-    dplyr::filter(.data$organisationUnits_id == "parent")
-
-  if(nrow(hospitals) < 1)
-    NULL
-  else
-    hospitals <- hospitals |>
-    dplyr::select(1) |>
-    tidyr::unnest_wider(1)
-
-  if(dataset_options$include_country != "no" ||
-     !is.null(dataset_options$country_filter) ||
-     dataset_options$include_world_bank_class != "no")
-    hospitals <- hospitals |>
-    tidyr::hoist("parent", country = "id")
-
-  if(dataset_options$include_hospital == "yes")
-  {
-    if("geometry" %in% names(hospitals))
-      hospitals <- hospitals |>
-        tidyr::hoist("geometry",
-                     longitude = list("coordinates", 1),
-                     latitude = list("coordinates", 2)) |>
-        dplyr::select(!"geometry")
-  }
-
-  hospitals |>
+  # The parent of the hospital is the country
+  if("parent" %in% names(x))
+    x <- x |> tidyr::hoist(
+      "parent",
+      country = "id")
+  x |>
     dplyr::distinct() |>
     dplyr::relocate("orgUnit" = "id") |>
     add_key_column("hospital_key")
 }
 
-read_organisationUnits_departments <- function(
-    organisationUnits, dataset_options, hospitals)
-{
-  departments <- organisationUnits |>
-    tibble::tibble() |>
-    tidyr::unnest_longer(1) |>
-    tidyr::unnest_wider(1)
+read_organisationUnits_departments <- function(x, y, include_hospital_ids) {
 
-  if(dataset_options$include_hospital != "no" ||
-     dataset_options$include_country != "no" ||
-     !is.null(dataset_options$country_filter) ||
-     dataset_options$include_world_bank_class != "no")
-    departments <- departments |>
-      tidyr::hoist("parent", parent_id = "id") |>
+  if("hospitals" %in% names(y)){
+    x <- x |>
+      tidyr::hoist("parent", orgUnit = "id") |>
       dplyr::left_join(
-        hospitals |>
+        y$hospitals |>
           dplyr::select("orgUnit", "hospital_key"),
-        dplyr::join_by("parent_id" == "orgUnit")) |>
-      dplyr::select(!c("parent_id","parent"))
+        dplyr::join_by("orgUnit")) |>
+      dplyr::select(!c("orgUnit","parent"))
 
-  if(dataset_options$include_department == "yes")
-  {
-    departments <- departments |>
+    if(!include_hospital_ids)
+      y$hospitals <- y$hospitals |>
+        dplyr::select(!"orgUnit")
+  }
+
+  cols <- names(x)
+  if("openingDate" %in% cols)
+    x <- x |>
       dplyr::mutate(
         openingDate =  readr::parse_date(
           stringr::str_sub(.data$openingDate, end = 10)))
 
-    if("geometry" %in% names(departments))
-      departments <- departments |>
-        tidyr::hoist("geometry",
-                     longitude = list("coordinates", 1),
-                     latitude = list("coordinates", 2))|>
-        dplyr::select(!"geometry")
-  }
+  if("geometry" %in% cols)
+    x <- x |>
+    tidyr::hoist(
+      "geometry",
+      longitude = list("coordinates", 1),
+      latitude = list("coordinates", 2)) |>
+    dplyr::select(!"geometry")
 
-  departments |>
+  x |>
     dplyr::relocate("orgUnit" = "id") |>
     add_key_column("department_key")
 }
