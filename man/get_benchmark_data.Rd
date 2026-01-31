@@ -9,10 +9,10 @@ get_benchmark_data(...)
 }
 \arguments{
 \item{...}{A set of name-value pairs. Each of them should be either a
-neoipcr_dept_ds or a neoipcr_ref_ds (typically it's exactly one
-neoipcr_dept_ds and one neoipcr_ref_ds to benchmark department data against
-reference data but it can also be multiple neoipcr_dept_ds or multiple
-neoipcr_ref_ds to benchmark them agianst each other). The names are used as
+neoipcr_rep_ds or a neoipcr_ref_ds (typically it's exactly one
+neoipcr_rep_ds and one neoipcr_ref_ds to benchmark department data against
+reference data but it can also be multiple neoipcr_rep_ds or multiple
+neoipcr_ref_ds to benchmark them against each other). The names are used as
 prefixes in the resulting tables}
 }
 \value{

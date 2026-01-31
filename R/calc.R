@@ -8,8 +8,7 @@ quartile_probs <- c(0.25,0.5,0.75)
 #'
 #' @returns A NeoIPC reference data set
 #' @export
-calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE)
-{
+calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE) {
   check_neoipcr_ds(x)
 
   if(is.null(x$enrollments$department_key))
@@ -162,12 +161,14 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE)
         get_infectious_agent_detection_rate_per_agent_table(x, use_cache),
       abr_infection_rate_table =
         get_abr_infection_rate_table(x, use_cache),
+      secondary_bsi_rate_table =
+        get_secondary_bsi_rate_table(x, use_cache),
       infectious_agent_detection_rate_per_inf_type_table =
         get_infectious_agent_detection_rate_per_inf_type_table(x, use_cache),
       resistance_test_rate_table =
         get_resistance_test_rate_table(x, use_cache)
     ),
-    class = c("neoipcr_ref_ds", "list"))
+    class = c("neoipcr_ref_ds", "neoipcr_rep_ds", "list"))
 }
 
 #' Calculate a NeoIPC department report data set
@@ -175,14 +176,10 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE)
 #' @param x The neoipcr_ds object containing the data
 #' @param use_cache Use the cache
 #'
-#' @returns A NeoIPC reference data set
+#' @returns A NeoIPC department report data set
 #' @export
-calculate_department_data <- function(x, use_cache = TRUE)
-{
+calculate_department_data <- function(x, use_cache = TRUE) {
   check_neoipcr_ds(x)
-
-  if(nrow(x$metadata$departments) < 1)
-    rlang::abort("Cannot calculate department data without departments.")
 
   rt <- x |>
     get_risk_time(use_cache = use_cache)
@@ -223,35 +220,36 @@ calculate_department_data <- function(x, use_cache = TRUE)
         get_incidence_density_rate_table(
           x,
           use_cache,
-          include_quartiles = FALSE)
-      # dev_ass_incidence_density_rate_table =
-      #   get_dev_ass_incidence_density_rate_table(x, use_cache),
-      # infectious_agent_detection_rate_per_agent_table =
-      #   get_infectious_agent_detection_rate_per_agent_table(x, use_cache),
-      # abr_infection_rate_table =
-      #   get_abr_infection_rate_table(x, use_cache),
-      # infectious_agent_detection_rate_per_inf_type_table =
-      #   get_infectious_agent_detection_rate_per_inf_type_table(x, use_cache),
-      # resistance_test_rate_table =
-      #   get_resistance_test_rate_table(x, use_cache)
+          include_quartiles = FALSE),
+      dev_ass_incidence_density_rate_table =
+        get_dev_ass_incidence_density_rate_table(x, use_cache, include_quartiles = FALSE),
+      infectious_agent_detection_rate_per_agent_table =
+        get_infectious_agent_detection_rate_per_agent_table(x, use_cache, include_quartiles = FALSE),
+      abr_infection_rate_table =
+        get_abr_infection_rate_table(x, use_cache, include_quartiles = FALSE),
+      secondary_bsi_rate_table =
+        get_secondary_bsi_rate_table(x, use_cache, include_quartiles = FALSE),
+      infectious_agent_detection_rate_per_inf_type_table =
+        get_infectious_agent_detection_rate_per_inf_type_table(x, use_cache, include_quartiles = FALSE),
+      resistance_test_rate_table =
+        get_resistance_test_rate_table(x, use_cache, include_quartiles = FALSE)
     ),
-    class = c("neoipcr_dept_ds", "list"))
+    class = c("neoipcr_rep_ds", "list"))
 }
 
 #' Creates a NeoIPC benchmark data set from department report datasets and a
 #'  reference data set
 #'
 #' @param ... A set of name-value pairs. Each of them should be either a
-#'  neoipcr_dept_ds or a neoipcr_ref_ds (typically it's exactly one
-#'  neoipcr_dept_ds and one neoipcr_ref_ds to benchmark department data against
-#'  reference data but it can also be multiple neoipcr_dept_ds or multiple
-#'  neoipcr_ref_ds to benchmark them agianst each other). The names are used as
+#'  neoipcr_rep_ds or a neoipcr_ref_ds (typically it's exactly one
+#'  neoipcr_rep_ds and one neoipcr_ref_ds to benchmark department data against
+#'  reference data but it can also be multiple neoipcr_rep_ds or multiple
+#'  neoipcr_ref_ds to benchmark them against each other). The names are used as
 #'  prefixes in the resulting tables
 #'
 #' @returns A neoipcr_bnch_ds
 #' @export
-get_benchmark_data <- function(...)
-{
+get_benchmark_data <- function(...) {
   x <- list(...)
   n_ds <- length(x)
   ds_names = rlang::names2(x)
@@ -303,7 +301,8 @@ get_benchmark_data <- function(...)
       tbl <- tbl |>
         dplyr::rename_with(~ paste0(.x, suffix))
 
-      output$n_surgical_patients <- dplyr::bind_cols(output$n_surgical_patients, tbl)
+      output$n_surgical_patients <- dplyr::bind_cols(
+        output$n_surgical_patients, tbl)
     }
     if ("n_surgical_procedures" %in% elements) {
       tbl <- ds$n_surgical_procedures
@@ -313,7 +312,8 @@ get_benchmark_data <- function(...)
       tbl <- tbl |>
         dplyr::rename_with(~ paste0(.x, suffix))
 
-      output$n_surgical_procedures <- dplyr::bind_cols(output$n_surgical_procedures, tbl)
+      output$n_surgical_procedures <- dplyr::bind_cols(
+        output$n_surgical_procedures, tbl)
     }
     if ("birth_weight_figure" %in% elements) {
       n_tbl <- length(ds$birth_weight_figure)
@@ -329,7 +329,8 @@ get_benchmark_data <- function(...)
         if (is.null(output$birth_weight_figure[[tbl_name]])) {
           output$birth_weight_figure[[tbl_name]] <- tbl
         } else {
-          output$birth_weight_figure[[tbl_name]] <- output$birth_weight_figure[[tbl_name]] |>
+          output$birth_weight_figure[[tbl_name]] <-
+            output$birth_weight_figure[[tbl_name]] |>
             dplyr::bind_rows(tbl)
         }
       }
@@ -348,7 +349,8 @@ get_benchmark_data <- function(...)
         if (is.null(output$gestational_age_figure[[tbl_name]])) {
           output$gestational_age_figure[[tbl_name]] <- tbl
         } else {
-          output$gestational_age_figure[[tbl_name]] <- output$gestational_age_figure[[tbl_name]] |>
+          output$gestational_age_figure[[tbl_name]] <-
+            output$gestational_age_figure[[tbl_name]] |>
             dplyr::bind_rows(tbl)
         }
       }
@@ -389,16 +391,211 @@ get_benchmark_data <- function(...)
       if (is.null(output$incidence_density_rate_table)) {
         output$incidence_density_rate_table <- tbl
       } else {
-        output$incidence_density_rate_table <- output$incidence_density_rate_table |>
-          dplyr::full_join(tbl, dplyr::join_by("inf"))
+        output$incidence_density_rate_table <-
+          output$incidence_density_rate_table |>
+          dplyr::full_join(tbl, dplyr::join_by("inf")) |>
+          dplyr::mutate(
+            dplyr::across(dplyr::starts_with("n_"), ~tidyr::replace_na(.x, 0)),
+            dplyr::across(
+              c(dplyr::starts_with("pooled_"), dplyr::starts_with("q")),
+              ~tidyr::replace_na(.x, NA_real_))
+          )
+      }
+    }
+    if ("dev_ass_incidence_density_rate_table" %in% elements) {
+      tbl <- ds$dev_ass_incidence_density_rate_table
+      tbl <- tbl |>
+        dplyr::rename_with(~ paste0(.x, suffix), !"dev")
+
+      if (is.null(output$dev_ass_incidence_density_rate_table)) {
+        output$dev_ass_incidence_density_rate_table <- tbl
+      } else {
+        output$dev_ass_incidence_density_rate_table <-
+          output$dev_ass_incidence_density_rate_table |>
+          dplyr::full_join(tbl, dplyr::join_by("dev")) |>
+          dplyr::mutate(
+            dplyr::across(
+              dplyr::starts_with("n_"),
+              ~tidyr::replace_na(.x, 0)),
+            dplyr::across(
+              c(dplyr::starts_with("pooled_"), dplyr::starts_with("q")),
+              ~tidyr::replace_na(.x, NA_real_))
+          )
+      }
+    }
+    if ("infectious_agent_detection_rate_per_agent_table" %in% elements) {
+      tbl <- ds$infectious_agent_detection_rate_per_agent_table
+
+      # Skip if table is NULL or empty
+      if (!is.null(tbl) && nrow(tbl) > 0) {
+        # Detect key columns - could be lv/tl (from dept) or
+        # level/taxon (from ref)
+        key_cols <- intersect(
+          names(tbl),
+          c("lv", "tl", "level", "taxon", "group"))
+        tbl <- tbl |>
+          dplyr::rename_with(
+            ~ paste0(.x, suffix), !tidyselect::any_of(key_cols))
+
+        if (is.null(output$infectious_agent_detection_rate_per_agent_table)) {
+          output$infectious_agent_detection_rate_per_agent_table <- tbl
+        } else {
+          # Use the key columns that exist in the output table
+          # We should homogenise the keys between the tables at some point soon
+          # to simplify the join
+          join_cols <- intersect(
+            names(output$infectious_agent_detection_rate_per_agent_table),
+            c("level", "taxon", "lv", "tl", "group"))
+          output$infectious_agent_detection_rate_per_agent_table <-
+            output$infectious_agent_detection_rate_per_agent_table |>
+            dplyr::full_join(tbl, dplyr::join_by(!!!join_cols)) |>
+            dplyr::mutate(
+              dplyr::across(
+                dplyr::starts_with("n_"),
+                ~tidyr::replace_na(.x, 0)),
+              dplyr::across(
+                c(dplyr::starts_with("rate_"),
+                  dplyr::starts_with("pooled_"),
+                  dplyr::starts_with("q")),
+                ~tidyr::replace_na(.x, NA_real_))
+            )
+        }
+      }
+    }
+    if ("abr_infection_rate_table" %in% elements) {
+      tbl <- ds$abr_infection_rate_table
+
+      # Skip if table is NULL or empty
+      if (!is.null(tbl) && nrow(tbl) > 0) {
+        # Detect key columns - could be abr_type/lv/tl (from dept) or
+        # abr/level/taxon (from ref)
+        key_cols <- intersect(
+          names(tbl),
+          c("abr_type", "abr", "lv", "tl", "level", "taxon", "group"))
+        tbl <- tbl |>
+          dplyr::rename_with(
+            ~ paste0(.x, suffix), !tidyselect::any_of(key_cols))
+
+        if (is.null(output$abr_infection_rate_table)) {
+          output$abr_infection_rate_table <- tbl
+        } else {
+          # Use the key columns that exist in the output table
+          # We should homogenise the keys between the tables at some point soon
+          # to simplify the join
+          join_cols <- intersect(
+            names(output$abr_infection_rate_table),
+            c("abr", "abr_type", "level", "taxon", "lv", "tl", "group"))
+          output$abr_infection_rate_table <- output$abr_infection_rate_table |>
+            dplyr::full_join(tbl, dplyr::join_by(!!!join_cols)) |>
+            dplyr::mutate(
+              dplyr::across(
+                dplyr::starts_with("n_"),
+                ~tidyr::replace_na(.x, 0)),
+              dplyr::across(
+                c(dplyr::starts_with("rate_"),
+                  dplyr::starts_with("pooled_"),
+                  dplyr::starts_with("q")),
+                ~tidyr::replace_na(.x, NA_real_))
+            )
+        }
+      }
+    }
+    if ("secondary_bsi_rate_table" %in% elements) {
+      tbl <- ds$secondary_bsi_rate_table
+
+      # Skip if table is NULL or empty
+      if (!is.null(tbl) && nrow(tbl) > 0) {
+        # Key column is event_type_key
+        tbl <- tbl |>
+          dplyr::rename_with(~ paste0(.x, suffix), !"event_type_key")
+
+        if (is.null(output$secondary_bsi_rate_table)) {
+          output$secondary_bsi_rate_table <- tbl
+        } else {
+          output$secondary_bsi_rate_table <- output$secondary_bsi_rate_table |>
+            dplyr::full_join(tbl, dplyr::join_by("event_type_key")) |>
+            dplyr::mutate(
+              dplyr::across(
+                dplyr::starts_with("n_"),
+                ~tidyr::replace_na(.x, 0)),
+              dplyr::across(
+                c(dplyr::starts_with("pooled_"), dplyr::starts_with("q")),
+                ~tidyr::replace_na(.x, NA_real_))
+            )
+        }
+      }
+    }
+    if ("infectious_agent_detection_rate_per_inf_type_table" %in% elements) {
+      tbl <- ds$infectious_agent_detection_rate_per_inf_type_table
+
+      # Skip if table is NULL or empty
+      if (!is.null(tbl) && nrow(tbl) > 0) {
+        # Use any_of to handle tables with different structures
+        # Note: function returns "inf" as key column (renamed from
+        # event_type_key)
+        # ToDo: Check why event_type_key even appears here. It's definitely
+        # an internal name that should not appear here
+        key_cols <- intersect(names(tbl), c("inf", "event_type_key"))
+        tbl <- tbl |>
+          dplyr::rename_with(
+            ~ paste0(.x, suffix), !tidyselect::any_of(key_cols))
+
+        if (is.null(
+          output$infectious_agent_detection_rate_per_inf_type_table)) {
+          output$infectious_agent_detection_rate_per_inf_type_table <- tbl
+        } else {
+          # Use the actual key column that exists in the data
+          join_col <- intersect(
+            names(output$infectious_agent_detection_rate_per_inf_type_table),
+            c("inf", "event_type_key"))[1]
+          output$infectious_agent_detection_rate_per_inf_type_table <-
+            output$infectious_agent_detection_rate_per_inf_type_table |>
+            dplyr::full_join(tbl, dplyr::join_by(!!join_col)) |>
+            dplyr::mutate(
+              dplyr::across(
+                c(dplyr::starts_with("inf_with_pathogen_"),
+                  dplyr::starts_with("n_")),
+                ~tidyr::replace_na(.x, 0)),
+              dplyr::across(
+                c(dplyr::starts_with("pooled_"), dplyr::starts_with("q")),
+                ~tidyr::replace_na(.x, NA_real_))
+            )
+        }
+      }
+    }
+    if ("resistance_test_rate_table" %in% elements) {
+      tbl <- ds$resistance_test_rate_table
+
+      # Skip if table is NULL or empty
+      if (!is.null(tbl) && nrow(tbl) > 0) {
+        # Use any_of to handle tables with different structures
+        key_cols <- intersect(names(tbl), c("abr", "cond"))
+        tbl <- tbl |>
+          dplyr::rename_with(
+            ~ paste0(.x, suffix), !tidyselect::any_of(key_cols))
+
+        if (is.null(output$resistance_test_rate_table)) {
+          output$resistance_test_rate_table <- tbl
+        } else {
+          output$resistance_test_rate_table <-
+            output$resistance_test_rate_table |>
+            dplyr::full_join(tbl, dplyr::join_by("abr", "cond")) |>
+            dplyr::mutate(
+              dplyr::across(
+                dplyr::starts_with("n_"),
+                ~tidyr::replace_na(.x, 0)),
+              dplyr::across(
+                c(dplyr::starts_with("pooled_"), dplyr::starts_with("q")),
+                ~tidyr::replace_na(.x, NA_real_))
+            )
+        }
       }
     }
   }
   structure(output, class = c("neoipcr_bnch_ds", "list"))
 }
 
-get_birthweight_figure_data <- function(x)
-{
+get_birthweight_figure_data <- function(x) {
   bw_quartiles <- x$patients$birth_weight |>
     stats::quantile(names = FALSE) |>
     as.integer()
@@ -437,8 +634,7 @@ get_birthweight_figure_data <- function(x)
   )
 }
 
-get_gestational_age_figure_data <- function(x)
-{
+get_gestational_age_figure_data <- function(x) {
   ga_quartiles <- x$patients$total_gestation_days |>
     stats::quantile(names = FALSE) |>
     as.integer()
@@ -477,97 +673,154 @@ get_gestational_age_figure_data <- function(x)
   )
 }
 
+check_ds_and_try_get_table <- function(
+    x, table_name, use_cache, include_quartiles) {
+  # Only the reference dataset contains quartiles, so we have to be strict here
+  if (include_quartiles) {
+    check_neoipcr_ds_or_ref_ds(x)
+  } else {
+    check_neoipcr_ds_or_rep_ds(x)
+  }
+
+  # First try, if it's a report dataset because in that case it already contains
+  # the table and we can just return it (potentially after removing the quartile
+  # columns)
+  if(is_neoipcr_rep_ds(x))
+  {
+    if(!include_quartiles && is_neoipcr_ref_ds(x))
+      return(
+        x[[table_name]] |>
+          dplyr::select(!tidyselect::any_of(c("q1", "q2", "q3"))))
+
+    return(x[[table_name]])
+  }
+
+  # Then try if we can find a cached table we can use.
+  # If we find a cached version we need to check if it includes quartiles.
+  # If it does but they are not requested, we just return a copy with the
+  # quartiles removed.
+  # If it does not but they were requested, we need to recalculate the table
+  # with quartiles
+  # Otherwise we can just return it.
+  if(use_cache && !is.null(r <- get_cached(x, table_name))) {
+    if(!include_quartiles) {
+      if(any(c("q1", "q2", "q3") %in% rlang::names2(r))) {
+        return(
+          r |>
+            dplyr::select(!tidyselect::any_of(c("q1", "q2", "q3"))))
+      }
+
+      return(r)
+    } else if (all(c("q1", "q2", "q3") %in% rlang::names2(r))) {
+      return(r)
+    }
+  }
+
+  return(NULL)
+}
+
 #' Get the table with usage density rates of the time dependent risk factors
 #'
-#' @param x The reference data set which can be either a neoipcr_ref_ds or a
-#'  neoipcr_ds object
-#' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#' @param x The data set which can be either a neoipcr_ds or a neoipcr_rep_ds
+#'  object. In case of a neoipcr_rep_ds it has to be a neoipcr_ref_ds if
+#'  include_quartiles is TRUE.
+#' @param use_cache Use the cache. Ignored if x is a neoipcr_rep_ds object
+#' @param include_quartiles Include quartile columns (q1, q2, q3) in the output.
+#'  Set to FALSE for department-level reports to simplify output.
 #'
 #' @returns A table containing usage density rates of the time dependent risk
 #'  factors
 #' @export
-get_usage_density_rate_table <- function(x, use_cache = TRUE)
-{
-  check_neoipcr_ds_or_ref_ds(x)
-
-  if(is_neoipcr_ref_ds(x))
-    return(x$usage_density_rate_table)
-
-  if(use_cache && !is.null(r <- get_cached(x, "usage_density_rate_table")))
+get_usage_density_rate_table <- function(
+    x, use_cache = TRUE, include_quartiles = TRUE){
+  cache_key <- "usage_density_rate_table"
+  if(!is.null(r <- x |> check_ds_and_try_get_table(
+    cache_key, use_cache, include_quartiles)))
     return(r)
 
-  pat_days <- x |>
-    get_risk_time(group_cols = "department_key", use_cache = use_cache) |>
-    dplyr::pull("patient_days")
-
-  n_deps <- length(pat_days)
-  median_patient_days <- stats::median(pat_days)
-
-  expected_levels <- c("cvc","pvc","vs","inv","niv","human_milk","probiotic",
-                       "kangaroo_care","ab","a","w","r")
-
   risk_time <- get_risk_time(x, use_cache = use_cache)
-  risk_rate_quartiles <- get_risk_time(
-    x, group_cols = "department_key", use_cache = use_cache) |>
-    dplyr::select(tidyselect::ends_with("_rate")) |>
-    dplyr::reframe(
-      dplyr::across(
-        tidyselect::everything(),
-        ~stats::quantile(.x, prob = c(.25,.5,.75))))
-
   r <- risk_time |>
     dplyr::select(!"patient_days" & tidyselect::ends_with("_days")) |>
     tidyr::pivot_longer(
       cols = tidyselect::ends_with("_days"),
+      names_to = "factor",
       values_to = "n") |>
     dplyr::mutate(
-      factor = .data$name,
-      .before = 1,
-      .keep = "unused") |>
-    dplyr::bind_cols(
+      factor = stringr::str_remove(.data$factor, "_days$"),
+      .before = 1) |>
+    dplyr::full_join(
       risk_time |>
         dplyr::select(tidyselect::ends_with("_rate")) |>
         tidyr::pivot_longer(
           cols = tidyselect::ends_with("_rate"),
-          values_to = "pooled")) |>
-    dplyr::bind_cols(
-      risk_rate_quartiles |>
-        dplyr::bind_cols(tibble::tibble(name = c("q1","q2","q3"))) |>
-        tidyr::pivot_wider(
-          values_from = tidyselect::ends_with("_rate")) |>
-        tidyr::pivot_longer(
-          tidyselect::everything(),
-          names_pattern = "^(.+)_(q(?:1|2|3))$",
-          names_to = c("rate",".value"))) |>
-    dplyr::select(!tidyselect::all_of(c("name","rate")))
+          names_to = "factor",
+          values_to = "pooled") |>
+        dplyr::mutate(
+          factor = stringr::str_remove(.data$factor, "_rate$")),
+      dplyr::join_by("factor")) |>
+    add_class("neoipcr_tbl_udr")
 
-  missing <- setdiff(paste0(expected_levels, "_days"), r$factor)
+  if(include_quartiles) {
+    risk_time <- get_risk_time(
+      x,
+      group_cols = "department_key",
+      use_cache = use_cache)
+
+    n_deps <- length(risk_time$patient_days)
+    median_patient_days <- stats::median(risk_time$patient_days)
+
+    r <- r |>
+      dplyr::inner_join(
+        risk_time |>
+          dplyr::select(tidyselect::ends_with("_rate")) |>
+          dplyr::reframe(
+            dplyr::across(
+              tidyselect::everything(),
+              ~list(stats::quantile(.x, probs = quartile_probs, names = FALSE)))) |>
+          tidyr::pivot_longer(
+            cols = tidyselect::ends_with("_rate"),
+            names_to = "factor",
+            values_to = "q") |>
+          tidyr::unnest_wider(q, names_sep = "") |>
+          dplyr::mutate(factor = stringr::str_remove(.data$factor, "_rate$")),
+        dplyr::join_by("factor")) |>
+      dplyr::mutate(
+        drop_quartiles = n_deps < 5 | round(100 / .data$pooled) >= median_patient_days,
+        q1 = dplyr::if_else(
+          .data$drop_quartiles,
+          NA,
+          .data$q1),
+        q2 = dplyr::if_else(
+          .data$drop_quartiles,
+          NA,
+          .data$q2),
+        q3 = dplyr::if_else(
+          .data$drop_quartiles,
+          NA,
+          .data$q3)) |>
+      dplyr::select(!"drop_quartiles") |>
+      add_class("neoipcr_tbl_udr_ref")
+  }
+
+  expected_levels <- c(
+    "cvc","pvc",
+    "vs","inv","niv",
+    "ab","a","w","r",
+    "human_milk","probiotic","kangaroo_care")
+
+  missing <- setdiff(expected_levels, r$factor)
   if(length(missing) > 0)
     r <- r |>
-    dplyr::bind_rows(tibble::tibble(factor=missing,n=0L,pooled=0))
+    dplyr::bind_rows(
+      tibble::tibble(
+        factor = missing,
+        n = 0L,
+        pooled = NA_real_))
 
   r |>
-    dplyr::mutate(
-      factor = factor(
-        stringr::str_extract(.data$factor,"^(.+)_days", 1),
-        levels = expected_levels),
-      drop_quartiles = n_deps < 5 | round(100 / .data$pooled) >= median_patient_days,
-      q1 = dplyr::if_else(
-        .data$drop_quartiles,
-        NA,
-        .data$q1),
-      q2 = dplyr::if_else(
-        .data$drop_quartiles,
-        NA,
-        .data$q2),
-      q3 = dplyr::if_else(
-        .data$drop_quartiles,
-        NA,
-        .data$q3)) |>
+    dplyr::mutate(factor = factor(.data$factor, levels = expected_levels)) |>
     dplyr::arrange(.data$factor) |>
-    dplyr::select(!"drop_quartiles") |>
-    add_class("neoipcr_tbl_udr_ref") |>
-    cache(x, "usage_density_rate_table")
+    cache(x, cache_key)
 }
 
 #' Get the table with rates of surgical procedues
@@ -578,8 +831,7 @@ get_usage_density_rate_table <- function(x, use_cache = TRUE)
 #'
 #' @returns A table containing the rates of surgical procedues
 #' @export
-get_surgery_rate_table <- function(x, use_cache = TRUE)
-{
+get_surgery_rate_table <- function(x, use_cache = TRUE) {
   # ToDo: Class for unit dataset
   check_neoipcr_ds(x)
 
@@ -619,8 +871,7 @@ get_surgery_rate_table <- function(x, use_cache = TRUE)
 #' @returns A table containing the reference rates of surgical procedues and the
 #'  25%, 50%, and 75% quantiles
 #' @export
-get_ref_surgery_rate_table <- function(ref, use_cache = TRUE)
-{
+get_ref_surgery_rate_table <- function(ref, use_cache = TRUE) {
   check_neoipcr_ds_or_ref_ds(ref)
 
   if(is_neoipcr_ref_ds(ref))
@@ -643,7 +894,7 @@ get_ref_surgery_rate_table <- function(ref, use_cache = TRUE)
 
   if(nrow(r) == 1 && r$n == 0)
     return(
-      dplyr::bind_cols(r, q1 = NA, q2 = NA, q3 = NA) |>
+      dplyr::bind_cols(r, q1 = NA_real_, q2 = NA_real_, q3 = NA_real_) |>
         add_class("neoipcr_tbl_sr_ref") |>
         cache(ref, "ref_surgery_rate_table"))
 
@@ -705,44 +956,31 @@ get_ref_surgery_rate_table <- function(ref, use_cache = TRUE)
 #' Get the table with incidence density rates of the infections with time
 #'  dependent risks
 #'
-#' @param ref The reference data set which can be either a neoipcr_ref_ds or a
-#'  neoipcr_ds object
-#' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#' @param x The data set which can be either a neoipcr_ds or a neoipcr_rep_ds
+#'  object. In case of a neoipcr_rep_ds it has to be a neoipcr_ref_ds if
+#'  include_quartiles is TRUE.
+#' @param use_cache Use the cache. Ignored if x is a neoipcr_rep_ds object
 #' @param include_quartiles Include quartile columns (q1, q2, q3) in the output.
 #'  Set to FALSE for department-level reports to simplify output.
 #'
 #' @returns A table containing incidence density rates of the infections with
 #'  time dependent risks
 #' @export
-get_incidence_density_rate_table <- function(ref, use_cache = TRUE, include_quartiles = TRUE)
-{
-  check_neoipcr_ds_or_ref_ds(ref)
-
-  if(is_neoipcr_ref_ds(ref))
-    return(ref$incidence_density_rate_table)
-
-  # Try to get cached version with quartiles first (most common case: Reference Report runs first)
-  if(use_cache && !is.null(r <- get_cached(ref, "incidence_density_rate_table"))) {
-    if(!include_quartiles) {
-      return(r |> dplyr::select(!tidyselect::any_of(c("q1", "q2", "q3"))))
-    }
+get_incidence_density_rate_table <- function(
+    x, use_cache = TRUE, include_quartiles = TRUE) {
+  cache_key <- "incidence_density_rate_table"
+  if(!is.null(r <- x |> check_ds_and_try_get_table(
+    cache_key, use_cache, include_quartiles)))
     return(r)
-  }
 
-  # If no full cache and we don't need quartiles, check for simplified cache
-  if(!include_quartiles && use_cache && !is.null(r <- get_cached(ref, "incidence_density_rate_table_no_quartiles"))) {
-    return(r)
-  }
-
-  expected_levels <- c("si","bsi","hap","nec")
-
-  r <- ref |>
+  r <- x |>
     get_incidence_density_rates(use_cache = use_cache) |>
-    dplyr::rename("pooled"="rate")
+    dplyr::rename("pooled" = "rate") |>
+    add_class("neoipcr_tbl_idr")
 
   if(include_quartiles) {
     # Calculate quartiles only when needed
-    pat_days <- ref |>
+    pat_days <- x |>
       get_risk_time(group_cols = "department_key", use_cache = use_cache) |>
       dplyr::pull("patient_days")
 
@@ -750,23 +988,21 @@ get_incidence_density_rate_table <- function(ref, use_cache = TRUE, include_quar
     median_patient_days <- stats::median(pat_days)
 
     r <- r |>
-      dplyr::inner_join(
-        ref |>
+      dplyr::full_join(
+        x |>
           get_incidence_density_rates(
             group_cols = "department_key",
             use_cache = use_cache) |>
-          dplyr::select(!"n") |>
-          tidyr::pivot_wider(names_from = "inf", values_from = "rate") |>
-          dplyr::select(!"department_key") |>
-          dplyr::reframe(
-            dplyr::across(
-              tidyselect::everything(), ~stats::quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
-          dplyr::bind_cols(tibble::tibble(name = c("q1","q2","q3"))) |>
-          tidyr::pivot_wider(values_from = !"name") |>
-          tidyr::pivot_longer(
-            tidyselect::everything(),
-            names_pattern = "^(.+)_(q(?:1|2|3))$",
-            names_to = c("inf",".value")),
+          dplyr::mutate(
+            rate = tidyr::replace_na(.data$rate, 0)) |>
+          dplyr::group_by(.data$inf) |>
+          dplyr::summarise(
+            q = list(
+              stats::quantile(
+                .data$rate,
+                probs = quartile_probs,
+                names = FALSE))) |>
+          tidyr::unnest_wider("q", names_sep = ""),
         dplyr::join_by("inf")) |>
       dplyr::mutate(
         drop_quartiles = n_deps < 5 | round(1000 / .data$pooled) >= median_patient_days,
@@ -782,290 +1018,330 @@ get_incidence_density_rate_table <- function(ref, use_cache = TRUE, include_quar
           .data$drop_quartiles,
           NA,
           .data$q3)) |>
-      dplyr::select(!"drop_quartiles")
+      dplyr::select(!"drop_quartiles") |>
+      add_class("neoipcr_tbl_idr_ref")
   }
 
+  expected_levels <- c("si","bsi","hap","nec")
   missing <- setdiff(expected_levels, r$inf)
   if(length(missing) > 0)
     r <- r |>
-    dplyr::bind_rows(tibble::tibble(inf=missing,n=0L,pooled=0))
-
-  cache_key <- if(include_quartiles) {
-    "incidence_density_rate_table"
-  } else {
-    "incidence_density_rate_table_no_quartiles"
-  }
+    dplyr::bind_rows(
+      tibble::tibble(
+        inf = missing,
+        n = 0L,
+        pooled = NA_real_))
 
   r |>
     dplyr::mutate(
-      inf = factor(.data$inf, levels = c("si","bsi","hap","nec"))) |>
+      inf = factor(.data$inf, levels = expected_levels)) |>
     dplyr::arrange(.data$inf) |>
-    add_class("neoipcr_tbl_idr_ref") |>
-    cache(ref, cache_key)
+    cache(x, cache_key)
 }
 
 #' Get the table with device associated incidence density rates of the
 #'  infections with device associated risks
 #'
-#' @param ref The reference data set which can be either a neoipcr_ref_ds or a
-#'  neoipcr_ds object
-#' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#' @param x The data set which can be either a neoipcr_ds or a neoipcr_rep_ds
+#'  object. In case of a neoipcr_rep_ds it has to be a neoipcr_ref_ds if
+#'  include_quartiles is TRUE.
+#' @param use_cache Use the cache. Ignored if x is a neoipcr_rep_ds object
+#' @param include_quartiles Include quartile columns (q1, q2, q3) in the output.
+#'  Set to FALSE for department-level reports to simplify output.
 #'
 #' @returns A table containing device associated incidence density rates of the
 #'  infections with device associated risks
 #' @export
-get_dev_ass_incidence_density_rate_table <- function(ref, use_cache = TRUE)
-{
-  check_neoipcr_ds_or_ref_ds(ref)
-
-  if(is_neoipcr_ref_ds(ref))
-    return(ref$dev_ass_incidence_density_rate_table)
-
-  if(use_cache && !is.null(r <- get_cached(ref, "dev_ass_incidence_density_rate_table")))
+get_dev_ass_incidence_density_rate_table <- function(
+    x, use_cache = TRUE, include_quartiles = TRUE) {
+  cache_key <- "dev_ass_incidence_density_rate_table"
+  if(!is.null(r <- x |> check_ds_and_try_get_table(
+    cache_key, use_cache, include_quartiles)))
     return(r)
 
-  dev_days <- ref |>
-    get_risk_time(group_cols = "department_key", use_cache = use_cache) |>
-    dplyr::select(
-      tidyselect::any_of(
-        c("department_key","cvc"="cvc_days","pvc"="pvc_days","vs"="vs_days",
-          "inv"="inv_days","niv"="niv_days")))
-
-  dep_stats <- dev_days |>
-    tidyr::pivot_longer(cols = !"department_key", names_to = "dev") |>
-    dplyr::filter(.data$value > 0) |>
-    dplyr::group_by(.data$dev) |>
-    dplyr::summarise(n_deps = dplyr::n()) |>
-    dplyr::inner_join(
-      dev_days |>
-        dplyr::select(!"department_key") |>
-        dplyr::summarise(dplyr::across(tidyselect::everything(), stats::median)) |>
-        tidyr::pivot_longer(
-          cols = tidyselect::everything(),
-          names_to = "dev",
-          values_to = "median"),
-      dplyr::join_by("dev")
-    )
-
-  ref |>
+  r <- x |>
     get_dev_ass_incidence_density_rates(use_cache = use_cache) |>
-    dplyr::inner_join(
-      ref |>
-        get_dev_ass_incidence_density_rates(
-          group_cols = "department_key",
-          use_cache = use_cache) |>
-        dplyr::select(!"n") |>
-        tidyr::pivot_wider(names_from = "dev", values_from = "rate") |>
-        dplyr::select(!"department_key") |>
-        dplyr::reframe(
-          dplyr::across(
-            tidyselect::everything(),
-            ~stats::quantile(.x, prob = c(.25,.5,.75), na.rm = TRUE))) |>
-        dplyr::bind_cols(tibble::tibble(name = c("q1","q2","q3"))) |>
-        tidyr::pivot_wider(values_from = !"name") |>
-        tidyr::pivot_longer(
-          tidyselect::everything(),
-          names_pattern = "^(.+)_(q(?:1|2|3))$",
-          names_to = c("dev",".value")),
-      dplyr::join_by("dev")) |>
-    dplyr::inner_join(dep_stats, dplyr::join_by("dev")) |>
-    dplyr::mutate(
-      dev = factor(.data$dev, levels = c("cvc","pvc","vs","inv","niv")),
-      drop_quartiles = .data$n_deps < 5 | round(1000 / .data$rate) >= .data$median,
-      q1 = dplyr::if_else(
-        .data$drop_quartiles,
-        NA,
-        .data$q1),
-      q2 = dplyr::if_else(
-        .data$drop_quartiles,
-        NA,
-        .data$q2),
-      q3 = dplyr::if_else(
-        .data$drop_quartiles,
-        NA,
-        .data$q3)) |>
-    dplyr::rename("pooled"="rate") |>
-    dplyr::select(!c("drop_quartiles","n_deps","median")) |>
-    dplyr::arrange(.data$dev) |>
-    add_class("neoipcr_tbl_daidr_ref") |>
-    cache(ref, "dev_ass_incidence_density_rate_table")
+    add_class("neoipcr_tbl_daidr")
 
+  if(include_quartiles) {
+    dev_days <- x |>
+      get_risk_time(group_cols = "department_key", use_cache = use_cache) |>
+      dplyr::select(
+        tidyselect::any_of(
+          c("department_key","cvc"="cvc_days","pvc"="pvc_days","vs"="vs_days",
+            "inv"="inv_days","niv"="niv_days")))
+
+    dep_stats <- dev_days |>
+      tidyr::pivot_longer(cols = !"department_key", names_to = "dev") |>
+      dplyr::filter(.data$value > 0) |>
+      dplyr::group_by(.data$dev) |>
+      dplyr::summarise(n_deps = dplyr::n()) |>
+      dplyr::inner_join(
+        dev_days |>
+          dplyr::select(!"department_key") |>
+          dplyr::summarise(dplyr::across(tidyselect::everything(), stats::median)) |>
+          tidyr::pivot_longer(
+            cols = tidyselect::everything(),
+            names_to = "dev",
+            values_to = "median"),
+        dplyr::join_by("dev")
+      )
+
+    r <- r |>
+      dplyr::full_join(
+        x |>
+          get_dev_ass_incidence_density_rates(
+            group_cols = "department_key",
+            use_cache = use_cache) |>
+          dplyr::mutate(
+            rate = tidyr::replace_na(.data$rate, 0)) |>
+          dplyr::group_by(.data$dev) |>
+          dplyr::summarise(
+            q = list(
+              stats::quantile(
+                .data$rate,
+                probs = quartile_probs,
+                names = FALSE))) |>
+          tidyr::unnest_wider("q", names_sep = ""),
+        dplyr::join_by("dev")) |>
+      dplyr::full_join(dep_stats, dplyr::join_by("dev")) |>
+      dplyr::mutate(
+        drop_quartiles = tidyr::replace_na(
+          .data$n_deps < 5 | round(1000 / .data$rate) >= .data$median,
+          FALSE),
+        q1 = dplyr::if_else(
+          .data$drop_quartiles,
+          NA,
+          .data$q1),
+        q2 = dplyr::if_else(
+          .data$drop_quartiles,
+          NA,
+          .data$q2),
+        q3 = dplyr::if_else(
+          .data$drop_quartiles,
+          NA,
+          .data$q3)) |>
+      dplyr::select(!c("drop_quartiles","n_deps","median")) |>
+      add_class("neoipcr_tbl_daidr_ref")
+  }
+
+  expected_levels <- c("cvc","pvc","vs","inv","niv")
+  missing <- setdiff(expected_levels, r$dev)
+  if(length(missing) > 0)
+    r <- r |>
+    dplyr::bind_rows(
+      tibble::tibble(
+        dev = missing,
+        n = 0L,
+        pooled = NA_real_))
+
+  r |>
+    dplyr::rename("pooled" = "rate") |>
+    dplyr::mutate(dev = factor(.data$dev, expected_levels)) |>
+    dplyr::arrange(.data$dev) |>
+    cache(x, cache_key)
 }
 
 #' Get the table with infectious agent detection rates per type of infection
 #'
-#' @param ref The reference data set which can be either a neoipcr_ref_ds or a
-#'  neoipcr_ds object
-#' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#' @param x The data set which can be either a neoipcr_ds or a neoipcr_rep_ds
+#'  object. In case of a neoipcr_rep_ds it has to be a neoipcr_ref_ds if
+#'  include_quartiles is TRUE.
+#' @param use_cache Use the cache. Ignored if x is a neoipcr_rep_ds object
+#' @param include_quartiles Include quartile columns (q1, q2, q3) in the output.
+#'  Set to FALSE for department-level reports to simplify output.
 #'
 #' @returns A table containing infectious agent detection rates per type of
 #'  infection
 #' @export
-get_infectious_agent_detection_rate_per_inf_type_table <- function(ref, use_cache = TRUE)
-{
-  check_neoipcr_ds_or_ref_ds(ref)
-
-  if(is_neoipcr_ref_ds(ref))
-    return(ref$infectious_agent_detection_rate_per_inf_type_table)
-
-  if(use_cache && !is.null(r <- get_cached(ref, "infectious_agent_detection_rate_per_inf_type_table")))
+get_infectious_agent_detection_rate_per_inf_type_table <- function(
+    x, use_cache = TRUE, include_quartiles = TRUE) {
+  cache_key <- "infectious_agent_detection_rate_per_inf_type_table"
+  if(!is.null(r <- x |> check_ds_and_try_get_table(
+    cache_key, use_cache, include_quartiles)))
     return(r)
 
-
-  dep_stats <- dplyr::bind_rows(
+  r <- dplyr::bind_rows(
     dplyr::bind_cols(
       event_type_key = "all",
-      ref |>
-        get_infection_counts(group_cols = "department_key") |>
-        dplyr::filter(.data$n > 0)
-      ),
-    ref |>
-      get_infection_counts(group_cols = c("event_type_key","department_key")) |>
-      dplyr::filter(.data$n > 0)
-    ) |>
-    dplyr::group_by(.data$event_type_key) |>
-    dplyr::summarise(
-      median = stats::median(.data$n),
-      n = dplyr::n())
-
-  dplyr::bind_rows(
-    dplyr::bind_cols(
-      event_type_key = "all",
-      ref |>
+      x |>
         get_infectious_agent_detection_rates(
           use_cache = use_cache) |>
-        dplyr::select("inf_with_pathogen","pooled"="iwp_per_t"),
-      ref |>
-        get_infectious_agent_detection_rates(
-          group_cols = "department_key",
-          use_cache = use_cache) |>
-        dplyr::reframe(
-          value = stats::quantile(
-            .data$iwp_per_t,
-            prob = c(.25,.5,.75),
-            na.rm = TRUE)) |>
-        dplyr::mutate(
-          name=names(.data$value),
-          name=dplyr::case_match(
-            .data$name,
-            "25%"~"q1",
-            "50%"~"q2",
-            "75%"~"q3")) |>
-        tidyr::pivot_wider()),
-    ref |>
+        dplyr::select("inf_with_pathogen","pooled"="iwp_per_t")),
+    x |>
       get_infectious_agent_detection_rates(
         group_cols = "event_type_key",
         use_cache = use_cache) |>
-      dplyr::select("event_type_key","inf_with_pathogen","pooled"="iwp_per_t") |>
-      dplyr::inner_join(
-        ref |>
-          get_infectious_agent_detection_rates(
-            group_cols = c("department_key","event_type_key"),
-            use_cache = use_cache) |>
-          dplyr::group_by(.data$event_type_key) |>
-          dplyr::reframe(
-            value = stats::quantile(
-              .data$iwp_per_t,
-              prob = c(.25,.5,.75),
-              na.rm = TRUE)) |>
-          dplyr::mutate(
-            name=names(.data$value),
-            name=dplyr::case_match(
-              .data$name,
-              "25%"~"q1",
-              "50%"~"q2",
-              "75%"~"q3")) |>
-          tidyr::pivot_wider(),
-        dplyr::join_by("event_type_key"))
+      dplyr::select("event_type_key","inf_with_pathogen","pooled"="iwp_per_t")
     ) |>
-    dplyr::inner_join(
-      dep_stats,
-      dplyr::join_by("event_type_key")) |>
-    dplyr::mutate(
-      drop_quartiles = .data$n < 5 | round(100 / .data$pooled) >= .data$median,
-      q1 = dplyr::if_else(
-        .data$drop_quartiles,
-        NA,
-        .data$q1),
-      q2 = dplyr::if_else(
-        .data$drop_quartiles,
-        NA,
-        .data$q2),
-      q3 = dplyr::if_else(
-        .data$drop_quartiles,
-        NA,
-        .data$q3)
+    add_class("neoipcr_tbl_iadrpit")
+
+  if(include_quartiles) {
+
+    dep_stats <- dplyr::bind_rows(
+      dplyr::bind_cols(
+        event_type_key = "all",
+        x |>
+          get_infection_counts(group_cols = "department_key") |>
+          dplyr::filter(.data$n > 0)
+        ),
+      x |>
+        get_infection_counts(group_cols = c("event_type_key","department_key")) |>
+        dplyr::filter(.data$n > 0)
       ) |>
-    dplyr::select(!c("drop_quartiles","n","median")) |>
-    dplyr::rename("inf"="event_type_key","n"="inf_with_pathogen") |>
-    add_class("neoipcr_tbl_iadrpit_ref") |>
-    cache(ref, "infectious_agent_detection_rate_per_inf_type_table")
+      dplyr::group_by(.data$event_type_key) |>
+      dplyr::summarise(
+        median = stats::median(.data$n),
+        n = dplyr::n())
+
+    r <- r |>
+      dplyr::inner_join(
+        x |>
+          get_infectious_agent_detection_rates(
+            group_cols = "department_key",
+            use_cache = use_cache) |>
+          dplyr::bind_cols(event_type_key = "all") |>
+          dplyr::bind_rows(
+            x |>
+              get_infectious_agent_detection_rates(
+                group_cols = c("department_key","event_type_key"),
+                use_cache = use_cache)) |>
+          dplyr::group_by(.data$event_type_key) |>
+          dplyr::summarise(
+            q = list(
+              stats::quantile(
+                .data$iwp_per_t,
+                probs = quartile_probs,
+                # In this case NaN indicates that the department has not even
+                # reported an infection.
+                # Since infections with pathogens per total infections only
+                # makes sense for departments with infections we remove those
+                # with NaN here.
+                na.rm = TRUE,
+                names = FALSE))) |>
+          tidyr::unnest_wider(col = .data$q, names_sep = ""),
+        dplyr::join_by("event_type_key")) |>
+      dplyr::inner_join(
+        dep_stats,
+        dplyr::join_by("event_type_key")) |>
+      dplyr::mutate(
+        drop_quartiles = .data$n < 5 | round(100 / .data$pooled) >= .data$median,
+        q1 = dplyr::if_else(
+          .data$drop_quartiles,
+          NA,
+          .data$q1),
+        q2 = dplyr::if_else(
+          .data$drop_quartiles,
+          NA,
+          .data$q2),
+        q3 = dplyr::if_else(
+          .data$drop_quartiles,
+          NA,
+          .data$q3)
+        ) |>
+      dplyr::select(!c("drop_quartiles","n","median")) |>
+      add_class("neoipcr_tbl_iadrpit_ref")
+  }
+  expected_levels <- c("all","bsi","hap","nec","ssi")
+  missing <- setdiff(expected_levels, r$event_type_key)
+  if(length(missing) > 0)
+    r <- r |>
+    dplyr::bind_rows(
+      tibble::tibble(
+        event_type_key = missing,
+        n = 0L,
+        pooled = NA_real_))
+
+  r |>
+    dplyr::rename("n"="inf_with_pathogen") |>
+    dplyr::mutate(
+      inf = factor(.data$event_type_key, levels = expected_levels),
+      .before = 1,
+      .keep = "unused") |>
+    dplyr::arrange(.data$inf) |>
+    cache(x, cache_key)
 }
 
 #' Get the table with infectious agent detection rates of the pathogens in a
 #'  somewhat meaningful taxonomic structure
 #'
-#' @param ref The reference data set which can be either a neoipcr_ref_ds or a
-#'  neoipcr_ds object
-#' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#' @param x The data set which can be either a neoipcr_ds or a neoipcr_rep_ds
+#'  object. In case of a neoipcr_rep_ds it has to be a neoipcr_ref_ds if
+#'  include_quartiles is TRUE.
+#' @param use_cache Use the cache. Ignored if x is a neoipcr_rep_ds object
+#' @param include_quartiles Include quartile columns (q1, q2, q3) in the output.
+#'  Set to FALSE for department-level reports to simplify output.
 #'
 #' @returns A table containing infectious agent detection rates
 #' @export
-get_infectious_agent_detection_rate_per_agent_table <- function(ref, use_cache = TRUE)
-{
-  check_neoipcr_ds_or_ref_ds(ref)
-
-  if(is_neoipcr_ref_ds(ref))
-    return(ref$infectious_agent_detection_rate_per_agent_table)
-
-  if(use_cache && !is.null(r <- get_cached(ref, "infectious_agent_detection_rate_per_agent_table")))
+get_infectious_agent_detection_rate_per_agent_table <- function(
+    x, use_cache = TRUE, include_quartiles = TRUE) {
+  cache_key <- "infectious_agent_detection_rate_per_agent_table"
+  if(!is.null(r <- x |> check_ds_and_try_get_table(
+    cache_key, use_cache, include_quartiles)))
     return(r)
+
+  # Choose the appropriate helper function, the columns to include and the class
+  # to return based on include_quartiles
+  if(include_quartiles) {
+    get_rates <- function(...) {
+      get_infectious_agent_detection_rates_with_department_quartiles(...)
+    }
+    rate_cols <- c("n","rate","q1","q2","q3")
+    return_class <- c("neoipcr_tbl_iadrpa_ref", "neoipcr_tbl_iadrpa")
+  } else {
+    get_rates <- function(...) {
+      get_infectious_agent_detection_rates(...) |>
+        dplyr::rename(rate = "n_per_iwp")
+    }
+    rate_cols <- c("n","rate")
+    return_class <- "neoipcr_tbl_iadrpa"
+  }
 
   lv0 <- dplyr::bind_cols(
     lv = 0L,
     tl = "none",
     group = "Total",
-    ref |>
-      get_infectious_agent_detection_rates_with_department_quartiles(
-        use_cache = use_cache) |>
-      dplyr::select("n","rate","q1","q2","q3"))
-  d <- ref |>
-    get_infectious_agent_detection_rates_with_department_quartiles(
+    x |>
+      get_rates(use_cache = use_cache) |>
+      dplyr::select(tidyselect::all_of(rate_cols)))
+  d <- x |>
+    get_rates(
       group_cols = "domain",
       use_cache = use_cache) |>
-    dplyr::select("group"="domain","n","rate","q1","q2","q3") |>
+    dplyr::select("group"="domain",tidyselect::all_of(rate_cols)) |>
     dplyr::arrange(dplyr::desc(.data$rate))
   for (i in 1:nrow(d)) {
     di <- d[i,]
     if(!is.na(di$group) && di$group == "Bacteria") {
       lv1 <- dplyr::bind_cols(lv = 1L, tl = "domain", di)
-      o <- ref |>
-        get_infectious_agent_detection_rates_with_department_quartiles(
+      o <- x |>
+        get_rates(
           group_cols = c("domain","order"),
           use_cache = use_cache) |>
         dplyr::filter(.data$domain == di$group) |>
-        dplyr::select("group"="order","n","rate","q1","q2","q3") |>
+        dplyr::select("group"="order",tidyselect::all_of(rate_cols)) |>
         dplyr::arrange(dplyr::desc(.data$rate))
       for (j in 1:nrow(o)) {
         oj <- o[j,]
         lv2 <- dplyr::bind_cols(lv = 2L, tl = "order", oj)
-        g <- ref |>
-          get_infectious_agent_detection_rates_with_department_quartiles(
+        g <- x |>
+          get_rates(
             group_cols = c("order","genus"),
             use_cache = use_cache) |>
           dplyr::filter(.data$order == oj$group) |>
-          dplyr::select("group"="genus","n","rate","q1","q2","q3") |>
+          dplyr::select("group"="genus",tidyselect::all_of(rate_cols)) |>
           dplyr::arrange(dplyr::desc(.data$rate))
         for (k in 1:nrow(g)) {
           gk <- g[k,]
           lv3 <- dplyr::bind_cols(lv = 3L, tl = "genus", gk |> dplyr::mutate(group = paste(.data$group, "spp.")))
           if(gk$group == "Staphylococcus") {
-            c <- ref |>
-              get_infectious_agent_detection_rates_with_department_quartiles(
+            c <- x |>
+              get_rates(
                 group_cols = c("genus","coagulase"),
                 use_cache = use_cache) |>
               dplyr::filter(.data$genus == "Staphylococcus") |>
-              dplyr::select("group"="coagulase","n","rate","q1","q2","q3") |>
+              dplyr::select("group"="coagulase",tidyselect::all_of(rate_cols)) |>
               dplyr::arrange(dplyr::desc(.data$rate))
             for (l in 1:nrow(c)) {
               cl <- c[l,]
@@ -1078,12 +1354,12 @@ get_infectious_agent_detection_rate_per_agent_table <- function(ref, use_cache =
                 tl = switch (as.character(cl$group), "n" = "coag_type",
                              "p" = "coag_type", "coag_type_nos"),
                 cl |> dplyr::mutate(group = c_text))
-              s <- ref |>
-                get_infectious_agent_detection_rates_with_department_quartiles(
+              s <- x |>
+                get_rates(
                   group_cols = c("genus","coagulase","species"),
                   use_cache = use_cache) |>
                 dplyr::filter(.data$genus == "Staphylococcus" & .data$coagulase == cl$group) |>
-                dplyr::select("group"="species","n","rate","q1","q2","q3") |>
+                dplyr::select("group"="species",tidyselect::all_of(rate_cols)) |>
                 dplyr::arrange(dplyr::desc(.data$rate))
               lv5 <- dplyr::bind_rows(
                 dplyr::bind_cols(
@@ -1099,12 +1375,12 @@ get_infectious_agent_detection_rate_per_agent_table <- function(ref, use_cache =
             }
           }
           else {
-            s <- ref |>
-              get_infectious_agent_detection_rates_with_department_quartiles(
+            s <- x |>
+              get_rates(
                 group_cols = c("genus","coagulase","species"),
                 use_cache = use_cache) |>
               dplyr::filter(.data$genus == gk$group) |>
-              dplyr::select("group"="species","n","rate","q1","q2","q3") |>
+              dplyr::select("group"="species",tidyselect::all_of(rate_cols)) |>
               dplyr::arrange(dplyr::desc(.data$rate))
             lv4 <- dplyr::bind_rows(
               dplyr::bind_cols(
@@ -1125,32 +1401,32 @@ get_infectious_agent_detection_rate_per_agent_table <- function(ref, use_cache =
       lv0 <- dplyr::bind_rows(lv0,lv1)
     }
     else if (!is.na(di$group)) {
-      kd <- ref |>
-        get_infectious_agent_detection_rates_with_department_quartiles(
+      kd <- x |>
+        get_rates(
           group_cols = c("domain","kingdom"),
           use_cache = use_cache) |>
         dplyr::filter(.data$domain == di$group) |>
-        dplyr::select("group"="kingdom","n","rate","q1","q2","q3") |>
+        dplyr::select("group"="kingdom",tidyselect::all_of(rate_cols)) |>
         dplyr::arrange(dplyr::desc(.data$rate))
       for (j in 1:nrow(kd)) {
         kj <- kd[j,]
         lv1 <- dplyr::bind_cols(lv = 1L, tl = "kingdom", kj)
-        g <- ref |>
-          get_infectious_agent_detection_rates_with_department_quartiles(
+        g <- x |>
+          get_rates(
             group_cols = c("kingdom","genus"),
             use_cache = use_cache) |>
           dplyr::filter(.data$kingdom == kj$group) |>
-          dplyr::select("group"="genus","n","rate","q1","q2","q3") |>
+          dplyr::select("group"="genus",tidyselect::all_of(rate_cols)) |>
           dplyr::arrange(dplyr::desc(.data$rate))
         for (k in 1:nrow(g)) {
           gk <- g[k,]
           lv2 <- dplyr::bind_cols(lv = 2L, tl = "genus", gk |> dplyr::mutate(group = paste(.data$group, "spp.")))
-          s <- ref |>
-            get_infectious_agent_detection_rates_with_department_quartiles(
+          s <- x |>
+            get_rates(
               group_cols = c("genus","coagulase","species"),
               use_cache = use_cache) |>
             dplyr::filter(.data$genus == gk$group) |>
-            dplyr::select("group"="species","n","rate","q1","q2","q3") |>
+            dplyr::select("group"="species",tidyselect::all_of(rate_cols)) |>
             dplyr::arrange(dplyr::desc(.data$rate))
           lv3 <- dplyr::bind_rows(
             dplyr::bind_cols(
@@ -1171,39 +1447,56 @@ get_infectious_agent_detection_rate_per_agent_table <- function(ref, use_cache =
 
   lv0 |>
     dplyr::rename("level"="lv","taxon"="tl","pooled"="rate") |>
-    add_class("neoipcr_tbl_iadrpa_ref") |>
-    cache(ref, "infectious_agent_detection_rate_per_agent_table")
+    add_class(return_class) |>
+    cache(x, cache_key)
 }
 
 #' Get the table of infection rates with antibiotic resistant bacteria in a
 #'  somewhat meaningful taxonomic structure
 #'
-#' @param ref The reference data set which can be either a neoipcr_ref_ds or a
-#'  neoipcr_ds object
-#' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#' @param x The data set which can be either a neoipcr_ds or a neoipcr_rep_ds
+#'  object. In case of a neoipcr_rep_ds it has to be a neoipcr_ref_ds if
+#'  include_quartiles is TRUE.
+#' @param use_cache Use the cache. Ignored if x is a neoipcr_rep_ds object
+#' @param include_quartiles Include quartile columns (q1, q2, q3) in the output.
+#'  Set to FALSE for department-level reports to simplify output.
 #'
 #' @returns A table containing infection rates with antibiotic resistant
 #'  bacteria
 #' @export
-get_abr_infection_rate_table <- function(ref, use_cache = TRUE)
-{
-  check_neoipcr_ds_or_ref_ds(ref)
-
-  if(is_neoipcr_ref_ds(ref))
-    return(ref$abr_infection_rate_table)
-
-  if(use_cache && !is.null(r <- get_cached(ref, "abr_infection_rate_table")))
+get_abr_infection_rate_table <- function(
+    x, use_cache = TRUE, include_quartiles = TRUE) {
+  cache_key <- "abr_infection_rate_table"
+  if(!is.null(r <- x |> check_ds_and_try_get_table(
+    cache_key, use_cache, include_quartiles)))
     return(r)
+
+  # Choose the appropriate helper function, the columns to include and the class
+  # to return based on include_quartiles
+  if(include_quartiles) {
+    get_resistance <- function(...) {
+      get_resistance_rate_with_department_quartiles(...)
+    }
+    rate_cols <- c("n","rate","q1","q2","q3")
+    return_class <- c("neoipcr_tbl_abr_ir_ref", "neoipcr_tbl_abr_ir")
+  } else {
+    get_resistance <- function(...) {
+      get_resistance_rate(...) |>
+        dplyr::rename("n"="inf_rs","rate"="inf_rs_rate")
+    }
+    rate_cols <- c("n","rate")
+    return_class <- "neoipcr_tbl_abr_ir"
+  }
 
   abr_types <- c("3gcr","car","cor")
   tbl <- NULL
 
   for (abr_type in abr_types) {
-    t <- ref |>
-      get_resistance_rate_with_department_quartiles(
+    t <- x |>
+      get_resistance(
         resistance = abr_type,
         use_cache = use_cache) |>
-      dplyr::select("n","rate","q1","q2","q3")
+      dplyr::select(tidyselect::all_of(rate_cols))
 
     lv0 <- dplyr::bind_cols(
       abr_type = abr_type,
@@ -1213,12 +1506,12 @@ get_abr_infection_rate_table <- function(ref, use_cache = TRUE)
       t)
 
     if(t$n > 0) {
-      o <- ref |>
-        get_resistance_rate_with_department_quartiles(
+      o <- x |>
+        get_resistance(
           resistance = abr_type,
           group_cols = "order",
           use_cache = use_cache) |>
-        dplyr::select("group"="order","n","rate","q1","q2","q3") |>
+        dplyr::select("group"="order",tidyselect::all_of(rate_cols)) |>
         dplyr::arrange(dplyr::desc(.data$rate))
 
       for (j in 1:nrow(o)) {
@@ -1230,13 +1523,13 @@ get_abr_infection_rate_table <- function(ref, use_cache = TRUE)
             lv = 2L,
             tl = "order",
             oj)
-          g <- ref |>
-            get_resistance_rate_with_department_quartiles(
+          g <- x |>
+            get_resistance(
               resistance = abr_type,
               group_cols = c("order","genus"),
               use_cache = use_cache) |>
             dplyr::filter(.data$order == oj$group) |>
-            dplyr::select("group"="genus","n","rate","q1","q2","q3") |>
+            dplyr::select("group"="genus",tidyselect::all_of(rate_cols)) |>
             dplyr::arrange(dplyr::desc(.data$rate))
 
           for (k in 1:nrow(g)) {
@@ -1249,13 +1542,13 @@ get_abr_infection_rate_table <- function(ref, use_cache = TRUE)
                 tl = "genus",
                 gk |>
                   dplyr::mutate(group = paste(.data$group, "spp.")))
-              s <- ref |>
-                get_resistance_rate_with_department_quartiles(
+              s <- x |>
+                get_resistance(
                   resistance = abr_type,
                   group_cols = c("genus","species"),
                   use_cache = use_cache) |>
                 dplyr::filter(.data$genus == gk$group) |>
-                dplyr::select("group"="species","n","rate","q1","q2","q3") |>
+                dplyr::select("group"="species",tidyselect::all_of(rate_cols)) |>
                 dplyr::arrange(dplyr::desc(.data$rate))
               lv3 <- dplyr::bind_rows(
                 dplyr::bind_cols(
@@ -1289,20 +1582,20 @@ get_abr_infection_rate_table <- function(ref, use_cache = TRUE)
       abr_type = "mrsa",
       lv = 0L,
       tl = "species",
-      ref |>
-        get_resistance_rate_with_department_quartiles(
+      x |>
+        get_resistance(
           resistance = "mrsa",
           group_cols = "species",
           use_cache = use_cache) |>
-        dplyr::select("group"="species","n","rate","q1","q2","q3")))
+        dplyr::select("group"="species",tidyselect::all_of(rate_cols))))
 
   # VRE only has one genus
-  g <- ref |>
-    get_resistance_rate_with_department_quartiles(
+  g <- x |>
+    get_resistance(
       resistance = "vre",
       group_cols = "genus",
       use_cache = use_cache) |>
-    dplyr::select("group"="genus","n","rate","q1","q2","q3") |>
+    dplyr::select("group"="genus",tidyselect::all_of(rate_cols)) |>
     dplyr::mutate(group = "Enterococcus spp.")
 
   lv0 <- dplyr::bind_cols(
@@ -1312,12 +1605,12 @@ get_abr_infection_rate_table <- function(ref, use_cache = TRUE)
     g)
 
   if(g$n > 0) {
-    s <- ref |>
-      get_resistance_rate_with_department_quartiles(
+    s <- x |>
+      get_resistance(
         resistance = "vre",
         group_cols = c("species"),
         use_cache = use_cache) |>
-      dplyr::select("group"="species","n","rate","q1","q2","q3") |>
+      dplyr::select("group"="species",tidyselect::all_of(rate_cols)) |>
       dplyr::arrange(dplyr::desc(.data$rate))
 
     lv1 <- dplyr::bind_rows(
@@ -1342,42 +1635,50 @@ get_abr_infection_rate_table <- function(ref, use_cache = TRUE)
 
   tbl |>
     dplyr::rename("abr"="abr_type","level"="lv","taxon"="tl","pooled"="rate") |>
-    add_class("neoipcr_tbl_abr_ir_ref") |>
-    cache(ref, "abr_infection_rate_table")
+    add_class(return_class) |>
+    cache(x, cache_key)
 }
 
 #' Get the table with resistance test rates of the recorded resistance
 #'  mechanisms
 #'
-#' @param ref The reference data set which can be either a neoipcr_ref_ds or a
-#'  neoipcr_ds object
-#' @param use_cache Use the cache. Ignored if ref is a neoipcr_ref_ds object
+#' @param x The data set which can be either a neoipcr_ds or a neoipcr_rep_ds
+#'  object. In case of a neoipcr_rep_ds it has to be a neoipcr_ref_ds if
+#'  include_quartiles is TRUE.
+#' @param use_cache Use the cache. Ignored if x is a neoipcr_rep_ds object
+#' @param include_quartiles Include quartile columns (q1, q2, q3) in the output.
+#'  Set to FALSE for department-level reports to simplify output.
 #'
 #' @returns A table containing resistance test rates
 #' @export
-get_resistance_test_rate_table <- function(ref, use_cache = TRUE)
-{
-  check_neoipcr_ds_or_ref_ds(ref)
-
-  if(is_neoipcr_ref_ds(ref))
-    return(ref$resistance_test_rate_table)
-
-  if(use_cache && !is.null(r <- get_cached(ref, "resistance_test_rate_table")))
+get_resistance_test_rate_table <- function(
+    x, use_cache = TRUE, include_quartiles = TRUE) {
+  cache_key <- "resistance_test_rate_table"
+  if(!is.null(r <- x |> check_ds_and_try_get_table(
+    cache_key, use_cache, include_quartiles)))
     return(r)
 
+  if(include_quartiles) {
+    test_fn <- get_resistance_test_rate_with_department_quartiles
+    return_class <- c("neoipcr_tbl_rtr_ref", "neoipcr_tbl_rtr")
+  } else {
+    test_fn <- get_resistance_test_rate
+    return_class <- "neoipcr_tbl_rtr"
+  }
+
   c("3gcr","car","cor","mrsa","vre") |>
-    lapply(\(r) dplyr::bind_cols(res = r, type = "routine", get_resistance_test_rate_with_department_quartiles(ref, r))) |>
+    lapply(\(r) dplyr::bind_cols(res = r, type = "routine", test_fn(x, r))) |>
     dplyr::bind_rows() |>
     dplyr::bind_rows(
-      ref |>
-        get_resistance_test_rate_with_department_quartiles(
+      x |>
+        test_fn(
           resistance = "car",
           group_cols = "3gcr") |>
         dplyr::filter(.data$`3gcr` == "yes") |>
         dplyr::mutate(type = "if_3gcr", res = "car")) |>
     dplyr::bind_rows(
-      ref |>
-        get_resistance_test_rate_with_department_quartiles(
+      x |>
+        test_fn(
           resistance = "cor",
           group_cols = c("3gcr","car")) |>
         dplyr::filter(.data$`3gcr` == "yes" & .data$car == "yes") |>
@@ -1387,10 +1688,105 @@ get_resistance_test_rate_table <- function(ref, use_cache = TRUE)
       cond = factor(.data$type, levels = c("routine","if_3gcr","if_3gcr&car")),
       .keep = "unused"
     ) |>
-    dplyr::select("abr","cond","n"="tested","pooled"="rate","q1","q2","q3") |>
+    dplyr::select("abr","cond","n"="tested","pooled"="rate",tidyselect::any_of(c("q1","q2","q3"))) |>
     dplyr::arrange(.data$abr, .data$cond) |>
-    add_class("neoipcr_tbl_rtr_ref") |>
-    cache(ref, "resistance_test_rate_table")
+    add_class(return_class) |>
+    cache(x, cache_key)
+}
+
+#' Get the table secondary BSI rates of the recorded infections
+#'
+#' @param x The data set which can be either a neoipcr_ds or a neoipcr_rep_ds
+#'  object. In case of a neoipcr_rep_ds it has to be a neoipcr_ref_ds if
+#'  include_quartiles is TRUE.
+#' @param use_cache Use the cache. Ignored if x is a neoipcr_rep_ds object
+#' @param include_quartiles Include quartile columns (q1, q2, q3) in the output.
+#'  Set to FALSE for department-level reports to simplify output.
+#'
+#' @returns A table containing secondary BSI rates
+#' @export
+get_secondary_bsi_rate_table <- function(
+    x, use_cache = TRUE, include_quartiles = TRUE) {
+  cache_key <- "secondary_bsi_rate_table"
+  if(!is.null(r <- x |> check_ds_and_try_get_table(
+    cache_key, use_cache, include_quartiles)))
+    return(r)
+
+  # Calculate pooled rates
+  r <- x |>
+    get_secondary_bsi_rates(use_cache = use_cache) |>
+    dplyr::rename("pooled" = "rate") |>
+    add_class("neoipcr_tbl_sec_bsi")
+
+  # Calculate quartiles if needed
+  if(include_quartiles) {
+    # Get department-level data for quartile calculation
+    dept_rates <- x |>
+      get_secondary_bsi_rates(
+        group_cols = "department_key",
+        use_cache = use_cache)
+
+    # Check if we have enough departments
+    n_deps <- dept_rates |>
+      dplyr::pull("department_key") |>
+      dplyr::n_distinct()
+
+    # Calculate median infections with sec BSI per department
+    median_n <- dept_rates |>
+      dplyr::group_by(.data$department_key) |>
+      dplyr::summarise(total_n = sum(.data$n), .groups = "drop") |>
+      dplyr::pull("total_n") |>
+      stats::median()
+
+    # Calculate quartiles for each infection type
+    quartiles <- dept_rates |>
+      tidyr::pivot_wider(
+        id_cols = "department_key",
+        names_from = "event_type_key",
+        values_from = "rate") |>
+      dplyr::select(!"department_key") |>
+      dplyr::reframe(
+        dplyr::across(
+          tidyselect::everything(),
+          ~quantile(.x, prob = c(.25, .5, .75), na.rm = TRUE))) |>
+      dplyr::bind_cols(tibble::tibble(Q = c("q1", "q2", "q3"))) |>
+      tidyr::pivot_longer(!"Q", names_to = "event_type_key") |>
+      tidyr::pivot_wider(names_from = "Q", values_from = "value")
+
+    # Determine if quartiles should be dropped
+    r |>
+      dplyr::mutate(
+        drop_quartiles = n_deps < 5 | round(100 / .data$pooled) >= median_n) |>
+      dplyr::left_join(quartiles, dplyr::join_by("event_type_key")) |>
+      dplyr::mutate(
+        dplyr::across(
+          c("q1", "q2", "q3"),
+          ~dplyr::if_else(.data$drop_quartiles, NA_real_, .x))) |>
+      dplyr::select(!"drop_quartiles") |>
+      add_class("neoipcr_tbl_sec_bsi_ref")
+  }
+
+  # Ensure all expected infection types are present
+  expected_types <- c("nec", "hap", "ssi")
+  missing <- setdiff(expected_types, r$event_type_key)
+  if(length(missing) > 0) {
+    missing_rows <- tibble::tibble(
+      event_type_key = missing,
+      n = 0L,
+      pooled = NA_real_)
+    if(include_quartiles) {
+      missing_rows <- missing_rows |>
+        dplyr::mutate(q1 = NA_real_, q2 = NA_real_, q3 = NA_real_)
+    }
+    r <- r |> dplyr::bind_rows(missing_rows)
+  }
+
+  # Convert to factor and sort
+  r |>
+    dplyr::mutate(
+      event_type_key = factor(.data$event_type_key, levels = expected_types)) |>
+    dplyr::arrange(.data$event_type_key) |>
+    cache(x, cache_key)
 }
 
 #' Prettyf the names of a neoipcr object
@@ -1401,7 +1797,7 @@ get_resistance_test_rate_table <- function(ref, use_cache = TRUE)
 #' @returns the same object as x but with pretty and potentially translated
 #'  names
 #' @export
-pretty_names <- function(x, ...){
+pretty_names <- function(x, ...) {
   UseMethod("pretty_names")
 }
 
@@ -1409,8 +1805,7 @@ pretty_names <- function(x, ...){
 pretty_names.default <- function(x, ...) x
 
 #' @export
-pretty_names.neoipcr_tbl_sr_ref <- function(x, ...)
-{
+pretty_names.neoipcr_tbl_sr_ref <- function(x, ...) {
   col_names <- stats::setNames(
     gettext("Procedure category","N","Pooled","Q1","Q2","Q3"),
     c("pro_cat","n","pooled","q1","q2","q3"))
@@ -1440,8 +1835,8 @@ pretty_names.neoipcr_tbl_sr_ref <- function(x, ...)
         .default = .x))
 }
 
-get_dev_ass_incidence_density_rates <- function(x, group_cols = NULL, use_cache = TRUE)
-{
+get_dev_ass_incidence_density_rates <- function(
+    x, group_cols = NULL, use_cache = TRUE) {
   if(is.null(group_cols))
     cache_key <- "dev_ass_incidence_density_rates"
   else
@@ -1519,8 +1914,8 @@ get_dev_ass_incidence_density_rates <- function(x, group_cols = NULL, use_cache 
     cache(x, cache_key)
 }
 
-get_incidence_density_rates <- function(x, group_cols = NULL, use_cache = TRUE)
-{
+get_incidence_density_rates <- function(
+    x, group_cols = NULL, use_cache = TRUE) {
   if(is.null(group_cols))
     cache_key <- "incidence_density_rates"
   else
@@ -1563,8 +1958,8 @@ get_incidence_density_rates <- function(x, group_cols = NULL, use_cache = TRUE)
     cache(x, cache_key)
 }
 
-get_infectious_agent_detection_rates_with_department_quartiles <- function(x, group_cols = NULL, use_cache = TRUE)
-{
+get_infectious_agent_detection_rates_with_department_quartiles <- function(
+    x, group_cols = NULL, use_cache = TRUE) {
   if(is.null(group_cols))
     cache_key <- "infectious_agent_detection_rates_with_department_quartiles"
   else
@@ -1598,11 +1993,11 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(x, gr
     return(
       tibble::tibble(
         n = 0,
-        rate = NaN,
+        rate = NA_real_,
         drop_quartiles = TRUE,
-        q1 = NA,
-        q2 = NA,
-        q3 = NA
+        q1 = NA_real_,
+        q2 = NA_real_,
+        q3 = NA_real_
         ) |>
         dplyr::bind_rows(gc)
       )
@@ -1666,8 +2061,8 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(x, gr
     cache(x, cache_key)
 }
 
-get_infectious_agent_detection_rates <- function(x, group_cols = NULL, use_cache = TRUE)
-{
+get_infectious_agent_detection_rates <- function(
+    x, group_cols = NULL, use_cache = TRUE) {
   if(is.null(group_cols))
     cache_key <- "infectious_agent_detection_rates"
   else
@@ -1718,8 +2113,7 @@ get_infectious_agent_detection_rates <- function(x, group_cols = NULL, use_cache
     cache(x, cache_key)
 }
 
-get_infection_counts <- function(x, group_cols = NULL, use_cache = TRUE)
-{
+get_infection_counts <- function(x, group_cols = NULL, use_cache = TRUE) {
   if(is.null(group_cols))
     cache_key <- "infection_counts"
   else
@@ -1792,8 +2186,8 @@ get_infection_counts <- function(x, group_cols = NULL, use_cache = TRUE)
     cache(x, cache_key)
 }
 
-get_resistance_test_rate_with_department_quartiles <- function(x, resistance, group_cols = NULL, use_cache = TRUE)
-{
+get_resistance_test_rate_with_department_quartiles <- function(
+    x, resistance, group_cols = NULL, use_cache = TRUE) {
   rate <- x |>
     get_resistance_test_rate(
       resistance = resistance,
@@ -1855,8 +2249,8 @@ get_resistance_test_rate_with_department_quartiles <- function(x, resistance, gr
     dplyr::select(!c("n_deps","median", "drop_quartiles"))
 }
 
-get_resistance_test_rate <- function(x, resistance, group_cols = NULL, use_cache = TRUE)
-{
+get_resistance_test_rate <- function(
+    x, resistance, group_cols = NULL, use_cache = TRUE) {
   res_names <- c("3gcr","car","cor","mrsa","vre")
   resistance <- rlang::arg_match(
     arg = resistance,
@@ -1911,8 +2305,8 @@ get_resistance_test_rate <- function(x, resistance, group_cols = NULL, use_cache
     cache(x, cache_key)
 }
 
-get_resistance_rate_with_department_quartiles <- function(x, resistance, group_cols = NULL, use_cache = TRUE)
-{
+get_resistance_rate_with_department_quartiles <- function(
+    x, resistance, group_cols = NULL, use_cache = TRUE) {
   rate <- x |>
     get_resistance_rate(
       resistance = resistance,
@@ -1932,7 +2326,7 @@ get_resistance_rate_with_department_quartiles <- function(x, resistance, group_c
         dplyr::bind_cols(
           tibble::tibble(
             n = 0L,
-            rate = 0,
+            rate = NA_real_,
             q1 = NA_real_,
             q2 = NA_real_,
             q3 = NA_real_
@@ -1991,8 +2385,8 @@ get_resistance_rate_with_department_quartiles <- function(x, resistance, group_c
     dplyr::rename("n"="inf_rs","rate"="inf_rs_rate")
 }
 
-get_resistance_rate <- function(x, resistance, group_cols = NULL, use_cache = TRUE)
-{
+get_resistance_rate <- function(
+    x, resistance, group_cols = NULL, use_cache = TRUE) {
   res_names <- c("3gcr","car","cor","mrsa","vre")
   resistance <- rlang::arg_match(
     arg = resistance,
@@ -2093,8 +2487,73 @@ get_resistance_rate <- function(x, resistance, group_cols = NULL, use_cache = TR
     cache(x, cache_key)
 }
 
-get_risk_population <- function(x, group_cols = NULL, use_cache = TRUE)
-{
+get_secondary_bsi_rates <- function(x, group_cols = NULL, use_cache = TRUE) {
+  if(is.null(group_cols))
+    cache_key <- "secondary_bsi_rates"
+  else
+    cache_key <- paste0("secondary_bsi_rates_by.", paste0(group_cols, collapse = "."))
+
+  if(use_cache && !is.null(r <- get_cached(x, cache_key)))
+    return(r)
+
+  # Count infections with secondary BSI for each type
+  infections_with_sec_bsi <- x$events |>
+    dplyr::filter(.data$event_type_key %in% c("nec","ssi","hap")) |>
+    dplyr::semi_join(
+      x$infectiousAgentFindings |>
+        dplyr::filter(.data$secondary_bsi),
+      dplyr::join_by("event_key")) |>
+    dplyr::group_by(dplyr::across(tidyselect::all_of(
+      c("event_type_key", group_cols)))) |>
+    dplyr::summarise(n = dplyr::n(), .groups = "drop")
+
+  # Count infections with follow-up for each type
+  infections_with_followup <- dplyr::bind_rows(
+    x$events |>
+      dplyr::semi_join(
+        x$necData |> dplyr::filter(.data$sec_bsi != -1),
+        dplyr::join_by("event_key")) |>
+      dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
+      dplyr::summarise(
+        followup_n = dplyr::n(),
+        event_type_key = "nec",
+        .groups = "drop"),
+    x$events |>
+      dplyr::semi_join(
+        x$pneumoniaData |> dplyr::filter(.data$sec_bsi != -1),
+        dplyr::join_by("event_key")) |>
+      dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
+      dplyr::summarise(
+        followup_n = dplyr::n(),
+        event_type_key = "hap",
+        .groups = "drop"),
+    x$events |>
+      dplyr::semi_join(
+        x$ssiData |> dplyr::filter(.data$sec_bsi != -1),
+        dplyr::join_by("event_key")) |>
+      dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
+      dplyr::summarise(
+        followup_n = dplyr::n(),
+        event_type_key = "ssi",
+        .groups = "drop")
+  )
+
+  # Join and calculate rates
+  join_cols <- c("event_type_key", group_cols)
+  r <- infections_with_followup |>
+    dplyr::left_join(
+      infections_with_sec_bsi,
+      by = join_cols) |>
+    dplyr::mutate(
+      n = tidyr::replace_na(.data$n, 0),
+      rate = .data$n / .data$followup_n * 100) |>
+    dplyr::select(!"followup_n") |>
+    cache(x, cache_key)
+
+  r
+}
+
+get_risk_population <- function(x, group_cols = NULL, use_cache = TRUE) {
   if(is.null(group_cols))
     cache_key <- "risk_population"
   else
@@ -2116,8 +2575,7 @@ get_risk_population <- function(x, group_cols = NULL, use_cache = TRUE)
     cache(x, cache_key)
 }
 
-get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE)
-{
+get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE) {
   if(is.null(group_cols))
     cache_key <- "surgery_risk"
   else
@@ -2184,8 +2642,7 @@ get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE)
     cache(x, cache_key)
 }
 
-get_risk_time <- function(x, group_cols = NULL, use_cache = TRUE)
-{
+get_risk_time <- function(x, group_cols = NULL, use_cache = TRUE) {
   if(is.null(group_cols))
     cache_key <- "risk_time"
   else
@@ -2234,8 +2691,7 @@ get_risk_time <- function(x, group_cols = NULL, use_cache = TRUE)
     cache(x, cache_key)
 }
 
-get_procedures <- function(x, group_cols = NULL, use_cache = TRUE)
-{
+get_procedures <- function(x, group_cols = NULL, use_cache = TRUE) {
   if(is.null(group_cols))
     cache_key <- "procedures"
   else
@@ -2257,8 +2713,7 @@ get_procedures <- function(x, group_cols = NULL, use_cache = TRUE)
     cache(x, cache_key)
 }
 
-get_aware_days <- function(x, use_cache = TRUE)
-{
+get_aware_days <- function(x, use_cache = TRUE) {
   if(use_cache && !is.null(r <- get_cached(x, "aware_days")))
     return(r)
 
@@ -2287,9 +2742,8 @@ get_aware_days <- function(x, use_cache = TRUE)
     cache(x, "aware_days")
 }
 
-get_procedure_categories <- function(x, pretty = FALSE, include_iche = FALSE,
-                                     use_cache = TRUE)
-{
+get_procedure_categories <- function(
+    x, pretty = FALSE, include_iche = FALSE, use_cache = TRUE) {
   cache_key <- "procedure_categories"
 
   # ToDo: Clarify licensing and inclusion criteria for ICHE information with WHO
@@ -2355,8 +2809,7 @@ get_procedure_categories <- function(x, pretty = FALSE, include_iche = FALSE,
     cache(x, cache_key)
 }
 
-get_procedure_category <- function(x, not_surgery_na = FALSE)
-{
+get_procedure_category <- function(x, not_surgery_na = FALSE) {
   target <- stringr::str_extract(x, "^([A-Za-z]{3})\\.", 1)
   action <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})", 2)
   means <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})\\.([A-Za-z]{2})", 3)
@@ -2499,8 +2952,7 @@ get_procedure_category <- function(x, not_surgery_na = FALSE)
         "to_be_categorised"))
 }
 
-get_procedure_category_pretty <- function(x)
-{
+get_procedure_category_pretty <- function(x) {
   dplyr::case_match(
     as.character(x),
     "overall" ~ gettext("Overall"),
@@ -2517,7 +2969,8 @@ get_procedure_category_pretty <- function(x)
   )
 }
 
-ga7 <- function(x) 7 * dplyr::case_match(
+ga7 <- function(x) {
+  7 * dplyr::case_match(
   as.integer(x %% 7),
   0L ~ as.integer(x / 7),
   1L ~ as.integer(x / 7),
@@ -2526,9 +2979,9 @@ ga7 <- function(x) 7 * dplyr::case_match(
   4L ~ as.integer(x / 7) + 1,
   5L ~ as.integer(x / 7) + 1,
   6L ~ as.integer(x / 7) + 1)
+}
 
-bw50 <- function(x, as_factor = TRUE)
-{
+bw50 <- function(x, as_factor = TRUE) {
   m <- floor((x-25)/50)*50+50
   if(!as_factor)
     return(m)
@@ -2544,8 +2997,7 @@ bw50 <- function(x, as_factor = TRUE)
     labels = paste0(format(seq(min(lb), max(lb), 50))," g - ",format(seq(min(ub), max(ub), 50))," g"))
 }
 
-bw125 <- function(x, as_factor = TRUE)
-{
+bw125 <- function(x, as_factor = TRUE) {
   m <- floor((x-63)/125)*125+125
   if(!as_factor)
     return(m)
@@ -2561,8 +3013,7 @@ bw125 <- function(x, as_factor = TRUE)
     labels = paste0(format(seq(min(lb), max(lb), 125))," g - ",format(seq(min(ub), max(ub), 125))," g"))
 }
 
-bw250 <- function(x, as_factor = TRUE)
-{
+bw250 <- function(x, as_factor = TRUE) {
   m <- floor((x-125)/250)*250+250
   if(!as_factor)
     return(m)
@@ -2578,8 +3029,7 @@ bw250 <- function(x, as_factor = TRUE)
     labels = paste0(format(seq(min(lb), max(lb), 250))," g - ",format(seq(min(ub), max(ub), 250))," g"))
 }
 
-bw500 <- function(x, as_factor = TRUE)
-{
+bw500 <- function(x, as_factor = TRUE) {
   m <- as.integer(x/500)*500+250
   if(!as_factor)
     return(m)
@@ -2595,32 +3045,27 @@ bw500 <- function(x, as_factor = TRUE)
     labels = paste0(format(seq(min(lb), max(lb), 500))," g - ",format(seq(min(ub), max(ub), 500))," g"))
 }
 
-add_class <- function(x, class_name)
-{
-  check_string(class_name, allow_empty = FALSE)
+add_class <- function(x, class_name) {
+  check_character(class_name, allow_null = FALSE, allow_na = FALSE)
   class(x) <- c(class_name, class(x))
   return(x)
 }
 
-cache <- function(x, container, key)
-{
+cache <- function(x, container, key) {
   container$.cache[[key]] = x
   return(x)
 }
 
-clean_cache <- function(x)
-{
+clean_cache <- function(x) {
   rm(list = ls(envir = x$.cache), envir = x$.cache)
 }
 
-new_cache <- function(x)
-{
+new_cache <- function(x) {
   x$.cache <- new.env(parent = emptyenv())
   x
 }
 
-get_cached <- function(container, key)
-{
+get_cached <- function(container, key) {
   if (!is.null(container$.cache) && !is.null(r <- get0(key, envir = container$.cache)))
     return(r)
 

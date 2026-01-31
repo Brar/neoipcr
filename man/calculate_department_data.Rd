@@ -12,7 +12,7 @@ calculate_department_data(x, use_cache = TRUE)
 \item{use_cache}{Use the cache}
 }
 \value{
-A NeoIPC reference data set
+A NeoIPC department report data set
 }
 \description{
 Calculate a NeoIPC department report data set
