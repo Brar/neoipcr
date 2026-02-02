@@ -1505,7 +1505,7 @@ get_abr_infection_rate_table <- function(
       group = "Total",
       t)
 
-    if(t$n > 0) {
+    if(length(t$n) > 0 && t$n > 0) {
       o <- x |>
         get_resistance(
           resistance = abr_type,
@@ -1604,7 +1604,7 @@ get_abr_infection_rate_table <- function(
     tl = "genus",
     g)
 
-  if(g$n > 0) {
+  if(length(g$n) > 0 && g$n > 0) {
     s <- x |>
       get_resistance(
         resistance = "vre",
@@ -1754,7 +1754,7 @@ get_secondary_bsi_rate_table <- function(
       tidyr::pivot_wider(names_from = "Q", values_from = "value")
 
     # Determine if quartiles should be dropped
-    r |>
+    r <- r |>
       dplyr::mutate(
         drop_quartiles = n_deps < 5 | round(100 / .data$pooled) >= median_n) |>
       dplyr::left_join(quartiles, dplyr::join_by("event_type_key")) |>
