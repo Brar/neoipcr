@@ -97,7 +97,8 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE) {
         calculated = lubridate::now("UTC"),
         dataset_options = ds_opts,
         data_up_to = x$metadata$system$date,
-        countries = x$metadata$countries$displayName |> sort()
+        effective_analysis_period = get_effective_analysis_period(x),
+        countries = get_countries_with_wb_class(x)
       ),
       birth_weight_figure = x|> get_birthweight_figure_data(),
       gestational_age_figure = x|> get_gestational_age_figure_data(),
@@ -202,15 +203,40 @@ calculate_department_data <- function(x, use_cache = TRUE) {
     ) |>
     dplyr::arrange(.data$factor)
 
+  # Extract infection counts for metadata
+  n_infections <- dplyr::bind_rows(
+    dplyr::bind_cols(
+      tibble::tibble(inf_type = "overall"),
+      x |>
+        get_infection_counts(use_cache = use_cache) |>
+        dplyr::rename(total = "n")),
+    x |>
+      get_infection_counts(group_cols = c("event_type_key"), use_cache = use_cache) |>
+      dplyr::rename(inf_type = "event_type_key", total = "n"))
+
   structure(
     list(
+      metadata = list(
+        calculated = lubridate::now("UTC"),
+        dataset_options = x$metadata$dataset_options,
+        data_up_to = x$metadata$system$date,
+        effective_analysis_period = get_effective_analysis_period(x),
+        countries = get_countries_with_wb_class(x)
+      ),
       birth_weight_figure = get_birthweight_figure_data(x),
       gestational_age_figure = get_gestational_age_figure_data(x),
-      n_patients = rp$n_patients,
-      n_enrollments = rp$n_enrollments,
-      n_patient_days = rt$patient_days,
-      n_surgical_patients = sr$n_patients,
-      n_surgical_procedures = sr$n_procedures,
+      n_departments = if (!is.null(x$enrollments$department_key)) {
+        x$enrollments$department_key |> unique() |> length()
+      } else {
+        1L
+      },
+      n_patients = list(total = rp$n_patients),
+      n_enrollments = list(total = rp$n_enrollments),
+      n_patient_days = list(total = rt$patient_days),
+      n_infections = n_infections,
+      n_surgical_departments = sr$n_departments,
+      n_surgical_procedures = list(total = sr$n_procedures),
+      n_surgical_patients = list(total = sr$n_patients),
       usage_density_rate_table = usage_density_rate_table,
       surgery_rate_table =
         get_surgery_rate_table(
@@ -237,6 +263,53 @@ calculate_department_data <- function(x, use_cache = TRUE) {
     class = c("neoipcr_rep_ds", "list"))
 }
 
+get_countries_with_wb_class <- function(x) {
+  if (!is.null(x$metadata$countries)) {
+    countries_data <- x$enrollments |>
+      dplyr::inner_join(
+        x$metadata$countries |>
+          select("country_key", "displayName"),
+        dplyr::join_by("country_key")) |>
+        dplyr::select(name = "displayName", tidyselect::any_of("world_bank_class_key")) |>
+        dplyr::distinct()
+
+    # Join with worldBankClasses to get stable class and displayName
+    if (!is.null(x$metadata$worldBankClasses) && "world_bank_class_key" %in% names(countries_data)) {
+      countries_data |>
+        dplyr::left_join(
+          x$metadata$worldBankClasses |>
+            dplyr::select("world_bank_class_key", wb_class = "class"),
+          dplyr::join_by("world_bank_class_key")) |>
+        dplyr::select("name", "wb_class") |>
+        dplyr::distinct() |>
+        dplyr::arrange(.data$name)
+    } else {
+      countries_data |>
+      dplyr::select("name") |>
+      dplyr::arrange(.data$name)
+    }
+  } else {
+  NULL
+  }
+}
+
+# Calculates effective analysis period from actual surveillance end dates
+get_effective_analysis_period <- function(x) {
+  surveillance_end_dates <- x$events |>
+    dplyr::filter(.data$event_type_key == "end") |>
+    dplyr::pull(.data$occurredAt)
+
+  if (length(surveillance_end_dates) > 0) {
+    return(
+      list(
+        from = min(surveillance_end_dates, na.rm = TRUE),
+        to = max(surveillance_end_dates, na.rm = TRUE)))
+  }
+
+  return(NULL)
+}
+
+
 #' Creates a NeoIPC benchmark data set from department report datasets and a
 #'  reference data set
 #'
@@ -253,8 +326,10 @@ get_benchmark_data <- function(...) {
   x <- list(...)
   n_ds <- length(x)
   ds_names = rlang::names2(x)
-  output <- list(dataset_names = ds_names)
-    suffixes = ds_names |>
+  output <- list(
+    dataset_names = ds_names,
+    metadata = list())
+  suffixes = ds_names |>
     sapply(\(x)ifelse(x=="",x,paste0("_",x)), USE.NAMES = FALSE)
 
   for (i in 1:n_ds) {
@@ -263,10 +338,25 @@ get_benchmark_data <- function(...) {
     ds_name <- ds_names[i]
     elements <- names(ds)
 
+    # Extract metadata if present
+    if ("metadata" %in% elements) {
+      output$metadata[[ds_name]] <- ds$metadata
+    }
+
+    if ("n_departments" %in% elements) {
+      tbl <- tibble::tibble(n = ds$n_departments) |>
+        dplyr::rename_with(~ paste0(.x, suffix))
+      output$n_departments <- dplyr::bind_cols(output$n_departments, tbl)
+    }
+    if ("n_surgical_departments" %in% elements) {
+      tbl <- tibble::tibble(n = ds$n_surgical_departments) |>
+        dplyr::rename_with(~ paste0(.x, suffix))
+      output$n_surgical_departments <- dplyr::bind_cols(output$n_surgical_departments, tbl)
+    }
     if ("n_patients" %in% elements) {
       tbl <- ds$n_patients
       if (!is.data.frame(tbl)) {
-        tbl <- tibble::tibble(n = tbl)
+        tbl <- tibble::as_tibble(tbl)
       }
       tbl <- tbl |>
         dplyr::rename_with(~ paste0(.x, suffix))
@@ -276,7 +366,7 @@ get_benchmark_data <- function(...) {
     if ("n_enrollments" %in% elements) {
       tbl <- ds$n_enrollments
       if (!is.data.frame(tbl)) {
-        tbl <- tibble::tibble(n = tbl)
+        tbl <- tibble::as_tibble(tbl)
       }
       tbl <- tbl |>
         dplyr::rename_with(~ paste0(.x, suffix))
@@ -286,7 +376,7 @@ get_benchmark_data <- function(...) {
     if ("n_patient_days" %in% elements) {
       tbl <- ds$n_patient_days
       if (!is.data.frame(tbl)) {
-        tbl <- tibble::tibble(n = tbl)
+        tbl <- tibble::as_tibble(tbl)
       }
       tbl <- tbl |>
         dplyr::rename_with(~ paste0(.x, suffix))
@@ -296,7 +386,7 @@ get_benchmark_data <- function(...) {
     if ("n_surgical_patients" %in% elements) {
       tbl <- ds$n_surgical_patients
       if (!is.data.frame(tbl)) {
-        tbl <- tibble::tibble(n = tbl)
+        tbl <- tibble::as_tibble(tbl)
       }
       tbl <- tbl |>
         dplyr::rename_with(~ paste0(.x, suffix))
@@ -307,7 +397,7 @@ get_benchmark_data <- function(...) {
     if ("n_surgical_procedures" %in% elements) {
       tbl <- ds$n_surgical_procedures
       if (!is.data.frame(tbl)) {
-        tbl <- tibble::tibble(n = tbl)
+        tbl <- tibble::as_tibble(tbl)
       }
       tbl <- tbl |>
         dplyr::rename_with(~ paste0(.x, suffix))
