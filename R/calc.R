@@ -268,7 +268,7 @@ get_countries_with_wb_class <- function(x) {
     countries_data <- x$enrollments |>
       dplyr::inner_join(
         x$metadata$countries |>
-          select("country_key", "displayName"),
+          dplyr::select("country_key", "displayName"),
         dplyr::join_by("country_key")) |>
         dplyr::select(name = "displayName", tidyselect::any_of("world_bank_class_key")) |>
         dplyr::distinct()
