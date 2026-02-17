@@ -221,6 +221,8 @@ calculate_department_data <- function(x, use_cache = TRUE) {
         dataset_options = x$metadata$dataset_options,
         data_up_to = x$metadata$system$date,
         effective_analysis_period = get_effective_analysis_period(x),
+        hospitals = x$metadata$hospitals,
+        departments = x$metadata$departments,
         countries = get_countries_with_wb_class(x)
       ),
       birth_weight_figure = get_birthweight_figure_data(x),
@@ -1716,7 +1718,7 @@ get_abr_infection_rate_table <- function(
         tl = "species_nos",
         s |>
           dplyr::filter(is.na(.data$group) & .data$n > 0) |>
-          dplyr::mutate(group = paste(gk$group,"spp. n.o.s."))))
+          dplyr::mutate(group = paste(g$group," n.o.s."))))
 
     lv0 <- dplyr::bind_rows(lv0,lv1)
   }
