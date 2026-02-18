@@ -699,14 +699,23 @@ get_birthweight_figure_data <- function(x) {
   bw_scale_min <- as.integer(bw_quartiles[1] / 50L) * 50L - 50L
   bw_scale_max <- as.integer(bw_quartiles[5] / 50L) * 50L + 100L
 
-  bw_density <- x$patients$birth_weight |>
-    bw50(as_factor = F) |>
-    stats::density(from = bw_scale_min, to = bw_scale_max)
+  # density.default needs at least two points
+  if (length(x$patients$birth_weight) > 1) {
+    bw_density <- x$patients$birth_weight |>
+      bw50(as_factor = F) |>
+      stats::density(from = bw_scale_min, to = bw_scale_max)
+
+    density_bw <- bw_density$x
+    density_val <-  bw_density$y / sum(bw_density$y)
+  } else {
+    density_bw <- double()
+    density_val <-  double()
+  }
 
   list(
     density = tibble::tibble(
-      birth_weight = bw_density$x,
-      density = bw_density$y / sum(bw_density$y)
+      birth_weight = density_bw,
+      density = density_val
     ),
     frequency = tibble::tibble(
       birth_weight_cat = x$patients$birth_weight |>
@@ -738,14 +747,23 @@ get_gestational_age_figure_data <- function(x) {
   ga_scale_min = as.integer(ga_quartiles[1] / 7L) * 7L - 7L
   ga_scale_max = as.integer(ga_quartiles[5] / 7L) * 7L + 14L
 
-  ga_density <- x$patients$total_gestation_days |>
-    ga7() |>
-    stats::density(from = ga_scale_min, to = ga_scale_max)
+  # density.default needs at least two points
+  if (length(x$patients$total_gestation_days) > 1) {
+    ga_density <- x$patients$total_gestation_days |>
+      ga7() |>
+      stats::density(from = ga_scale_min, to = ga_scale_max)
+
+    density_ga <- ga_density$x
+    density_val <-  ga_density$y / sum(ga_density$y)
+  } else {
+    density_ga <- double()
+    density_val <-  double()
+  }
 
   list(
     density = tibble::tibble(
-      gestational_age = ga_density$x,
-      density = ga_density$y / sum(ga_density$y)
+      gestational_age = density_ga,
+      density = density_val
     ),
     frequency = tibble::tibble(
       gestational_age_cat = x$patients$total_gestation_days |>
