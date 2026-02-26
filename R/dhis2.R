@@ -59,14 +59,22 @@ dhis2_dataset_options <- function(
     gestational_age_to = NULL,
     country_filter = NULL,
     department_filter = NULL,
+    # ToDo: Change "yes" to "full"
     include_world_bank_class = c("no","pseudonymised","yes"),
     include_country = c("no","pseudonymised","yes"),
     include_hospital = c("no","pseudonymised","yes"),
     include_department = c("no","pseudonymised","yes"),
+    # ToDo: Add logic to completely remove patients only leaving us with the
+    # events or to select individual patient columns to trim the dataset down
+    # to what we really need. We may even go implement reports that gracefully
+    # remove information if information is missing
+    #include_patient = c("id","birth_weigth", ...)
     include_user = c("no","pseudonymised","yes"),
     include_patient_id = FALSE,
     include_dhis2_ids = rlang::chr(),
     include_timestamps = FALSE,
+    # ToDo: Also detect the IsTestunit attribute to allow test units within the
+    # regular country/hospital/department hierarchy
     include_test_data = FALSE,
     include_ineligible_patients = FALSE,
     include_unenrolled_patients = FALSE,
@@ -116,7 +124,7 @@ dhis2_dataset_options <- function(
     include_patient_id = include_patient_id,
     include_dhis2_ids = rlang::arg_match(
       include_dhis2_ids,
-      c("countries","hospitals","departments","patients","enrollments"),
+      c("countries","hospitals","departments","patients","enrollments","events","notes"),
       multiple = TRUE),
     include_timestamps = include_timestamps,
     include_test_data = include_test_data,
@@ -163,9 +171,39 @@ import_dhis2 <- function(
   tracker_req <- d2req_base |>
     httr2::req_url_path_append("tracker") |>
     httr2::req_url_query(
-      ouMode ="ACCESSIBLE",
       skipPaging = "true",
       includeDeleted = tolower(dataset_options$include_deleted))
+
+  if(length(dataset_options$department_filter) > 0) {
+    tracker_req <- tracker_req |>
+      httr2::req_url_query(
+        ouMode = "SELECTED",
+        orgUnit = metadata$departments |>
+          dplyr::filter(.data$code %in% dataset_options$department_filter) |>
+          dplyr::pull(.data$orgUnit) |>
+          paste0(collapse = ";"))
+  } else if(length(dataset_options$country_filter) > 0) {
+    tracker_req <- tracker_req |>
+      httr2::req_url_query(
+        ouMode = "DESCENDANTS",
+        orgUnit = metadata$countries |>
+          dplyr::pull(.data$country) |>
+          paste0(collapse = ";"))
+    if (dataset_options$include_country == "no"){
+      metadata$countries <- tibble::tibble() # Todo: Return empty table with correct schema
+    } else if (!("countries" %in% dataset_options$include_dhis2_ids)) {
+      metadata$countries <- metadata$countries |>
+        dplyr::select(!"country")
+    } else {
+      metadata$countries <- metadata$countries |>
+        dplyr::rename("orgUnit"="country")
+    }
+  } else {
+    tracker_req <- tracker_req |>
+      httr2::req_url_query(
+        ouMode = "ACCESSIBLE")
+  }
+
   reqs <- list(
     get_trackedEntities_request(
       tracker_req,
@@ -176,7 +214,7 @@ import_dhis2 <- function(
     get_events_request(tracker_req, dataset_options, metadata$programId))
 
   data <-  reqs |>
-    httr2::req_perform_parallel() |>
+    httr2::req_perform_parallel(progress = FALSE) |>
     httr2::resps_data(\(resp){
       list(httr2::resp_body_json(resp) |>
              tibble::tibble() |>
@@ -188,7 +226,21 @@ import_dhis2 <- function(
   events_raw <- data[[3]]
 
   patients <- read_patients(trackedEntities_raw, metadata, dataset_options)
-  enrollments <- read_enrollments(enrollments_raw, patients, metadata, dataset_options)
+  processed_enrollments <- read_enrollments2(enrollments_raw, patients, metadata, dataset_options)
+  enrollments <- processed_enrollments$enrollments
+  enrollment_notes <- processed_enrollments$notes
+  processed_events <- read_events2(events_raw, enrollments, patients, metadata, dataset_options)
+browser()
+
+  # Remove the DHIS2 ids we kept to join tables if they were not explicitly requested
+  # if(!("patients" %in% dataset_options$include_dhis2_ids))
+  #   patients <- patients |>
+  #     dplyr::select(!"trackedEntity")
+  #
+  # if(!("enrollments" %in% dataset_options$include_dhis2_ids))
+  #   enrollments <- enrollments |>
+  #     dplyr::select(!"enrollment")
+
   events <- read_events(events_raw, enrollments, patients, metadata, dataset_options)
   admissionData <- read_event_data(events_raw, events, metadata, dataset_options, "adm")
 
@@ -358,6 +410,7 @@ get_user_info <- function(req)
 {
   raw_info <- req |>
     httr2::req_url_path_append("me") |>
+    # ToDo: Optimise the query to just fetch what we need
     httr2::req_url_query(
       fields = "id,username,firstName,surname,email,created,userCredentials[lastLogin],organisationUnits[id],dataViewOrganisationUnits[id],teiSearchOrganisationUnits[id],userRoles[name,authorities],userGroups[name]") |>
     httr2::req_perform() |>

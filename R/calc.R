@@ -167,7 +167,9 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE) {
       infectious_agent_detection_rate_per_inf_type_table =
         get_infectious_agent_detection_rate_per_inf_type_table(x, use_cache),
       resistance_test_rate_table =
-        get_resistance_test_rate_table(x, use_cache)
+        get_resistance_test_rate_table(x, use_cache),
+      validation_summary =
+        get_validation_summary(x, use_cache)
     ),
     class = c("neoipcr_ref_ds", "neoipcr_rep_ds", "list"))
 }
@@ -260,7 +262,9 @@ calculate_department_data <- function(x, use_cache = TRUE) {
       infectious_agent_detection_rate_per_inf_type_table =
         get_infectious_agent_detection_rate_per_inf_type_table(x, use_cache, include_quartiles = FALSE),
       resistance_test_rate_table =
-        get_resistance_test_rate_table(x, use_cache, include_quartiles = FALSE)
+        get_resistance_test_rate_table(x, use_cache, include_quartiles = FALSE),
+      validation_summary =
+        get_validation_summary(x, use_cache)
     ),
     class = c("neoipcr_rep_ds", "list"))
 }
@@ -827,6 +831,19 @@ check_ds_and_try_get_table <- function(
   }
 
   return(NULL)
+}
+
+get_validation_summary <- function(x, use_cache = TRUE) {
+  kept <- x$metadata$dataset_options$include_invalid_patients
+  list(
+    n_patients = x$validationResults$patient_key |>
+      unique() |>
+      length(),
+    n_patients_kept =
+      if(is.logical(kept)) {
+        if(!kept) 0L else Inf
+      } else 100L#ToDo
+  )
 }
 
 #' Get the table with usage density rates of the time dependent risk factors
@@ -2728,7 +2745,11 @@ get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE) {
             dplyr::inner_join(
               x$surgeryData |>
                 dplyr::mutate(
-                  main_procedure_category = get_procedure_category(.data$main_procedure_code, not_surgery_na = TRUE),
+                  dplyr::across(
+                    tidyselect::any_of(
+                      "main_procedure_category"),
+                    ~ get_procedure_category(.x, not_surgery_na = TRUE),
+                    .names = "main_procedure_category"),
                   dplyr::across(
                     tidyselect::any_of(
                       "side_procedure_code_1"),
@@ -2810,9 +2831,15 @@ get_procedures <- function(x, group_cols = NULL, use_cache = TRUE) {
   if(use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
+  if (nrow(x$surgeryData) > 0) {
+    surgeryData <- x$surgeryData
+  } else {
+    surgeryData <- x$surgeryData |>
+      dplyr::bind_cols(main_procedure_code = character())
+  }
   x$events |>
     dplyr::inner_join(
-      x$surgeryData |>
+      surgeryData |>
         dplyr::inner_join(
           get_procedure_categories(x, use_cache = use_cache),
           dplyr::join_by("main_procedure_code" == "procedure_code")),
@@ -2875,11 +2902,14 @@ get_procedure_categories <- function(
   if(use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
+  procedure_codes = character()
+
+  for (pc in intersect(c("main_procedure_code","side_procedure_code_1","side_procedure_code_2"), rlang::names2(x$surgeryData))) {
+    procedure_codes <- c(procedure_codes, x$surgeryData[[pc]])
+  }
+
   r <- tibble::tibble(
-    procedure_code = c(
-      x$surgeryData$main_procedure_code,
-      x$surgeryData$side_procedure_code_1,
-      x$surgeryData$side_procedure_code_2) |>
+    procedure_code = procedure_codes |>
       unique() |>
       sort()) |>
     dplyr::mutate(pro_cat = get_procedure_category(.data$procedure_code))

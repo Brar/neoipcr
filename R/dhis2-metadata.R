@@ -1,5 +1,4 @@
-get_metadata <- function(d2_req_base, user_info, dataset_options)
-{
+get_metadata <- function(d2_req_base, user_info, dataset_options) {
   md_req_base <- d2_req_base |>
     httr2::req_url_query(
       paging = "false",
@@ -11,24 +10,43 @@ get_metadata <- function(d2_req_base, user_info, dataset_options)
       httr2::req_url_query(
         locale = dataset_options$locale)
 
-  requests <- list(
+  data <- list(
     get_metadata_request(md_req_base, user_info, dataset_options),
     get_organisationUnit_request(md_req_base, user_info, dataset_options)) |>
-    httr2::req_perform_parallel(on_error = "continue") |>
-    read_metadata_reponses(user_info, dataset_options)
+    httr2::req_perform_parallel(progress = FALSE) |>
+    httr2::resps_data(\(resp) list(httr2::resp_body_json(resp)))
+
+  metadata <- data[[1]] |>
+    read_metadata(dataset_options)
+
+  organisationUnits <- data[[2]] |>
+    read_organisationUnits(metadata, dataset_options)
+
+  metadata$testUnitIds <- NULL
+  metadata$departments <- organisationUnits$departments
+  metadata$hospitals <- organisationUnits$hospitals
+
+  if (dataset_options$include_world_bank_class == "no")
+    metadata$worldBankClasses <- tibble::tibble() # Todo: Return empty table wich correct schema
+
+  if (!("users" %in% names(metadata)))
+    metadata$users <- read_user_info_table(
+      user_info,
+      dataset_options$include_user)
+
+  metadata
 }
 
 # Creates the overall query to get most of the NeoIPC-related metadata that
 # every NeoIPC user should be allowed to see
-get_metadata_request <- function(req_base, user_info, dataset_options)
-{
+get_metadata_request <- function(req_base, user_info, dataset_options) {
   req <- req_base |>
     httr2::req_url_path_append("metadata")
 
-  if(!is.null(dataset_options$trial_keys) ||
+  if(length(dataset_options$trial_keys) > 0 ||
      dataset_options$include_world_bank_class != "no")
   {
-    if(is.null(dataset_options$trial_keys))
+    if(length(dataset_options$trial_keys) == 0)
     {
       if(dataset_options$include_world_bank_class == "yes")
         req <- req |>
@@ -60,16 +78,17 @@ get_metadata_request <- function(req_base, user_info, dataset_options)
     }
   }
 
-  if(!is.null(dataset_options$country_filter) ||
+  if(length(dataset_options$department_filter) > 0 ||
+     length(dataset_options$country_filter) > 0 ||
      dataset_options$include_country != "no" ||
-     !is.null(dataset_options$country_filter) ||
      dataset_options$include_world_bank_class != "no")
   {
     if(dataset_options$include_country == "yes")
       req <- req |>
         httr2::req_url_query(
           `organisationUnitGroups:fields` = "code,organisationUnits[id,code,displayName,displayShortName,displayDescription]")
-    else if(!is.null(dataset_options$country_filter))
+    else if(length(dataset_options$department_filter) > 0 ||
+            length(dataset_options$country_filter) > 0)
       req <- req |>
         httr2::req_url_query(
           `organisationUnitGroups:fields` = "code,organisationUnits[id,code]")
@@ -127,7 +146,7 @@ get_organisationUnit_request <- function(req_base, user_info, dataset_options)
   else if(length(dataset_options$include_invalid_patients) > 1 || length(dataset_options$department_filter) > 0)
     fields <- paste0(fields, ",code")
 
-  if(!is.null(dataset_options$country_filter) ||
+  if(length(dataset_options$country_filter) > 0 ||
      dataset_options$include_country != "no" ||
      dataset_options$include_world_bank_class != "no")
     country_fields <- ",parent[id]]"
@@ -137,7 +156,7 @@ get_organisationUnit_request <- function(req_base, user_info, dataset_options)
   if(dataset_options$include_hospital == "yes")
     fields <- paste0(fields, paste0(",parent[id,code,displayName,displayShortName,displayDescription,comment,geometry", country_fields))
   else if (dataset_options$include_hospital == "pseudonymised" ||
-           !is.null(dataset_options$country_filter) ||
+           length(dataset_options$country_filter) > 0 ||
            dataset_options$include_country != "no" ||
            dataset_options$include_world_bank_class != "no")
     fields <- paste0(fields, paste0(",parent[id", country_fields))
@@ -148,81 +167,6 @@ get_organisationUnit_request <- function(req_base, user_info, dataset_options)
       withinUserHierarchy = "true",
       fields = fields,
       filter = "organisationUnitGroups.code:eq:NEO_DEPARTMENT")
-}
-
-read_metadata_reponses <- function(resps, user_info, dataset_options)
-{
-  metadata <- resps |>
-    lapply(read_metadata_reponse, dataset_options) |>
-    unlist(recursive = FALSE)
-
-  if (!("users" %in% names(metadata)))
-    metadata$users <- read_user_info_table(
-      user_info,
-      dataset_options$include_user)
-
-  if(dataset_options$include_test_data)
-    metadata$departments <- metadata$departments |>
-      dplyr::mutate(isTest = .data$orgUnit %in% metadata$testUnitIds)
-  else
-    metadata$departments <- metadata$departments |>
-      dplyr::filter(!(.data$orgUnit %in% metadata$testUnitIds))
-
-  if(dataset_options$include_hospital != "no" ||
-     !is.null(dataset_options$country_filter) ||
-     dataset_options$include_country != "no" ||
-     dataset_options$include_world_bank_class != "no")
-  {
-    if(dataset_options$include_test_data)
-      metadata$hospitals <- metadata$hospitals |>
-        dplyr::anti_join(
-          metadata$departments |>
-            dplyr::filter(.data$isTest) |>
-            dplyr::select("hospital_key"),
-          dplyr::join_by("hospital_key"))
-    else
-      metadata$hospitals <- metadata$hospitals |>
-        dplyr::semi_join(
-          metadata$departments |>
-            dplyr::select("hospital_key"),
-          dplyr::join_by("hospital_key"))
-  }
-
-  if(dataset_options$include_country != "no" ||
-     !is.null(dataset_options$country_filter) ||
-     dataset_options$include_world_bank_class != "no")
-    metadata$hospitals <- metadata$hospitals |>
-      dplyr::left_join(
-        metadata$countries |>
-          dplyr::select("country","country_key"),
-        dplyr::join_by("country")) |>
-      dplyr::select(!"country")
-
-  if(!is.null(dataset_options$trial_keys))
-    metadata$departments <- metadata$departments |>
-      dplyr::semi_join(
-        metadata$trials |>
-          dplyr::select("organisationUnits") |>
-          tidyr::unnest_longer("organisationUnits") |>
-          tidyr::hoist("organisationUnits", orgUnit = "id"),
-        dplyr::join_by("orgUnit"))
-
-  metadata$testUnitIds <- NULL
-
-  metadata
-}
-
-read_metadata_reponse <- function(resp, dataset_options)
-{
-  path <- httr2::resp_url_path(resp)
-  json <- httr2::resp_body_json(resp)
-
-  if(stringr::str_ends(path, "/metadata"))
-    return(json |> read_metadata(dataset_options))
-  else if(stringr::str_ends(path, "/organisationUnits"))
-    return(json |> read_organisationUnits(dataset_options))
-
-  rlang::abort("Unexpected DHIS2 metadata response.")
 }
 
 read_metadata <- function(metadata, dataset_options)
@@ -263,15 +207,14 @@ read_metadata <- function(metadata, dataset_options)
     metadata,
     dataset_options$trial_keys)
 
-  world_bank_classes <- read_metadata_wb_classes(
-    metadata,
-    dataset_options$include_world_bank_class)
+  cnw <- read_metadata_countries_and_wb_classes(metadata, dataset_options)
+  countries <- cnw$countries
+  world_bank_classes <- cnw$world_bank_classes
 
-  countries <- read_metadata_countries(
-    metadata,
-    dataset_options$include_country,
-    !is.null(dataset_options$country_filter),
-    world_bank_classes)
+  # Filter World Bank classes to the ones the included countries belong to
+  if (dataset_options$include_world_bank_class != "no")
+    world_bank_classes <- world_bank_classes |>
+    dplyr::semi_join(countries, dplyr::join_by("world_bank_class_key"))
 
   ret <- list(
     system = system,
@@ -338,30 +281,55 @@ read_user_info_table <- function(user_info, include_user)
     username = user_info$username)
 }
 
-read_organisationUnits <- function(organisationUnits, dataset_options)
-{
-  department_base <- tibble::tibble(units = organisationUnits$organisationUnits) |>
+read_organisationUnits <- function(organisationUnits, metadata, dataset_options) {
+  organisationUnits <- organisationUnits |>
+    unlist(recursive = F, use.names = F) |>
+    tibble::tibble() |>
     tidyr::unnest_wider(1)
 
-  ret <- list()
+  # Apply filters for departments first, so that we don't assign hospital keys
+  # to the parent hospitals of the removed departments
+  if (length(dataset_options$department_filter) > 0)
+    organisationUnits <- organisationUnits |>
+      dplyr::filter(.data$code %in% dataset_options$department_filter)
 
-  # The parent of the department is the hospital
-  if("parent" %in% names(department_base)) {
-    hospital_base <- tibble::tibble(hospital = department_base$parent) |>
-      tidyr::unnest_wider(1)
-    ret$hospitals <- read_organisationUnits_hospitals(
-      hospital_base)
+  if(dataset_options$include_test_data &&
+     length(dataset_options$country_filter) == 0) {
+    organisationUnits <- organisationUnits |>
+      dplyr::mutate(is_test = .data$id %in% metadata$testUnitIds)
+  } else {
+    organisationUnits <- organisationUnits |>
+      dplyr::filter(!(.data$id %in% metadata$testUnitIds))
   }
 
-  ret$departments <- read_organisationUnits_departments(
-    department_base,
-    ret,
-    "hospitals" %in% dataset_options$include_dhis2_ids)
+  # The parent of the department is the hospital
+  if("parent" %in% names(organisationUnits)) {
+    hospitals <- organisationUnits |>
+      dplyr::select("parent") |>
+      tidyr::unnest_wider(1) |>
+      read_organisationUnits_hospitals(metadata, dataset_options)
 
-  ret
+    departments <- organisationUnits |>
+      read_organisationUnits_departments(metadata, dataset_options, hospitals)
+
+    if (dataset_options$include_hospital == "no") {
+      # ToDo: Return empty hospitals table with minimal schema
+      hospitals <- tibble::tibble()
+    } else if(!("hospital" %in% dataset_options$include_dhis2_ids)) {
+      hospitals <- hospitals |>
+        dplyr::select(!"orgUnit")
+    }
+  } else {
+    # ToDo: Return empty hospitals table with minimal schema
+    hospitals <- tibble::tibble()
+    departments <- organisationUnits |>
+      read_organisationUnits_departments(metadata, dataset_options)
+  }
+
+  list(hospitals = hospitals, departments = departments)
 }
 
-read_organisationUnits_hospitals <- function(x) {
+read_organisationUnits_hospitals <- function(x, metadata, dataset_options) {
   if("geometry" %in% names(x))
     x <- x |> tidyr::hoist(
       "geometry",
@@ -370,30 +338,106 @@ read_organisationUnits_hospitals <- function(x) {
       dplyr::select(!"geometry")
 
   # The parent of the hospital is the country
-  if("parent" %in% names(x))
+  # We should have a country if we have applied a country filter, if we included
+  # the pseudonymised or full country, or if we included the pseudonymised or
+  # full World Bank class
+  if("parent" %in% names(x)) {
     x <- x |> tidyr::hoist(
       "parent",
       country = "id")
+
+    # Make sure we only include hospitals from included countries
+    has_country_filter <- length(dataset_options$country_filter) > 0
+    if (has_country_filter && dataset_options$include_country != "no" && dataset_options$include_world_bank_class == "no") {
+      x <- x |>
+        dplyr::inner_join(
+          metadata$countries |>
+            dplyr::select("country","country_key"),
+          dplyr::join_by("country"))
+    } else if (has_country_filter && dataset_options$include_country == "no" && dataset_options$include_world_bank_class != "no") {
+      x <- x |>
+        dplyr::inner_join(
+          metadata$countries |>
+            dplyr::select("country","world_bank_class_key"),
+          dplyr::join_by("country"))
+    } else if (has_country_filter && dataset_options$include_country == "no" && dataset_options$include_world_bank_class == "no") {
+      x <- x |>
+        dplyr::semi_join(
+          metadata$countries,
+          dplyr::join_by("country"))
+    } else if (has_country_filter && dataset_options$include_country != "no" && dataset_options$include_world_bank_class == "no") {
+      x <- x |>
+        dplyr::inner_join(
+          metadata$countries |>
+            dplyr::select("country","country_key","world_bank_class_key"),
+          dplyr::join_by("country"))
+    } else if (dataset_options$include_country != "no" && dataset_options$include_world_bank_class == "no"){
+      x <- x |>
+        dplyr::left_join(
+          metadata$countries |>
+            dplyr::select("country","country_key"),
+          dplyr::join_by("country"))
+    } else if (dataset_options$include_country == "no" && dataset_options$include_world_bank_class != "no"){
+      x <- x |>
+        dplyr::left_join(
+          metadata$countries |>
+            dplyr::select("country","world_bank_class_key"),
+          dplyr::join_by("country"))
+    } else if (dataset_options$include_country != "no" && dataset_options$include_world_bank_class != "no"){
+      x <- x |>
+        dplyr::left_join(
+          metadata$countries |>
+            dplyr::select("country","country_key","world_bank_class_key"),
+          dplyr::join_by("country"))
+    }
+  }
+
   x |>
     dplyr::distinct() |>
     dplyr::relocate("orgUnit" = "id") |>
     add_key_column("hospital_key")
 }
 
-read_organisationUnits_departments <- function(x, y, include_hospital_ids) {
-
-  if("hospitals" %in% names(y)){
+read_organisationUnits_departments <- function(x, metadata, dataset_options, hospitals = NULL) {
+  if (!is.null(hospitals)){
     x <- x |>
-      tidyr::hoist("parent", orgUnit = "id") |>
-      dplyr::left_join(
-        y$hospitals |>
-          dplyr::select("orgUnit", "hospital_key"),
-        dplyr::join_by("orgUnit")) |>
-      dplyr::select(!c("orgUnit","parent"))
+      tidyr::hoist("parent", orgUnit = "id")
 
-    if(!include_hospital_ids)
-      y$hospitals <- y$hospitals |>
-        dplyr::select(!"orgUnit")
+    # The correct filtering already happens in read_organisationUnits_hospitals
+    # So we can just take what we find here
+    included_columns <- c(
+        "orgUnit",
+        if(dataset_options$include_hospital != "no") "hospital_key",
+        "country_key",
+        "world_bank_class_key")
+
+    if (dataset_options$include_test_data &&
+        length(dataset_options$country_filter) == 0) {
+      # Since the test units don't have a country as parent we cannot do a
+      # filtering join on the country in that case but have to apply a more
+      # complex filter
+      # Nevertheless, include_test_data and country_filter are incompatible in
+      # the sense that a country filter will always remove test data which is
+      # enforced by the fact that we always apply the filtering join if we have
+      # a country filter.
+        x <- x |>
+        dplyr::left_join(
+          hospitals |>
+            dplyr::select(tidyselect::any_of(included_columns)),
+          dplyr::join_by("orgUnit")) |>
+        dplyr::filter(
+          .data$orgUnit %in% hospitals$orgUnit |
+            .data$is_test)
+    } else {
+      x <- x |>
+        dplyr::inner_join(
+          hospitals |>
+            dplyr::select(tidyselect::any_of(included_columns)),
+          dplyr::join_by("orgUnit"))
+    }
+
+    x <- x |>
+      dplyr::select(!c("orgUnit","parent"))
   }
 
   cols <- names(x)
@@ -411,9 +455,14 @@ read_organisationUnits_departments <- function(x, y, include_hospital_ids) {
       latitude = list("coordinates", 2)) |>
     dplyr::select(!"geometry")
 
-  x |>
-    dplyr::relocate("orgUnit" = "id") |>
+  x <- x |>
+    dplyr::relocate("orgUnit" = "id")
+
+  if (dataset_options$include_department != "no")
+    x <- x |>
     add_key_column("department_key")
+
+  x
 }
 
 read_metadata_system <- function(metadata)
@@ -712,49 +761,41 @@ read_metadata_users <- function(metadata, include_user)
 
 read_metadata_trials <- function(metadata, trial_keys)
 {
-  if(is.null(trial_keys))
+  if(length(trial_keys) == 0)
     return(NULL)
 
-  for (i in 1:2) {
-    if ('NEOIPC_TRIALS' ==
-        (purrr::pluck(metadata,"organisationUnitGroupSets", i, "code"))) break
-  }
-  organisationUnitGroups <- metadata |>
-    purrr::pluck("organisationUnitGroupSets", i, "organisationUnitGroups")
-
-  if(rlang::is_null(organisationUnitGroups))
-    return(NULL)
-
-  organisationUnitGroups <- organisationUnitGroups |>
+  metadata$organisationUnitGroupSets |>
     tibble::tibble() |>
+    tidyr::unnest_wider(1) |>
+    dplyr::filter(.data$code == "NEOIPC_TRIALS") |>
+    dplyr::select("organisationUnitGroups") |>
+    tidyr::unnest_longer(1) |>
     tidyr::unnest_wider(1) |>
     dplyr::filter(
       stringr::str_detect(
         .data$code,
-        stringr::regex(paste0(trial_keys, collapse = "|"),
-                       ignore_case = TRUE)))
+        stringr::regex(
+          paste0(trial_keys, collapse = "|"),
+          ignore_case = TRUE
+        )
+      )
+    )
 }
 
-read_metadata_wb_classes <- function(metadata, include_world_bank_class)
+read_metadata_wb_classes <- function(metadata, included_countries, dataset_options)
 {
-  if(include_world_bank_class == "no")
-    return(NULL)
+  if(dataset_options$include_world_bank_class == "no")
+    return(NULL) # ToDo : Return empty table with correct schema
 
-  for (i in 1:2) {
-    if ('WORLD_BANK_CLASSES' ==
-        (purrr::pluck(metadata, "organisationUnitGroupSets", i, "code"))) break
-  }
-  organisationUnitGroups <- metadata |>
-    purrr::pluck("organisationUnitGroupSets", i, "organisationUnitGroups")
-
-  if(rlang::is_null(organisationUnitGroups))
-    return(NULL)
-
-  pseudonymise <- include_world_bank_class != "yes"
-
-  organisationUnitGroups <- organisationUnitGroups |>
+  organisationUnitGroups <- metadata$organisationUnitGroupSets |>
     tibble::tibble() |>
+    tidyr::unnest_wider(1) |>
+    dplyr::filter(.data$code == "WORLD_BANK_CLASSES") |>
+    dplyr::select("organisationUnitGroups") |>
+    tidyr::unnest_longer(1) |>
     tidyr::unnest_wider(1)
+
+  pseudonymise <- dataset_options$include_world_bank_class != "yes"
 
   if(pseudonymise)
     organisationUnitGroups <- organisationUnitGroups |>
@@ -792,46 +833,70 @@ read_metadata_wb_classes <- function(metadata, include_world_bank_class)
     }
   }
 
+  mapping <- filtered |>
+    dplyr::select("organisationUnits","class") |>
+    tidyr::unnest_longer("organisationUnits") |>
+    tidyr::unnest_wider("organisationUnits")
+
+  if (length(dataset_options$country_filter) > 0) {
+    mapping <- mapping |>
+      dplyr::filter(.data$id %in% included_countries)
+
+    filtered <- filtered |>
+      dplyr::semi_join(mapping, dplyr::join_by("class"))
+  }
+
   filtered <- filtered |>
-    add_key_column('world_bank_class_key', as_factor = TRUE)
+    dplyr::select(!"organisationUnits") |>
+    add_key_column('world_bank_class_key')
+
+  mapping <- mapping |>
+    dplyr::inner_join(
+      filtered |>
+        dplyr::select("world_bank_class_key","class"),
+      dplyr::join_by("class")) |>
+    dplyr::select(!"class")
+
 
   if(pseudonymise)
     return(filtered |> dplyr::select(!"fiscal_year"))
 
-  filtered
+  list(world_bank_classes = filtered, mapping = mapping)
 }
 
-read_metadata_countries <- function(
-    metadata, include_country, has_country_filter, world_bank_classes)
-{
-  if(!has_country_filter && include_country == "no" && is.null(world_bank_classes))
-    return(NULL)
+read_metadata_countries_and_wb_classes <- function(metadata, dataset_options) {
+  if(dataset_options$include_country == "no" &&
+     length(dataset_options$country_filter) > 0)
+    return(NULL) # ToDo: Return empty table with minimal schema instead of NULL
 
-  organisationUnitGroups <- read_metadata_organisationUnitGroups(
-    metadata, "COUNTRY")
-
-  if(rlang::is_null(organisationUnitGroups) || nrow(organisationUnitGroups) < 1)
-    return(NULL)
-
-  organisationUnitGroups <- organisationUnitGroups |>
+  organisationUnitGroups <- metadata$organisationUnitGroups |>
+    tibble::tibble() |>
+    tidyr::unnest_wider(1) |>
+    dplyr::filter(.data$code == "COUNTRY") |>
     dplyr::select("organisationUnits") |>
     tidyr::unnest_longer(1) |>
-    tidyr::unnest_wider(1) |>
-    dplyr::mutate(dplyr::across(!"id", ordered)) |>
-    dplyr::relocate("id", .before = 1) |>
-    dplyr::rename(country = .data$id) |>
-    add_key_column('country_key', as_factor = TRUE)
+    tidyr::unnest_wider(1)
 
-  if(!is.null(world_bank_classes))
+  if (length(dataset_options$country_filter) > 0) {
+    organisationUnitGroups <- organisationUnitGroups |>
+    dplyr::filter(.data$code %in% dataset_options$country_filter)
+  }
+
+  wbc <- read_metadata_wb_classes(metadata, organisationUnitGroups$id, dataset_options)
+
+  if(!is.null(wbc)) {
     organisationUnitGroups <- organisationUnitGroups |>
     dplyr::left_join(
-      world_bank_classes |>
-        dplyr::select("world_bank_class_key", "organisationUnits") |>
-        tidyr::unnest_longer("organisationUnits") |>
-        tidyr::hoist("organisationUnits", country = list(1L)),
-      dplyr::join_by("country"))
+      wbc$mapping,
+      dplyr::join_by("id"))
+  }
 
-  organisationUnitGroups
+  organisationUnitGroups <- organisationUnitGroups |>
+    dplyr::mutate(dplyr::across(tidyselect::any_of("code"), factor)) |>
+    dplyr::rename(country = .data$id) |>
+    add_key_column('country_key')
+
+  list(countries = organisationUnitGroups, world_bank_classes = wbc$world_bank_classes)
 }
 
 read_metadata_optionGroupSets <- function(

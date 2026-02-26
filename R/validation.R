@@ -1361,7 +1361,9 @@ validation_rule_38 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
 
-  if (nrow(x$necData) < 1) {
+  if (nrow(x$necData) < 1 ||
+      # very old (test) records don't contain "los"
+      !("los" %in% rlang::names2(x$necData))) {
     return(NULL)
   }
 

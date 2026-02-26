@@ -1,5 +1,4 @@
-get_events_request <- function(req_base, dataset_options, programId)
-{
+get_events_request <- function(req_base, dataset_options, programId) {
   fields <- "event,programStage,enrollment,trackedEntity,occurredAt,followup"
   dataValueFields <- "dataElement,value"
 
@@ -23,8 +22,8 @@ get_events_request <- function(req_base, dataset_options, programId)
   }
 
   if(!dataset_options$include_test_data ||
-     !is.null(dataset_options$country_filter) ||
-     !is.null(dataset_options$trial_keys) ||
+     length(dataset_options$country_filter) > 0 ||
+     length(dataset_options$trial_keys) > 0 ||
      dataset_options$include_department != "no" ||
      dataset_options$include_hospital != "no" ||
      dataset_options$include_country != "no" ||
@@ -39,8 +38,8 @@ get_events_request <- function(req_base, dataset_options, programId)
 
   if(dataset_options$include_user != "no")
   {
-    fields <- paste0(fields,",storedBy,createdBy[username],updatedBy[username]")
-    dataValueFields <- paste0(dataValueFields,",createdBy[username]")
+    fields <- paste0(fields,",storedBy,completedBy,createdBy[username],updatedBy[username]")
+    dataValueFields <- paste0(dataValueFields,",storedBy,createdBy[username],updatedBy[username]")
   }
 
   fields <- paste0(fields,",dataValues[", dataValueFields, "]")
@@ -51,8 +50,7 @@ get_events_request <- function(req_base, dataset_options, programId)
     httr2::req_url_query(fields = fields)
 }
 
-read_events <- function(events, enrollments, patients, metadata, dataset_options)
-{
+read_events <- function(events, enrollments, patients, metadata, dataset_options) {
   events <- events |>
     dplyr::inner_join(
       metadata$eventTypes |>
@@ -76,11 +74,13 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
         metadata$departments |>
           dplyr::select("orgUnit", "department_key", "hospital_key"),
         dplyr::join_by("orgUnit")) |>
-      dplyr::inner_join(
+      # Everything above department may not exist for test units
+      # so we need left joins here
+      dplyr::left_join(
         metadata$hospitals |>
           dplyr::select("hospital_key","country_key"),
         dplyr::join_by("hospital_key")) |>
-      dplyr::inner_join(
+      dplyr::left_join(
         metadata$countries |>
           dplyr::select("country_key", "world_bank_class_key"),
         dplyr::join_by("country_key"))
@@ -90,7 +90,9 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
         metadata$departments |>
           dplyr::select("orgUnit", "department_key", "hospital_key"),
         dplyr::join_by("orgUnit")) |>
-      dplyr::inner_join(
+      # Everything above department may not exist for test units
+      # so we need left joins here
+      dplyr::left_join(
         metadata$hospitals |>
           dplyr::select("hospital_key","country_key"),
         dplyr::join_by("hospital_key"))
@@ -125,8 +127,8 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
       )
 
   if(!dataset_options$include_test_data ||
-     !is.null(dataset_options$country_filter) ||
-     !is.null(dataset_options$trial_keys))
+     length(dataset_options$country_filter) > 0 ||
+     length(dataset_options$trial_keys) > 0)
     events <- events |>
       dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
 
@@ -147,8 +149,422 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
     add_key_column("event_key")
 }
 
-read_event_details <- function(events, processed_events, metadata, dataset_options)
-{
+read_events2 <- function(events, enrollments, patients, metadata, dataset_options) {
+  events <- events |>
+    dplyr::inner_join(
+      metadata$eventTypes |>
+        dplyr::select("event_type_key", "programStage"),
+      dplyr::join_by("programStage")) |>
+    dplyr::inner_join(
+      enrollments |>
+        dplyr::select("enrollment_key", "enrollment"),
+      dplyr::join_by("enrollment")) |>
+    dplyr::inner_join(
+      patients |>
+        dplyr::select("patient_key", "trackedEntity"),
+      dplyr::join_by("trackedEntity")) |>
+    dplyr::mutate(
+      dplyr::across(
+        tidyselect::any_of(c("scheduledAt","occurredAt")),
+        ~readr::parse_date(stringr::str_sub(.x, end = 10))
+      )
+    )|>
+    dplyr::select(!c("programStage","enrollment","trackedEntity")) |>
+    dplyr::rename("followUp" = "followup")
+
+  if(!("events" %in% dataset_options$include_dhis2_ids))
+    events <- events |>
+      dplyr::select(!"event")
+
+  if("events" %in% dataset_options$include_incomplete)
+    events <- events |>
+      dplyr::mutate(
+        status = factor(
+          .data$status,
+          levels = c(
+            "ACTIVE", "COMPLETED", "VISITED", "SCHEDULE", "OVERDUE", "SKIPPED"))
+      )
+
+
+  # For some reason we don't have createdAtClient and updatedAtClient in our
+  # dataset although the DHIS2 docs claim that they should be available and we
+  # request them via the API.
+  # Maybe some bug?
+  # Keep the code to process them hoping that they to magically appear at some
+  # point.
+  if(dataset_options$include_timestamps)
+    events <- events |>
+      dplyr::mutate(
+        dplyr::across(
+          tidyselect::any_of(
+            c("createdAt","createdAtClient","updatedAt",
+              "updatedAtClient","completedAt")), readr::parse_datetime))
+
+  if(dataset_options$include_user != "no") {
+    events <- events |>
+      tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("createdBy" == "username")) |>
+      dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
+      tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("updatedBy" == "username")) |>
+      dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("storedBy" == "username")) |>
+      dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
+
+    # For some reason we don't have completedBy in our dataset although
+    # the DHIS2 docs claim that it should be available and we request it
+    # via the API.
+    # Maybe some bug?
+    # Keep the code to process it hoping it to magically appear at some point.
+    if ("completedBy" %in% rlang::names2(events))
+      events <- events |>
+        dplyr::left_join(
+          metadata$users |>
+            dplyr::select("user_key", "username"),
+          dplyr::join_by("completedBy" == "username")) |>
+        dplyr::mutate(completedBy = .data$user_key, .keep = "unused")
+  }
+
+  if(!dataset_options$include_test_data ||
+     length(dataset_options$country_filter) > 0 ||
+     length(dataset_options$trial_keys) > 0)
+    events <- events |>
+      dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
+
+  if(dataset_options$include_world_bank_class != "no" ||
+     dataset_options$include_country != "no" ||
+     dataset_options$include_test_data ||
+     dataset_options$include_hospital != "no" ||
+     dataset_options$include_department != "no")
+  {
+    events <- events |>
+      dplyr::inner_join(
+        metadata$departments |>
+          dplyr::select(
+            c(
+              "orgUnit",
+              tidyselect::any_of(
+                c("is_test","department_key","hospital_key","country_key",
+                  "world_bank_class_key")))),
+        dplyr::join_by("orgUnit"))
+  }
+
+  events <- events |>
+    dplyr::select(!"orgUnit") |>
+    add_key_column("event_key")
+
+  notes <- events |>
+    dplyr::select(c("event_key","notes")) |>
+    read_event_notes(metadata$users, dataset_options)
+
+  admissionData <-  events |>
+    expand_event_data(
+      "adm",
+      metadata$users,
+      metadata$dataElements,
+      dataset_options,
+      "NEOIPC_ADMISSION_",
+      "NEOIPC_ADMISSION_LOS") |>
+    read_admission_event_data(dataset_options)
+
+  surveillanceEndData <-  events |>
+    expand_event_data(
+      "end",
+      metadata$users,
+      metadata$dataElements,
+      dataset_options,
+      "NEOIPC_SURVEILLANCE_END_",
+      c(
+        paste0("NEOIPC_SURVEILLANCE_END_AB_SUBST_0", seq(1,9)),
+        paste0("NEOIPC_SURVEILLANCE_END_AB_SUBST_0", seq(1,9), "_DAYS"))) |>
+    read_surveillance_end_event_data(dataset_options)
+
+  sepsisData <-  events |>
+    expand_event_data(
+      "bsi",
+      metadata$users,
+      metadata$dataElements,
+      dataset_options,
+      "NEOIPC_BSI_",
+      c(
+        paste0("NEOIPC_BSI_PATHOGEN_", seq(1,3)),
+        paste0("NEOIPC_BSI_PATHOGEN_", seq(1,3), "_3GCR"),
+        paste0("NEOIPC_BSI_PATHOGEN_", seq(1,3), "_MRSA"),
+        paste0("NEOIPC_BSI_PATHOGEN_", seq(1,3), "_VRE"),
+        paste0("NEOIPC_BSI_PATHOGEN_", seq(1,3), "_CAR"),
+        paste0("NEOIPC_BSI_PATHOGEN_", seq(1,3), "_COR"),
+        paste0("NEOIPC_BSI_PATHOGEN_", seq(1,3), "_NAME"),
+        paste0("NEOIPC_BSI_PATHOGEN_", seq(1,3), "_MULTIPLE"),
+        paste0("NEOIPC_BSI_PATHOGEN_", seq(1,3), "_SOURCE"))) |>
+    read_sepsis_event_data(dataset_options)
+
+  necData <-  events |>
+    expand_event_data(
+      "nec",
+      metadata$users,
+      metadata$dataElements,
+      dataset_options,
+      "NEOIPC_NEC_",
+      c(
+        paste0("NEOIPC_NEC_SEC_BSI_PATHOGEN_", seq(1,3)),
+        paste0("NEOIPC_NEC_SEC_BSI_PATHOGEN_", seq(1,3), "_3GCR"),
+        paste0("NEOIPC_NEC_SEC_BSI_PATHOGEN_", seq(1,3), "_MRSA"),
+        paste0("NEOIPC_NEC_SEC_BSI_PATHOGEN_", seq(1,3), "_VRE"),
+        paste0("NEOIPC_NEC_SEC_BSI_PATHOGEN_", seq(1,3), "_CAR"),
+        paste0("NEOIPC_NEC_SEC_BSI_PATHOGEN_", seq(1,3), "_COR"),
+        paste0("NEOIPC_NEC_SEC_BSI_PATHOGEN_", seq(1,3), "_NAME"))) |>
+    read_nec_event_data(dataset_options)
+
+  pneumoniaData <-  events |>
+    expand_event_data(
+      "hap",
+      metadata$users,
+      metadata$dataElements,
+      dataset_options,
+      "NEOIPC_HAP_",
+      c(
+        paste0("NEOIPC_HAP_PATHOGEN_", seq(1,3)),
+        paste0("NEOIPC_HAP_PATHOGEN_", seq(1,3), "_3GCR"),
+        paste0("NEOIPC_HAP_PATHOGEN_", seq(1,3), "_MRSA"),
+        paste0("NEOIPC_HAP_PATHOGEN_", seq(1,3), "_VRE"),
+        paste0("NEOIPC_HAP_PATHOGEN_", seq(1,3), "_CAR"),
+        paste0("NEOIPC_HAP_PATHOGEN_", seq(1,3), "_COR"),
+        paste0("NEOIPC_HAP_PATHOGEN_", seq(1,3), "_NAME"),
+        paste0("NEOIPC_HAP_PATHOGEN_", seq(1,3), "_SOURCE"),
+        paste0("NEOIPC_HAP_SEC_BSI_PATHOGEN_", seq(1,3)),
+        paste0("NEOIPC_HAP_SEC_BSI_PATHOGEN_", seq(1,3), "_3GCR"),
+        paste0("NEOIPC_HAP_SEC_BSI_PATHOGEN_", seq(1,3), "_MRSA"),
+        paste0("NEOIPC_HAP_SEC_BSI_PATHOGEN_", seq(1,3), "_VRE"),
+        paste0("NEOIPC_HAP_SEC_BSI_PATHOGEN_", seq(1,3), "_CAR"),
+        paste0("NEOIPC_HAP_SEC_BSI_PATHOGEN_", seq(1,3), "_COR"),
+        paste0("NEOIPC_HAP_SEC_BSI_PATHOGEN_", seq(1,3), "_NAME"))) |>
+    read_pneumonia_event_data(dataset_options)
+
+  surgeryData <-  events |>
+    expand_event_data(
+      "pro",
+      metadata$users,
+      metadata$dataElements,
+      dataset_options,
+      "NEOIPC_SURGERY_") |>
+    read_surgery_event_data(dataset_options)
+
+  ssiData <-  events |>
+    expand_event_data(
+      "ssi",
+      metadata$users,
+      metadata$dataElements,
+      dataset_options,
+      "NEOIPC_SSI_") |>
+    read_ssi_event_data(dataset_options)
+
+  events <- events |>
+    dplyr::select(!c("notes","dataValues")) |>
+    ensure_events_schema(dataset_options)
+
+  list(
+    events = events,
+    notes = notes,
+    admissionData = admissionData,
+    surveillanceEndData = surveillanceEndData,
+    sepsisData = sepsisData,
+    necData = necData,
+    pneumoniaData = pneumoniaData,
+    surgeryData = surgeryData,
+    ssiData = ssiData#,
+    # infectiousAgentFindings = infectiousAgentFindings,
+    # substanceDays = substanceDays
+  )
+}
+
+expand_event_data <- function (x, event_type_key, users, dataElements, dataset_options, remove_prefixes, remove_codes = NULL) {
+  x <- x |>
+    dplyr::filter(.data$event_type_key == !!event_type_key) |>
+    dplyr::select(c("event_key","dataValues")) |>
+    tidyr::unnest_longer("dataValues") |>
+    tidyr::unnest_wider("dataValues")|>
+    dplyr::inner_join(
+      dataElements |>
+        dplyr::select("dataElement","code"),
+      dplyr::join_by("dataElement")) |>
+    dplyr::select(!"dataElement") |>
+    dplyr::filter(!(.data$code %in% remove_codes)) |>
+    dplyr::mutate(
+      code = tolower(
+        stringr::str_replace(
+          .data$code,
+          paste0("^(?:", paste0(remove_prefixes, collapse = "|"),")(.+)$", collapse = ""),
+          "\\1"))
+    )
+
+  if(dataset_options$include_timestamps) {
+    x <- x |>
+      dplyr::mutate(dplyr::across(tidyselect::contains("At", ignore.case = FALSE), readr::parse_datetime))
+  } else {
+    x <- x |>
+      dplyr::select(!tidyselect::contains("At", ignore.case = FALSE))
+  }
+
+  if(dataset_options$include_user != "no") {
+    x <- x |>
+    tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
+    dplyr::left_join(
+      users |>
+        dplyr::select("user_key", "username"),
+      dplyr::join_by("createdBy" == "username")) |>
+    dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
+    tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
+    dplyr::left_join(
+      users |>
+        dplyr::select("user_key", "username"),
+      dplyr::join_by("updatedBy" == "username")) |>
+    dplyr::mutate(updatedBy = .data$user_key, .keep = "unused")
+
+    # For some reason we don't have storedBy in our dataset although
+    # the DHIS2 docs claim that it should be available and we request it
+    # via the API.
+    # Maybe some bug?
+    # Keep the code to process it hoping it to magically appear at some point.
+    if ("completedBy" %in% rlang::names2(x))
+      x <- x |>
+        dplyr::left_join(
+          users |>
+            dplyr::select("user_key", "username"),
+          dplyr::join_by("storedBy" == "username")) |>
+        dplyr::mutate(a_storedBy = .data$user_key, .keep = "unused")
+  }
+
+  x |>
+    tidyr::pivot_wider(
+      names_from = "code",
+      values_from = !c("event_key","code"),
+      names_glue = "{code}_{.value}",
+      names_vary = "slowest") |>
+    dplyr::rename_with(
+      ~stringr::str_replace(
+        .x,
+        "^(.+)_value$",
+        "\\1"),
+      tidyselect::ends_with("_value"))
+}
+
+read_event_notes <- function(x, users, dataset_options) {
+  if(!("events" %in% dataset_options$include_notes))
+    return(
+      tibble::tibble() |>
+        ensure_event_notes_schema(dataset_options)
+    )
+
+  x <- x |>
+    tidyr::unnest_longer("notes") |>
+    tidyr::unnest_wider("notes")
+
+  if(dataset_options$include_timestamps)
+    x <- x |>
+    dplyr::mutate(storedAt = readr::parse_datetime(.data$storedAt))
+
+  if(dataset_options$include_user != "no")
+    x <- x |>
+    tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
+    dplyr::left_join(
+      users |>
+        dplyr::select("user", "user_key"),
+      dplyr::join_by("createdBy" == "user")) |>
+    dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
+    dplyr::left_join(
+      users |>
+        dplyr::select("username", "user_key"),
+      dplyr::join_by("storedBy" == "username")) |>
+    dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
+
+  if(!("notes" %in% dataset_options$include_dhis2_ids))
+    x <- x |>
+    dplyr::select(!"note")
+
+  x |>
+    ensure_event_notes_schema(dataset_options)
+}
+
+read_admission_event_data <- function(x, dataset_options) {
+  x |>
+    dplyr::mutate(
+      type = factor(.data$type, levels = c("1","2","3")),
+      dol = as.integer(.data$dol)
+    ) |>
+    ensure_admission_event_data_schema(dataset_options)
+}
+
+read_surveillance_end_event_data <- function(x, dataset_options) {
+  x |>
+    dplyr::mutate(
+      reason = factor(.data$reason, levels = c("1","2")),
+      dplyr::across(tidyselect::ends_with("_days"), as.integer)
+    ) |>
+    ensure_surveillance_end_event_data_schema(dataset_options)
+}
+
+read_sepsis_event_data <- function(x, dataset_options) {
+  x |>
+    dplyr::mutate(
+      dev_ass = factor(.data$dev_ass, levels = c("0","1","2")),
+      dplyr::across(c("los","dol"), as.integer),
+      dplyr::across(!c("event_key","dev_ass","los","dol"), as.logical)
+    ) |>
+    ensure_sepsis_event_data_schema(dataset_options)
+}
+
+read_nec_event_data <- function(x, dataset_options) {
+  x |>
+    dplyr::mutate(
+      secondary_bsi = factor(.data$secondary_bsi, levels = c("1","0","-1")),
+      dplyr::across(c("los","dol"), as.integer),
+      dplyr::across(!c("event_key","secondary_bsi","los","dol"), as.logical)
+    ) |>
+    ensure_nec_event_data_schema(dataset_options)
+}
+
+read_pneumonia_event_data <- function(x, dataset_options) {
+  x |>
+    dplyr::rename("dev_ass" = "device_association") |>
+    dplyr::mutate(
+      dev_ass = factor(.data$dev_ass, levels = c("0","1","2")),
+      dplyr::across(c("microbiological_test_result","secondary_bsi"), ~factor(.x, levels = c("1","0","-1"))),
+      dplyr::across(c("los","dol"), as.integer),
+      dplyr::across(!c("event_key","dev_ass","microbiological_test_result","secondary_bsi","los","dol"), as.logical)
+    ) |>
+    ensure_pneumonia_event_data_schema(dataset_options)
+}
+
+read_surgery_event_data <- function(x, dataset_options) {
+  browser()
+  x |>
+    dplyr::mutate(
+      reason = factor(.data$reason, levels = c("1","2")),
+      dplyr::across(tidyselect::ends_with("_days"), as.integer)
+    ) |>
+    ensure_surgery_event_data_schema(dataset_options)
+}
+
+read_ssi_event_data <- function(x, dataset_options) {
+  browser()
+  x |>
+    dplyr::mutate(
+      reason = factor(.data$reason, levels = c("1","2")),
+      dplyr::across(tidyselect::ends_with("_days"), as.integer)
+    ) |>
+    ensure_ssi_event_data_schema(dataset_options)
+}
+
+read_event_details <- function(events, processed_events, metadata, dataset_options) {
   events <- events |>
     dplyr::inner_join(
       processed_events |>
@@ -184,8 +600,7 @@ read_event_details <- function(events, processed_events, metadata, dataset_optio
           "storedBy","createdBy","updatedBy","followup","deleted")))
 }
 
-read_event_notes <- function(events, processed_events, metadata, dataset_options)
-{
+read_event_notes_old <- function(events, processed_events, metadata, dataset_options) {
   if(!("events" %in% dataset_options$include_notes))
     return(NULL)
 
@@ -217,8 +632,7 @@ read_event_notes <- function(events, processed_events, metadata, dataset_options
     dplyr::select(!"note")
 }
 
-read_event_data <- function(events, processed_events, metadata, dataset_options, event_type_key)
-{
+read_event_data <- function(events, processed_events, metadata, dataset_options, event_type_key) {
   events <- events |>
     dplyr::select("event", "dataValues") |>
     dplyr::inner_join(
@@ -229,7 +643,7 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
     tidyr::unnest_longer("dataValues") |>
     tidyr::unnest_wider("dataValues")
 
-  if(dataset_options$include_user != "no")
+  if(dataset_options$include_user != "no") {
     events <- events |>
       tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
       dplyr::left_join(
@@ -239,16 +653,17 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
       dplyr::mutate(
         createdBy = .data$user_key,
         .keep = "unused")
+  }
 
-  if(dataset_options$include_timestamps)
+  if(dataset_options$include_timestamps) {
     events <- events |>
       dplyr::mutate(
         createdAt = readr::parse_datetime(.data$createdAt),
         updatedAt = readr::parse_datetime(.data$updatedAt),
         .keep = "unused")
+  }
 
-  if(nrow(events) > 0)
-  {
+  if(nrow(events) > 0) {
     events <- events |>
       dplyr::inner_join(
         metadata$dataElements |>
@@ -341,8 +756,7 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
   events
 }
 
-read_infectious_agent_findings <- function(events_raw, processed_events, metadata, dataset_options)
-{
+read_infectious_agent_findings <- function(events_raw, processed_events, metadata, dataset_options) {
   events_raw |>
     dplyr::select("event", "dataValues") |>
     dplyr::inner_join(
@@ -395,7 +809,7 @@ read_infectious_agent_findings <- function(events_raw, processed_events, metadat
           "multiple","3gcr","car","cor","mrsa","vre")))
 }
 
-read_substance_days <- function(events_raw, processed_events, metadata, dataset_options)
+read_substance_days <- function(events_raw, processed_events, metadata, dataset_options) {
   events_raw |>
   dplyr::select("event", "dataValues") |>
   dplyr::inner_join(
@@ -418,3 +832,4 @@ read_substance_days <- function(events_raw, processed_events, metadata, dataset_
   tidyr::pivot_wider() |>
   dplyr::mutate(days = as.integer(.data$days)) |>
   dplyr::select("event_key","index","substance_code","days")
+}
