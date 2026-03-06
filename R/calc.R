@@ -1,5 +1,13 @@
 quartile_probs <- c(0.25,0.5,0.75)
 
+ensure_quartile_cols <- function(df) {
+  for (col in c("q1", "q2", "q3")) {
+    if (!col %in% names(df))
+      df[[col]] <- NA_real_
+  }
+  df
+}
+
 #' Calculate a NeoIPC reference data set
 #'
 #' @param x The neoipcr_ds object containing the data
@@ -75,7 +83,8 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE) {
               pooled_mean = as.integer(round(mean(.data$n))),
               q = list(
                 stats::quantile(.data$n, quartile_probs, names = FALSE))) |>
-            tidyr::unnest_wider(q, names_sep = "", transform = as.integer))),
+            tidyr::unnest_wider(q, names_sep = "", transform = as.integer) |>
+            ensure_quartile_cols())),
     x |>
       get_infection_counts(group_cols = c("event_type_key")) |>
       dplyr::inner_join(
@@ -87,7 +96,8 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE) {
             pooled_mean = as.integer(round(mean(.data$n))),
             q = list(
               stats::quantile(.data$n, quartile_probs, names = FALSE))) |>
-          tidyr::unnest_wider(q, names_sep = "", transform = as.integer),
+          tidyr::unnest_wider(q, names_sep = "", transform = as.integer) |>
+          ensure_quartile_cols(),
         dplyr::join_by("event_type_key"))) |>
     dplyr::rename(inf_type = "event_type_key", total = "n")
 
@@ -894,6 +904,7 @@ get_usage_density_rate_table <- function(
           tidyr::unnest_wider(q, names_sep = "") |>
           dplyr::mutate(factor = stringr::str_remove(.data$factor, "_rate$")),
         dplyr::join_by("factor")) |>
+      ensure_quartile_cols() |>
       dplyr::mutate(
         drop_quartiles = n_deps < 5 | round(100 / .data$pooled) >= median_patient_days,
         q1 = dplyr::if_else(
@@ -1114,6 +1125,7 @@ get_incidence_density_rate_table <- function(
                 names = FALSE))) |>
           tidyr::unnest_wider("q", names_sep = ""),
         dplyr::join_by("inf")) |>
+      ensure_quartile_cols() |>
       dplyr::mutate(
         drop_quartiles = n_deps < 5 | round(1000 / .data$pooled) >= median_patient_days,
         q1 = dplyr::if_else(
@@ -1215,6 +1227,7 @@ get_dev_ass_incidence_density_rate_table <- function(
           tidyr::unnest_wider("q", names_sep = ""),
         dplyr::join_by("dev")) |>
       dplyr::full_join(dep_stats, dplyr::join_by("dev")) |>
+      ensure_quartile_cols() |>
       dplyr::mutate(
         drop_quartiles = tidyr::replace_na(
           .data$n_deps < 5 | round(1000 / .data$rate) >= .data$median,
@@ -1334,6 +1347,7 @@ get_infectious_agent_detection_rate_per_inf_type_table <- function(
       dplyr::inner_join(
         dep_stats,
         dplyr::join_by("event_type_key")) |>
+      ensure_quartile_cols() |>
       dplyr::mutate(
         drop_quartiles = .data$n < 5 | round(100 / .data$pooled) >= .data$median,
         q1 = dplyr::if_else(
@@ -1359,7 +1373,7 @@ get_infectious_agent_detection_rate_per_inf_type_table <- function(
     dplyr::bind_rows(
       tibble::tibble(
         event_type_key = missing,
-        n = 0L,
+        inf_with_pathogen = 0L,
         pooled = NA_real_))
 
   r |>
@@ -1848,32 +1862,38 @@ get_secondary_bsi_rate_table <- function(
       dplyr::pull("total_n") |>
       stats::median()
 
-    # Calculate quartiles for each infection type
-    quartiles <- dept_rates |>
-      tidyr::pivot_wider(
-        id_cols = "department_key",
-        names_from = "event_type_key",
-        values_from = "rate") |>
-      dplyr::select(!"department_key") |>
-      dplyr::reframe(
-        dplyr::across(
-          tidyselect::everything(),
-          ~quantile(.x, prob = c(.25, .5, .75), na.rm = TRUE))) |>
-      dplyr::bind_cols(tibble::tibble(Q = c("q1", "q2", "q3"))) |>
-      tidyr::pivot_longer(!"Q", names_to = "event_type_key") |>
-      tidyr::pivot_wider(names_from = "Q", values_from = "value")
+    if (nrow(dept_rates) < 1) {
+      r <- r |>
+        dplyr::mutate(q1 = NA_real_, q2 = NA_real_, q3 = NA_real_) |>
+        add_class("neoipcr_tbl_sec_bsi_ref")
+    } else {
+      # Calculate quartiles for each infection type
+      quartiles <- dept_rates |>
+        tidyr::pivot_wider(
+          id_cols = "department_key",
+          names_from = "event_type_key",
+          values_from = "rate") |>
+        dplyr::select(!"department_key") |>
+        dplyr::reframe(
+          dplyr::across(
+            tidyselect::everything(),
+            ~quantile(.x, prob = c(.25, .5, .75), na.rm = TRUE))) |>
+        dplyr::bind_cols(tibble::tibble(Q = c("q1", "q2", "q3"))) |>
+        tidyr::pivot_longer(!"Q", names_to = "event_type_key") |>
+        tidyr::pivot_wider(names_from = "Q", values_from = "value")
 
-    # Determine if quartiles should be dropped
-    r <- r |>
-      dplyr::mutate(
-        drop_quartiles = n_deps < 5 | round(100 / .data$pooled) >= median_n) |>
-      dplyr::left_join(quartiles, dplyr::join_by("event_type_key")) |>
-      dplyr::mutate(
-        dplyr::across(
-          c("q1", "q2", "q3"),
-          ~dplyr::if_else(.data$drop_quartiles, NA_real_, .x))) |>
-      dplyr::select(!"drop_quartiles") |>
-      add_class("neoipcr_tbl_sec_bsi_ref")
+      # Determine if quartiles should be dropped
+      r <- r |>
+        dplyr::mutate(
+          drop_quartiles = n_deps < 5 | round(100 / .data$pooled) >= median_n) |>
+        dplyr::left_join(quartiles, dplyr::join_by("event_type_key")) |>
+        dplyr::mutate(
+          dplyr::across(
+            c("q1", "q2", "q3"),
+            ~dplyr::if_else(.data$drop_quartiles, NA_real_, .x))) |>
+        dplyr::select(!"drop_quartiles") |>
+        add_class("neoipcr_tbl_sec_bsi_ref")
+    }
   }
 
   # Ensure all expected infection types are present
@@ -2119,6 +2139,13 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(
       use_cache = use_cache) |>
     dplyr::select(c("department_key", group_cols,"n_per_iwp"))
 
+  if (nrow(r2) < 1) {
+    return(
+      r1 |>
+        dplyr::mutate(q1 = NA_real_, q2 = NA_real_, q3 = NA_real_) |>
+        cache(x, cache_key))
+  }
+
   if (!is.null(group_cols))
   {
     r2 <- r2 |>
@@ -2201,7 +2228,11 @@ get_infectious_agent_detection_rates <- function(
     get_infection_counts(
       group_cols = c(inf_groups,"with_pathogen"),
       use_cache = use_cache) |>
-    tidyr::pivot_wider(names_from = "with_pathogen", values_from = "n") |>
+    tidyr::pivot_wider(names_from = "with_pathogen", values_from = "n",
+                       values_fill = 0L)
+  if (!"TRUE" %in% names(inf_counts)) inf_counts[["TRUE"]] <- 0L
+  if (!"FALSE" %in% names(inf_counts)) inf_counts[["FALSE"]] <- 0L
+  inf_counts <- inf_counts |>
     dplyr::mutate(
       inf_with_pathogen = .data$`TRUE`,
       total_inf = .data$`TRUE` + .data$`FALSE`,
@@ -2310,6 +2341,12 @@ get_resistance_test_rate_with_department_quartiles <- function(
       group_cols = c("department_key", group_cols),
       use_cache = use_cache) |>
     dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols)))
+
+  if (nrow(deps) < 1) {
+    return(
+      rate |>
+        dplyr::mutate(q1 = NA_real_, q2 = NA_real_, q3 = NA_real_))
+  }
 
   dep_stats <- deps |>
     dplyr::summarise(
@@ -2431,17 +2468,17 @@ get_resistance_rate_with_department_quartiles <- function(
     dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols)))
 
   if (nrow(deps) < 1) {
-    return(
-      tibble::tibble(!!!group_cols, .rows = 1, .name_repair = ~ group_cols) |>
-        dplyr::bind_cols(
-          tibble::tibble(
-            n = 0L,
-            rate = NA_real_,
-            q1 = NA_real_,
-            q2 = NA_real_,
-            q3 = NA_real_
-          ))
-    )
+    r <- tibble::tibble(
+      n = 0L,
+      rate = NA_real_,
+      q1 = NA_real_,
+      q2 = NA_real_,
+      q3 = NA_real_)
+    if (!is.null(group_cols))
+      r <- dplyr::bind_cols(
+        tibble::tibble(!!!group_cols, .rows = 1, .name_repair = ~ group_cols),
+        r)
+    return(r)
   } else {
     dep_stats <- deps |>
       dplyr::summarise(
