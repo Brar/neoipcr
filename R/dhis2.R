@@ -116,7 +116,8 @@ dhis2_dataset_options <- function(
     include_patient_id = include_patient_id,
     include_dhis2_ids = rlang::arg_match(
       include_dhis2_ids,
-      c("countries","hospitals","departments","patients","enrollments"),
+      c("countries","hospitals","departments","patients","enrollments",
+        "events","notes","event_types","users"),
       multiple = TRUE),
     include_timestamps = include_timestamps,
     include_test_data = include_test_data,
@@ -163,9 +164,30 @@ import_dhis2 <- function(
   tracker_req <- d2req_base |>
     httr2::req_url_path_append("tracker") |>
     httr2::req_url_query(
-      ouMode ="ACCESSIBLE",
       skipPaging = "true",
       includeDeleted = tolower(dataset_options$include_deleted))
+
+  # Push org unit filters to the API to reduce network traffic and memory use.
+  # metadata$departments and metadata$countries are already filtered during
+  # metadata processing (read_metadata_reponses), so we can use them directly.
+  if (length(dataset_options$department_filter) > 0)
+    tracker_req <- tracker_req |>
+      httr2::req_url_query(
+        ouMode = "SELECTED",
+        orgUnit = metadata$departments |>
+          dplyr::pull(.data$orgUnit) |>
+          paste0(collapse = ";"))
+  else if (length(dataset_options$country_filter) > 0)
+    tracker_req <- tracker_req |>
+      httr2::req_url_query(
+        ouMode = "DESCENDANTS",
+        orgUnit = metadata$countries |>
+          dplyr::pull(.data$country) |>
+          paste0(collapse = ";"))
+  else
+    tracker_req <- tracker_req |>
+      httr2::req_url_query(ouMode = "ACCESSIBLE")
+
   reqs <- list(
     get_trackedEntities_request(
       tracker_req,
@@ -176,7 +198,7 @@ import_dhis2 <- function(
     get_events_request(tracker_req, dataset_options, metadata$programId))
 
   data <-  reqs |>
-    httr2::req_perform_parallel() |>
+    httr2::req_perform_parallel(progress = FALSE) |>
     httr2::resps_data(\(resp){
       list(httr2::resp_body_json(resp) |>
              tibble::tibble() |>
@@ -199,20 +221,6 @@ import_dhis2 <- function(
 
   admissionData <- admissionData |>
     filter_admissions(dataset_options$include_ineligible_patients)
-
-  patients <- patients |>
-    filter_patients(
-      dataset_options$birth_weight_from,
-      dataset_options$birth_weight_to,
-      dataset_options$gestational_age_from,
-      dataset_options$gestational_age_to,
-      dataset_options$include_ineligible_patients)
-
-  metadata$countries <- metadata$countries |>
-    filter_countries(dataset_options$country_filter)
-
-  metadata$departments <- metadata$departments |>
-    filter_units(dataset_options$department_filter)
 
   metadata$dataset_options <- dataset_options
 

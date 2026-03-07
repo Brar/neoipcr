@@ -1365,33 +1365,43 @@ validation_rule_38 <- function(x, exceptions)
     return(NULL)
   }
 
-  r <- dplyr::bind_cols(
-    rule_id = c(38L),
-    x$enrollments |>
-      dplyr::select(
-        tidyselect::any_of(c("hospital_key","department_key","patient_key")),
-        "enrollment_key","enrolledAt") |>
-      dplyr::inner_join(
-        x$events |>
-          dplyr::filter(.data$event_type_key == "adm") |>
-          dplyr::select("event_key","enrollment_key"),
-        dplyr::join_by("enrollment_key")) |>
-      dplyr::semi_join(
-        x$admissionData |>
-          dplyr::filter(.data$type == 3) |>
-          dplyr::select("event_key"),
-        dplyr::join_by("event_key")) |>
-      dplyr::inner_join(
-        x$events |>
-          dplyr::filter(.data$event_type_key == "nec") |>
-          dplyr::select("event_key","enrollment_key"),
-        dplyr::join_by("enrollment_key"),
-        suffix = c(".adm",".nec")) |>
+  r <- x$enrollments |>
+    dplyr::select(
+      tidyselect::any_of(c("hospital_key","department_key","patient_key")),
+      "enrollment_key","enrolledAt") |>
+    dplyr::inner_join(
+      x$events |>
+        dplyr::filter(.data$event_type_key == "adm") |>
+        dplyr::select("event_key","enrollment_key","occurredAt"),
+      dplyr::join_by("enrollment_key")) |>
+    dplyr::semi_join(
+      x$admissionData |>
+        dplyr::filter(.data$type == 3) |>
+        dplyr::select("event_key"),
+      dplyr::join_by("event_key")) |>
+    dplyr::inner_join(
+      x$events |>
+        dplyr::filter(.data$event_type_key == "nec") |>
+        dplyr::select("event_key","enrollment_key","occurredAt"),
+      dplyr::join_by("enrollment_key"),
+      suffix = c(".adm",".nec"))
+
+  if ("los" %in% names(x$necData))
+    r <- r |>
       dplyr::inner_join(
         x$necData |>
           dplyr::select("event_key","los"),
         dplyr::join_by("event_key.nec" == "event_key")) |>
-      dplyr::mutate(dos = .data$los + 1, .keep = "unused") |>
+      dplyr::mutate(dos = .data$los + 1L, .keep = "unused")
+  else
+    r <- r |>
+      dplyr::mutate(
+        dos = as.integer(.data$occurredAt.nec - .data$occurredAt.adm) + 1L,
+        .keep = "unused")
+
+  r <- dplyr::bind_cols(
+    rule_id = c(38L),
+    r |>
       dplyr::filter(.data$dos < 3) |>
       dplyr::select(
         tidyselect::any_of(

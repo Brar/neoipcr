@@ -2415,8 +2415,13 @@ get_resistance_test_rate <- function(
   if(use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
-  x$events |>
-    dplyr::inner_join(x$infectiousAgentFindings, dplyr::join_by("event_key")) |>
+  infectiousAgentFindings <- x$infectiousAgentFindings
+  if(!(resistance %in% names(infectiousAgentFindings)))
+    infectiousAgentFindings <- infectiousAgentFindings |>
+      dplyr::mutate(!!resistance := NA_character_)
+
+  r <- x$events |>
+    dplyr::inner_join(infectiousAgentFindings, dplyr::join_by("event_key")) |>
     dplyr::mutate(
       dplyr::across(
         tidyselect::all_of(resistance),
@@ -2442,7 +2447,18 @@ get_resistance_test_rate <- function(
     tidyr::pivot_wider(
       names_from = resistance,
       values_fill = 0L,
-      names_expand = TRUE) |>
+      names_expand = TRUE)
+
+  if(nrow(r) == 0)
+    return(
+      r |>
+        dplyr::select(tidyselect::any_of(group_cols)) |>
+        dplyr::mutate(
+          tested = integer(), not_tested = integer(),
+          total = integer(), rate = numeric()) |>
+        cache(x, cache_key))
+
+  r |>
     dplyr::mutate(
       tested = .data$tested,
       not_tested = .data$not_tested,
@@ -2565,6 +2581,11 @@ get_resistance_rate <- function(
     dplyr::filter(.data$with_pathogen) |>
     dplyr::select(!"with_pathogen")
 
+  infectiousAgentFindings <- x$infectiousAgentFindings
+  if(!(resistance %in% names(infectiousAgentFindings)))
+    infectiousAgentFindings <- infectiousAgentFindings |>
+      dplyr::mutate(!!resistance := NA_character_)
+
   r <- x$patients |>
     dplyr::mutate(
       bw50 = bw50(.data$birth_weight),
@@ -2587,7 +2608,7 @@ get_resistance_rate <- function(
                 !tidyselect::any_of(c(names(x$patients),names(x$enrollments))))
             ) |>
             dplyr::inner_join(
-              x$infectiousAgentFindings |>
+              infectiousAgentFindings |>
                 dplyr::select(
                   c(
                     "event_key","secondary_bsi","pathogen_key","index",
@@ -2611,6 +2632,18 @@ get_resistance_rate <- function(
       values_fill = 0L,
       names_expand = TRUE) |>
     dplyr::select(!tidyselect::ends_with("not_tested"))
+
+  if(nrow(r) == 0)
+    return(
+      r |>
+        dplyr::select(tidyselect::any_of(group_cols)) |>
+        dplyr::mutate(
+          inf_rs = numeric(), inf_nrs = numeric(),
+          inf_tst_tot = numeric(), inf_w_ia = numeric(),
+          ia_rs = numeric(), ia_nrs = numeric(),
+          ia_tst_tot = numeric(), ia_rs_rate = numeric(),
+          inf_rs_rate = numeric()) |>
+        cache(x, cache_key))
 
   if(length(inf_group_cols) < 1)
     r <- r |>
@@ -2655,10 +2688,14 @@ get_secondary_bsi_rates <- function(x, group_cols = NULL, use_cache = TRUE) {
     dplyr::summarise(n = dplyr::n(), .groups = "drop")
 
   # Count infections with follow-up for each type
+  filter_sec_bsi <- function(d) {
+    if(!("sec_bsi" %in% names(d))) return(d[0,])
+    d |> dplyr::filter(.data$sec_bsi != -1)
+  }
   infections_with_followup <- dplyr::bind_rows(
     x$events |>
       dplyr::semi_join(
-        x$necData |> dplyr::filter(.data$sec_bsi != -1),
+        filter_sec_bsi(x$necData),
         dplyr::join_by("event_key")) |>
       dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
       dplyr::summarise(
@@ -2667,7 +2704,7 @@ get_secondary_bsi_rates <- function(x, group_cols = NULL, use_cache = TRUE) {
         .groups = "drop"),
     x$events |>
       dplyr::semi_join(
-        x$pneumoniaData |> dplyr::filter(.data$sec_bsi != -1),
+        filter_sec_bsi(x$pneumoniaData),
         dplyr::join_by("event_key")) |>
       dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
       dplyr::summarise(
@@ -2676,7 +2713,7 @@ get_secondary_bsi_rates <- function(x, group_cols = NULL, use_cache = TRUE) {
         .groups = "drop"),
     x$events |>
       dplyr::semi_join(
-        x$ssiData |> dplyr::filter(.data$sec_bsi != -1),
+        filter_sec_bsi(x$ssiData),
         dplyr::join_by("event_key")) |>
       dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
       dplyr::summarise(
@@ -2731,6 +2768,11 @@ get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE) {
   if(use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
+  surgeryData <- x$surgeryData
+  if(!("main_procedure_code" %in% names(surgeryData)))
+    surgeryData <- surgeryData |>
+      dplyr::mutate(main_procedure_code = character())
+
   x$patients |>
     dplyr::mutate(
       bw50 = bw50(.data$birth_weight),
@@ -2763,7 +2805,7 @@ get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE) {
           x$events |>
             dplyr::select(c("enrollment_key","event_key")) |>
             dplyr::inner_join(
-              x$surgeryData |>
+              surgeryData |>
                 dplyr::mutate(
                   main_procedure_category = get_procedure_category(.data$main_procedure_code, not_surgery_na = TRUE),
                   dplyr::across(
@@ -2847,9 +2889,14 @@ get_procedures <- function(x, group_cols = NULL, use_cache = TRUE) {
   if(use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
+  surgeryData <- x$surgeryData
+  if(!("main_procedure_code" %in% names(surgeryData)))
+    surgeryData <- surgeryData |>
+      dplyr::mutate(main_procedure_code = character())
+
   x$events |>
     dplyr::inner_join(
-      x$surgeryData |>
+      surgeryData |>
         dplyr::inner_join(
           get_procedure_categories(x, use_cache = use_cache),
           dplyr::join_by("main_procedure_code" == "procedure_code")),
@@ -2918,7 +2965,8 @@ get_procedure_categories <- function(
       x$surgeryData$side_procedure_code_1,
       x$surgeryData$side_procedure_code_2) |>
       unique() |>
-      sort()) |>
+      sort() |>
+      as.character()) |>
     dplyr::mutate(pro_cat = get_procedure_category(.data$procedure_code))
 
   if(pretty)

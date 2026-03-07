@@ -25,10 +25,10 @@ get_metadata_request <- function(req_base, user_info, dataset_options)
   req <- req_base |>
     httr2::req_url_path_append("metadata")
 
-  if(!is.null(dataset_options$trial_keys) ||
+  if(length(dataset_options$trial_keys) > 0 ||
      dataset_options$include_world_bank_class != "no")
   {
-    if(is.null(dataset_options$trial_keys))
+    if(length(dataset_options$trial_keys) == 0)
     {
       if(dataset_options$include_world_bank_class == "yes")
         req <- req |>
@@ -60,16 +60,16 @@ get_metadata_request <- function(req_base, user_info, dataset_options)
     }
   }
 
-  if(!is.null(dataset_options$country_filter) ||
+  if(length(dataset_options$country_filter) > 0 ||
      dataset_options$include_country != "no" ||
-     !is.null(dataset_options$country_filter) ||
+     length(dataset_options$country_filter) > 0 ||
      dataset_options$include_world_bank_class != "no")
   {
     if(dataset_options$include_country == "yes")
       req <- req |>
         httr2::req_url_query(
           `organisationUnitGroups:fields` = "code,organisationUnits[id,code,displayName,displayShortName,displayDescription]")
-    else if(!is.null(dataset_options$country_filter))
+    else if(length(dataset_options$country_filter) > 0)
       req <- req |>
         httr2::req_url_query(
           `organisationUnitGroups:fields` = "code,organisationUnits[id,code]")
@@ -127,7 +127,7 @@ get_organisationUnit_request <- function(req_base, user_info, dataset_options)
   else if(length(dataset_options$include_invalid_patients) > 1 || length(dataset_options$department_filter) > 0)
     fields <- paste0(fields, ",code")
 
-  if(!is.null(dataset_options$country_filter) ||
+  if(length(dataset_options$country_filter) > 0 ||
      dataset_options$include_country != "no" ||
      dataset_options$include_world_bank_class != "no")
     country_fields <- ",parent[id]]"
@@ -137,7 +137,7 @@ get_organisationUnit_request <- function(req_base, user_info, dataset_options)
   if(dataset_options$include_hospital == "yes")
     fields <- paste0(fields, paste0(",parent[id,code,displayName,displayShortName,displayDescription,comment,geometry", country_fields))
   else if (dataset_options$include_hospital == "pseudonymised" ||
-           !is.null(dataset_options$country_filter) ||
+           length(dataset_options$country_filter) > 0 ||
            dataset_options$include_country != "no" ||
            dataset_options$include_world_bank_class != "no")
     fields <- paste0(fields, paste0(",parent[id", country_fields))
@@ -168,28 +168,51 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
     metadata$departments <- metadata$departments |>
       dplyr::filter(!(.data$orgUnit %in% metadata$testUnitIds))
 
+  # Filter departments by department_filter
+  if (length(dataset_options$department_filter) > 0)
+    metadata$departments <- metadata$departments |>
+      dplyr::filter(.data$code %in% dataset_options$department_filter)
+
+  # Filter countries by country_filter and remove departments not in those countries
+  if (length(dataset_options$country_filter) > 0 && !is.null(metadata$countries))
+  {
+    metadata$countries <- metadata$countries |>
+      dplyr::filter(.data$code %in% dataset_options$country_filter)
+
+    if (!is.null(metadata$hospitals) &&
+        "hospital_key" %in% names(metadata$departments))
+    {
+      filtered_hospital_keys <- metadata$hospitals |>
+        dplyr::semi_join(metadata$countries, dplyr::join_by("country")) |>
+        dplyr::pull("hospital_key")
+
+      if (dataset_options$include_test_data &&
+          "isTest" %in% names(metadata$departments))
+        metadata$departments <- metadata$departments |>
+          dplyr::filter(
+            .data$isTest | .data$hospital_key %in% filtered_hospital_keys)
+      else
+        metadata$departments <- metadata$departments |>
+          dplyr::filter(.data$hospital_key %in% filtered_hospital_keys)
+    }
+  }
+
+  # Filter hospitals to only those with remaining departments
   if(dataset_options$include_hospital != "no" ||
-     !is.null(dataset_options$country_filter) ||
+     length(dataset_options$country_filter) > 0 ||
      dataset_options$include_country != "no" ||
      dataset_options$include_world_bank_class != "no")
   {
-    if(dataset_options$include_test_data)
-      metadata$hospitals <- metadata$hospitals |>
-        dplyr::anti_join(
-          metadata$departments |>
-            dplyr::filter(.data$isTest) |>
-            dplyr::select("hospital_key"),
-          dplyr::join_by("hospital_key"))
-    else
-      metadata$hospitals <- metadata$hospitals |>
-        dplyr::semi_join(
-          metadata$departments |>
-            dplyr::select("hospital_key"),
-          dplyr::join_by("hospital_key"))
+    metadata$hospitals <- metadata$hospitals |>
+      dplyr::semi_join(
+        metadata$departments |>
+          dplyr::select("hospital_key"),
+        dplyr::join_by("hospital_key"))
   }
 
+  # Join country_key into hospitals
   if(dataset_options$include_country != "no" ||
-     !is.null(dataset_options$country_filter) ||
+     length(dataset_options$country_filter) > 0 ||
      dataset_options$include_world_bank_class != "no")
     metadata$hospitals <- metadata$hospitals |>
       dplyr::left_join(
@@ -198,14 +221,26 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
         dplyr::join_by("country")) |>
       dplyr::select(!"country")
 
-  if(!is.null(dataset_options$trial_keys))
+  # Pre-join hierarchy into departments so that read_patients/enrollments/events
+  # can use a single flat left_join instead of cascading joins
+  if ("hospital_key" %in% names(metadata$departments) &&
+      !is.null(metadata$hospitals) &&
+      "country_key" %in% names(metadata$hospitals))
+  {
     metadata$departments <- metadata$departments |>
-      dplyr::semi_join(
-        metadata$trials |>
-          dplyr::select("organisationUnits") |>
-          tidyr::unnest_longer("organisationUnits") |>
-          tidyr::hoist("organisationUnits", orgUnit = "id"),
-        dplyr::join_by("orgUnit"))
+      dplyr::left_join(
+        metadata$hospitals |>
+          dplyr::select("hospital_key", "country_key"),
+        dplyr::join_by("hospital_key"))
+
+    if (!is.null(metadata$countries) &&
+        "world_bank_class_key" %in% names(metadata$countries))
+      metadata$departments <- metadata$departments |>
+        dplyr::left_join(
+          metadata$countries |>
+            dplyr::select("country_key", "world_bank_class_key"),
+          dplyr::join_by("country_key"))
+  }
 
   metadata$testUnitIds <- NULL
 
@@ -270,7 +305,7 @@ read_metadata <- function(metadata, dataset_options)
   countries <- read_metadata_countries(
     metadata,
     dataset_options$include_country,
-    !is.null(dataset_options$country_filter),
+    length(dataset_options$country_filter) > 0,
     world_bank_classes)
 
   ret <- list(

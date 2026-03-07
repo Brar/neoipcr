@@ -170,9 +170,12 @@ apply_postfilter <- function(x)
       dplyr::join_by("enrollment_key"))
 
   # Filtering by country will only work if we have country information
+  # Keep enrollments with NA country_key (test data without a country)
   if(!is.null(countries) && "country_key" %in% names(enrollments))
     enrollments <- enrollments |>
-    dplyr::semi_join(countries, dplyr::join_by("country_key"))
+    dplyr::filter(
+      is.na(.data$country_key) |
+      .data$country_key %in% countries$country_key)
 
   # Filtering by unit will only work if we have unit information
   if(!is.null(departments) && "department_key" %in% names(enrollments))
@@ -360,6 +363,36 @@ apply_data_removal <- function(x, dataset_options)
   }
   else if(dataset_options$include_world_bank_class == "pseudonymised")
     x$metadata$worldBankClasses <- NULL
+
+  if(!("events" %in% dataset_options$include_dhis2_ids))
+  {
+    x$events <- x$events |>
+      dplyr::select(!tidyselect::any_of("event"))
+    if(!is.null(x$eventDetails))
+      x$eventDetails <- x$eventDetails |>
+        dplyr::select(!tidyselect::any_of("event"))
+  }
+
+  if(!("notes" %in% dataset_options$include_dhis2_ids))
+  {
+    if(!is.null(x$eventNotes))
+      x$eventNotes <- x$eventNotes |>
+        dplyr::select(!tidyselect::any_of("note"))
+  }
+
+  if(!("event_types" %in% dataset_options$include_dhis2_ids))
+  {
+    if(!is.null(x$metadata$eventTypes))
+      x$metadata$eventTypes <- x$metadata$eventTypes |>
+        dplyr::select(!tidyselect::any_of("programStage"))
+  }
+
+  if(!("users" %in% dataset_options$include_dhis2_ids))
+  {
+    if(!is.null(x$metadata$users))
+      x$metadata$users <- x$metadata$users |>
+        dplyr::select(!tidyselect::any_of("user"))
+  }
 
   if(!dataset_options$include_patient_id)
     x$patients <- x$patients |>

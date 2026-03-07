@@ -24,8 +24,8 @@ get_trackedEntities_request <- function(
   }
 
   if(!dataset_options$include_test_data ||
-     !is.null(dataset_options$country_filter) ||
-     !is.null(dataset_options$trial_keys) ||
+     length(dataset_options$country_filter) > 0 ||
+     length(dataset_options$trial_keys) > 0 ||
      dataset_options$include_department != "no" ||
      dataset_options$include_hospital != "no" ||
      dataset_options$include_country != "no" ||
@@ -70,9 +70,12 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
     patients <- patients |>
       dplyr::filter(.data$code != "NEOIPC_PATIENT_ID")
 
-  if(!dataset_options$include_timestamps)
+  if(dataset_options$include_timestamps)
     patients <- patients |>
       dplyr::mutate(dplyr::across(tidyselect::contains("At", ignore.case = FALSE), readr::parse_datetime))
+  else
+    patients <- patients |>
+      dplyr::select(!tidyselect::contains("At", ignore.case = FALSE))
 
   if(dataset_options$include_user != "no")
     patients <- patients |>
@@ -95,8 +98,8 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
       dplyr::mutate(attributes_storedBy = .data$user_key, .keep = "unused")
 
   if(!dataset_options$include_test_data ||
-     !is.null(dataset_options$country_filter) ||
-     !is.null(dataset_options$trial_keys))
+     length(dataset_options$country_filter) > 0 ||
+     length(dataset_options$trial_keys) > 0)
     patients <- patients |>
       dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
 
@@ -133,56 +136,35 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
      dataset_options$include_world_bank_class != "no" ||
      length(dataset_options$include_invalid_patients) > 1)
   {
+    # Build the list of columns to keep from the pre-joined departments table
+    cols <- "orgUnit"
+    if(dataset_options$include_department != "no" ||
+       length(dataset_options$include_invalid_patients) > 1)
+      cols <- c(cols, "department_key")
+    if(dataset_options$include_hospital != "no")
+      cols <- c(cols, "hospital_key")
+    if(dataset_options$include_country != "no")
+      cols <- c(cols, "country_key")
     if(dataset_options$include_world_bank_class != "no")
-      patients <- patients |>
-        dplyr::inner_join(
-          metadata$departments |>
-            dplyr::select("orgUnit", "department_key", "hospital_key"),
-          dplyr::join_by("orgUnit")) |>
-        dplyr::inner_join(
-          metadata$hospitals |>
-            dplyr::select("hospital_key","country_key"),
-          dplyr::join_by("hospital_key")) |>
-        dplyr::inner_join(
-          metadata$countries |>
-            dplyr::select("country_key", "world_bank_class_key"),
-          dplyr::join_by("country_key"))
-    else if(dataset_options$include_country != "no")
-      patients <- patients |>
-        dplyr::inner_join(
-          metadata$departments |>
-            dplyr::select("orgUnit", "department_key", "hospital_key"),
-          dplyr::join_by("orgUnit")) |>
-        dplyr::inner_join(
-          metadata$hospitals |>
-            dplyr::select("hospital_key","country_key"),
-          dplyr::join_by("hospital_key"))
-    else if(dataset_options$include_hospital != "no")
-      patients <- patients |>
-        dplyr::inner_join(
-          metadata$departments |>
-            dplyr::select("orgUnit", "department_key", "hospital_key"),
-          dplyr::join_by("orgUnit"))
-    else if(dataset_options$include_department != "no" ||
-            length(dataset_options$include_invalid_patients) > 1)
-      patients <- patients |>
-        dplyr::inner_join(
-          metadata$departments |>
-            dplyr::select("orgUnit", "department_key"),
-          dplyr::join_by("orgUnit"))
-
-    exclusions <- "orgUnit"
-
-    if(dataset_options$include_world_bank_class == "no")
-      exclusions <- c(exclusions, "world_bank_class_key")
-    if(dataset_options$include_country == "no")
-      exclusions <- c(exclusions, "country_key")
-    if(dataset_options$include_hospital == "no")
-      exclusions <- c(exclusions, "hospital_key")
+      cols <- c(cols, "world_bank_class_key")
 
     patients <- patients |>
-      dplyr::select(!tidyselect::any_of(exclusions))
+      dplyr::left_join(
+        metadata$departments |>
+          dplyr::select(tidyselect::any_of(cols)),
+        dplyr::join_by("orgUnit")) |>
+      dplyr::select(!"orgUnit")
   }
+
+  # Apply eligibility and range filters early so downstream joins operate on
+  # fewer rows
+  patients <- patients |>
+    filter_patients(
+      dataset_options$birth_weight_from,
+      dataset_options$birth_weight_to,
+      dataset_options$gestational_age_from,
+      dataset_options$gestational_age_to,
+      dataset_options$include_ineligible_patients)
 
   return(patients)
 }
