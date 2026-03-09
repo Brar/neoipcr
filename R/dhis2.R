@@ -197,8 +197,30 @@ import_dhis2 <- function(
     get_enrollments_request(tracker_req, dataset_options, metadata$programId),
     get_events_request(tracker_req, dataset_options, metadata$programId))
 
-  data <-  reqs |>
-    httr2::req_perform_parallel(progress = FALSE) |>
+  resps <- reqs |>
+    httr2::req_perform_parallel(progress = FALSE, on_error = "continue")
+
+  # Check for HTTP errors and surface the response body.
+  # With on_error="continue", failed requests are stored as error objects
+  # (class httr2_error), not response objects.
+  endpoints <- c("trackedEntities", "enrollments", "events")
+  for (i in seq_along(resps)) {
+    if (rlang::is_error(resps[[i]])) {
+      err <- resps[[i]]
+      resp <- err$resp
+      body <- tryCatch(
+        httr2::resp_body_string(resp),
+        error = \(e) conditionMessage(err))
+      status <- tryCatch(
+        httr2::resp_status(resp),
+        error = \(e) "unknown")
+      rlang::abort(paste0(
+        "DHIS2 tracker/", endpoints[i], " returned HTTP ", status, ".\n",
+        "Response body:\n", body))
+    }
+  }
+
+  data <- resps |>
     httr2::resps_data(\(resp){
       list(httr2::resp_body_json(resp) |>
              tibble::tibble() |>
