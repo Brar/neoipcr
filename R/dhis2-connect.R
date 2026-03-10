@@ -15,6 +15,8 @@ dhis2_connection_options <- function(
     token, username, session_id, scheme = "https",
     hostname = "neoipc.charite.de", port = NULL, path = "/api")
 {
+  if(is.character(port)) port <- as.integer(port)
+
   ret <- list(
     base_url = httr2::url_build(
       structure(list(scheme = scheme, hostname = hostname, port = port, path = path), class = "httr2_url")))
@@ -70,6 +72,13 @@ get_password <- function(url)
   pw <- Sys.getenv("NEOIPC_DHIS2_PASSWORD", unset = NA)
   if(!is.na(pw)) return(pw)
 
+  if(!interactive()) rlang::abort(
+    message = gettext("No password found"),
+    body = c(
+      gettext("NEOIPC_DHIS2_USER is set but NEOIPC_DHIS2_PASSWORD is not."),
+      gettext("Set the NEOIPC_DHIS2_PASSWORD environment variable, or use a personal access token (NEOIPC_DHIS2_TOKEN) instead."),
+      gettext("Interactive password prompting is only available in interactive R sessions.")))
+
   pw <- askpass::askpass(
     prompt = gettextf("Please enter your password for %s: ", url))
 
@@ -88,12 +97,21 @@ get_auth_data <- function(url)
   env_token <- Sys.getenv("NEOIPC_DHIS2_TOKEN", unset = NA)
   if(!is.na(env_token)) return(list(token = read_token(env_token)))
 
-  user <- Sys.getenv("NEOIPC_DHIS2_USER", unset = NA)
-  if(is.na(user)) user <- askpass::askpass(
+  env_user <- Sys.getenv("NEOIPC_DHIS2_USER", unset = NA)
+  if(!is.na(env_user))
+    return(list(username = env_user, password = get_password(url)))
+
+  if(!interactive()) rlang::abort(
+    message = gettext("No authentication credentials found"),
+    body = c(
+      gettext("Set the NEOIPC_DHIS2_TOKEN, NEOIPC_DHIS2_SESSION_ID, or NEOIPC_DHIS2_USER environment variable."),
+      gettext("Interactive username/password prompting is only available in interactive R sessions.")))
+
+  user <- readline(
     prompt = gettextf(
       "Please enter your username for %s: ", url))
 
-  if(is.null(user)) rlang::abort(
+  if(!nzchar(user)) rlang::abort(
     message = gettext("No username provided"),
     body = gettext("Please provide username and password, a personal access token or a session id to authenticate to DHIS2"))
 

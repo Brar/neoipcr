@@ -78,6 +78,11 @@ dhis2_dataset_options <- function(
     translate = TRUE,
     locale = NULL)
 {
+  if(is.character(birth_weight_from)) birth_weight_from <- as.integer(birth_weight_from)
+  if(is.character(birth_weight_to)) birth_weight_to <- as.integer(birth_weight_to)
+  if(is.character(gestational_age_from)) gestational_age_from <- as.integer(gestational_age_from)
+  if(is.character(gestational_age_to)) gestational_age_to <- as.integer(gestational_age_to)
+
   check_number_whole(birth_weight_from, allow_null = TRUE)
   check_number_whole(birth_weight_to, allow_null = TRUE)
   check_number_whole(gestational_age_from, allow_null = TRUE)
