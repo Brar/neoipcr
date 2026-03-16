@@ -90,7 +90,7 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
         dplyr::join_by("orgUnit"))
   }
 
-  if(dataset_options$include_user != "no")
+  if(dataset_options$include_user != "no") {
     enrollments <- enrollments |>
       tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
       dplyr::left_join(
@@ -103,17 +103,24 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
         metadata$users |>
           dplyr::select("user_key", "username"),
         dplyr::join_by("updatedBy" == "username")) |>
-      dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
-      dplyr::left_join(
-        metadata$users |>
-          dplyr::select("user_key", "username"),
-        dplyr::join_by("completedBy" == "username")) |>
-      dplyr::mutate(completedBy = .data$user_key, .keep = "unused") |>
-      dplyr::left_join(
-        metadata$users |>
-          dplyr::select("user_key", "username"),
-        dplyr::join_by("storedBy" == "username")) |>
-      dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
+      dplyr::mutate(updatedBy = .data$user_key, .keep = "unused")
+
+    if("completedBy" %in% names(enrollments))
+      enrollments <- enrollments |>
+        dplyr::left_join(
+          metadata$users |>
+            dplyr::select("user_key", "username"),
+          dplyr::join_by("completedBy" == "username")) |>
+        dplyr::mutate(completedBy = .data$user_key, .keep = "unused")
+
+    if("storedBy" %in% names(enrollments))
+      enrollments <- enrollments |>
+        dplyr::left_join(
+          metadata$users |>
+            dplyr::select("user_key", "username"),
+          dplyr::join_by("storedBy" == "username")) |>
+        dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
+  }
 
   if(!dataset_options$include_test_data ||
      length(dataset_options$country_filter) > 0 ||

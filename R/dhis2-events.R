@@ -135,15 +135,10 @@ read_event_details <- function(events, processed_events, metadata, dataset_optio
         dplyr::select("event_key", "event"),
       dplyr::join_by("event"))
 
-  if(dataset_options$include_user != "no")
+  if(dataset_options$include_user != "no") {
     events <- events |>
       tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
       tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
-      dplyr::left_join(
-        metadata$users |>
-          dplyr::select("user_key", "username"),
-        dplyr::join_by("storedBy" == "username")) |>
-      dplyr::mutate(storedBy = .data$user_key, .keep = "unused") |>
       dplyr::left_join(
         metadata$users |>
           dplyr::select("user_key", "username"),
@@ -155,6 +150,15 @@ read_event_details <- function(events, processed_events, metadata, dataset_optio
         dplyr::join_by("updatedBy" == "username")) |>
       dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
       dplyr::mutate(dplyr::across(dplyr::ends_with("At"), readr::parse_datetime))
+
+    if("storedBy" %in% names(events))
+      events <- events |>
+        dplyr::left_join(
+          metadata$users |>
+            dplyr::select("user_key", "username"),
+          dplyr::join_by("storedBy" == "username")) |>
+        dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
+  }
 
   events |>
     dplyr::select(
@@ -175,23 +179,45 @@ read_event_notes <- function(events, processed_events, metadata, dataset_options
         dplyr::select("event_key", "event"),
       dplyr::join_by("event")) |>
     dplyr::select("event_key", "notes") |>
-    tidyr::unnest_longer("notes") |>
-    tidyr::unnest_wider("notes")
+    dplyr::filter(!is.na(.data$notes) & lengths(.data$notes) > 0)
 
-  if(dataset_options$include_user != "no")
+  if(nrow(events) == 0)
+    return(NULL)
+
+  events <- events |>
+    tidyr::unnest_longer("notes") |>
+    tidyr::hoist("notes",
+      note = "note",
+      value = "value",
+      storedBy = "storedBy",
+      storedAt = "storedAt",
+      createdBy = "createdBy",
+      .remove = TRUE)
+
+  if(nrow(events) == 0)
+    return(NULL)
+
+  if(dataset_options$include_user != "no") {
     events <- events |>
-    tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("user", "user_key"),
-      dplyr::join_by("createdBy" == "user")) |>
-    dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
-    dplyr::left_join(
-      metadata$users |>
-        dplyr::select("username", "user_key"),
-      dplyr::join_by("storedBy" == "username")) |>
-    dplyr::mutate(storedBy = .data$user_key, .keep = "unused") |>
-    dplyr::mutate(storedAt = readr::parse_datetime(.data$storedAt))
+      tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
+      dplyr::left_join(
+        metadata$users |>
+          dplyr::select("user", "user_key"),
+        dplyr::join_by("createdBy" == "user")) |>
+      dplyr::mutate(createdBy = .data$user_key, .keep = "unused")
+
+    if("storedBy" %in% names(events))
+      events <- events |>
+        dplyr::left_join(
+          metadata$users |>
+            dplyr::select("username", "user_key"),
+          dplyr::join_by("storedBy" == "username")) |>
+        dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
+
+    if("storedAt" %in% names(events))
+      events <- events |>
+        dplyr::mutate(storedAt = readr::parse_datetime(.data$storedAt))
+  }
 
   events |>
     dplyr::select(!"note")
@@ -209,7 +235,8 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
     tidyr::unnest_longer("dataValues") |>
     tidyr::unnest_wider("dataValues")
 
-  if(dataset_options$include_user != "no")
+  if(dataset_options$include_user != "no" &&
+     "createdBy" %in% names(events))
     events <- events |>
       tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
       dplyr::left_join(
@@ -220,7 +247,9 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
         createdBy = .data$user_key,
         .keep = "unused")
 
-  if(dataset_options$include_timestamps)
+  if(dataset_options$include_timestamps &&
+     "createdAt" %in% names(events) &&
+     "updatedAt" %in% names(events))
     events <- events |>
       dplyr::mutate(
         createdAt = readr::parse_datetime(.data$createdAt),

@@ -90,7 +90,11 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
         metadata$users |>
           dplyr::select("user_key", "username"),
         dplyr::join_by("updatedBy" == "username")) |>
-      dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
+      dplyr::mutate(updatedBy = .data$user_key, .keep = "unused")
+
+  if(dataset_options$include_user != "no" &&
+     "attributes_storedBy" %in% names(patients))
+    patients <- patients |>
       dplyr::left_join(
         metadata$users |>
           dplyr::select("user_key", "username"),

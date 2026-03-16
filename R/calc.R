@@ -525,6 +525,18 @@ get_benchmark_data <- function(...) {
           )
       }
     }
+    if ("n_infections" %in% elements) {
+      tbl <- ds$n_infections
+      tbl <- tbl |>
+        dplyr::rename_with(~ paste0(.x, suffix), !"inf_type")
+
+      if (is.null(output$n_infections)) {
+        output$n_infections <- tbl
+      } else {
+        output$n_infections <- output$n_infections |>
+          dplyr::full_join(tbl, dplyr::join_by("inf_type"))
+      }
+    }
     if ("infectious_agent_detection_rate_per_agent_table" %in% elements) {
       tbl <- ds$infectious_agent_detection_rate_per_agent_table
 
