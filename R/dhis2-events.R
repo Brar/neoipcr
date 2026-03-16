@@ -352,20 +352,35 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
 
 read_infectious_agent_findings <- function(events_raw, processed_events, metadata, dataset_options)
 {
-  events_raw |>
+  pathogen_data <- events_raw |>
     dplyr::select("event", "dataValues") |>
     dplyr::inner_join(
       processed_events |>
         dplyr::filter(.data$event_type_key %in% c("bsi","nec","ssi","hap")) |>
         dplyr::select("event", "event_key", "event_type_key"),
-      dplyr::join_by("event")) |>
+      dplyr::join_by("event"))
+
+  empty_result <- tibble::tibble(
+    event_key = integer(), secondary_bsi = logical(),
+    pathogen_key = integer(), index = integer(),
+    source = factor(levels = c("B","C","B+C","U","L","U+L")))
+
+  if (nrow(pathogen_data) == 0)
+    return(empty_result)
+
+  pathogen_data <- pathogen_data |>
     tidyr::unnest_longer("dataValues") |>
     tidyr::unnest_wider("dataValues") |>
     dplyr::inner_join(
       metadata$dataElements |>
         dplyr::select("dataElement", "code"),
       dplyr::join_by("dataElement")) |>
-    dplyr::filter(stringr::str_detect(.data$code, "PATHOGEN_\\d")) |>
+    dplyr::filter(stringr::str_detect(.data$code, "PATHOGEN_\\d"))
+
+  if (nrow(pathogen_data) == 0)
+    return(empty_result)
+
+  pathogen_data |>
     dplyr::mutate(
       type = factor(tolower(stringr::str_replace(.data$code, "^.+(PATHOGEN)_\\d+(.*)$", "\\1\\2"))),
       index = as.integer(stringr::str_replace(.data$code, "^.+PATHOGEN_(\\d+).*$", "\\1")),

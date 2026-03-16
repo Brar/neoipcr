@@ -214,12 +214,14 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
   if(dataset_options$include_country != "no" ||
      length(dataset_options$country_filter) > 0 ||
      dataset_options$include_world_bank_class != "no")
+  {
     metadata$hospitals <- metadata$hospitals |>
       dplyr::left_join(
         metadata$countries |>
           dplyr::select("country","country_key"),
         dplyr::join_by("country")) |>
       dplyr::select(!"country")
+  }
 
   # Pre-join hierarchy into departments so that read_patients/enrollments/events
   # can use a single flat left_join instead of cascading joins
@@ -828,7 +830,7 @@ read_metadata_wb_classes <- function(metadata, include_world_bank_class)
   }
 
   filtered <- filtered |>
-    add_key_column('world_bank_class_key', as_factor = TRUE)
+    add_key_column('world_bank_class_key')
 
   if(pseudonymise)
     return(filtered |> dplyr::select(!"fiscal_year"))
@@ -855,7 +857,7 @@ read_metadata_countries <- function(
     dplyr::mutate(dplyr::across(!"id", ordered)) |>
     dplyr::relocate("id", .before = 1) |>
     dplyr::rename(country = .data$id) |>
-    add_key_column('country_key', as_factor = TRUE)
+    add_key_column('country_key')
 
   if(!is.null(world_bank_classes))
     organisationUnitGroups <- organisationUnitGroups |>

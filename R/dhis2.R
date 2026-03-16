@@ -175,32 +175,68 @@ import_dhis2 <- function(
   # Push org unit filters to the API to reduce network traffic and memory use.
   # metadata$departments and metadata$countries are already filtered during
   # metadata processing (read_metadata_reponses), so we can use them directly.
-  if (length(dataset_options$department_filter) > 0)
-    tracker_req <- tracker_req |>
-      httr2::req_url_query(
-        ouMode = "SELECTED",
-        orgUnit = metadata$departments |>
-          dplyr::pull(.data$orgUnit) |>
-          paste0(collapse = ";"))
-  else if (length(dataset_options$country_filter) > 0)
-    tracker_req <- tracker_req |>
-      httr2::req_url_query(
-        ouMode = "DESCENDANTS",
-        orgUnit = metadata$countries |>
-          dplyr::pull(.data$country) |>
-          paste0(collapse = ";"))
-  else
-    tracker_req <- tracker_req |>
-      httr2::req_url_query(ouMode = "ACCESSIBLE")
+  #
+  # The /tracker/events endpoint only accepts a single orgUnit UID (through
+  # DHIS2 2.42), so event requests are made per org unit while trackedEntities
+  # and enrollments use multi-UID parameters. All requests run in parallel.
+  #
+  # DHIS2 2.41 renames ouMode -> orgUnitMode and orgUnit (singular, semicolon-
+  # separated) -> orgUnits (plural, comma-separated). The old parameters are
+  # scheduled for removal in 2.42.
+  # See: https://docs.dhis2.org/en/implement/software-release-information/
+  #   dhis2-core-releases/dhis-core-version-241/upgrade-notes.html
+  #   #semicolon-as-separator-for-identifiers-uid
+  #
+  # On 2.40, semicolons in multi-UID orgUnit values must be URL-encoded (%3B)
+  # — literal semicolons are parsed as parameter delimiters by the servlet
+  # container. httr2 does not encode semicolons (valid per RFC 3986), so we
+  # pre-encode them and wrap in I() to prevent double-encoding.
+  v41 <- metadata$system$version >= "2.41"
+  mode_key <- if (v41) "orgUnitMode" else "ouMode"
+  ou_key   <- if (v41) "orgUnits" else "orgUnit"
 
-  reqs <- list(
-    get_trackedEntities_request(
-      tracker_req,
-      dataset_options,
-      metadata$programId,
-      metadata$trackedEntityTypeId),
-    get_enrollments_request(tracker_req, dataset_options, metadata$programId),
-    get_events_request(tracker_req, dataset_options, metadata$programId))
+  ou_query <- function(mode, ou_value)
+    stats::setNames(list(mode, ou_value), c(mode_key, ou_key))
+
+  multi_uid <- function(ids)
+    if (v41) paste0(ids, collapse = ",")
+    else I(paste0(ids, collapse = "%3B"))
+
+  if (length(dataset_options$department_filter) > 0) {
+    dept_ids <- metadata$departments |> dplyr::pull(.data$orgUnit)
+
+    te_enrl_req <- tracker_req |>
+      httr2::req_url_query(!!!ou_query("SELECTED", multi_uid(dept_ids)))
+
+    event_reqs <- lapply(dept_ids, \(id) tracker_req |>
+      httr2::req_url_query(!!!ou_query("SELECTED", id)))
+
+  } else if (length(dataset_options$country_filter) > 0) {
+    country_ids <- metadata$countries |> dplyr::pull(.data$country)
+
+    te_enrl_req <- tracker_req |>
+      httr2::req_url_query(!!!ou_query("DESCENDANTS", multi_uid(country_ids)))
+
+    event_reqs <- lapply(country_ids, \(id) tracker_req |>
+      httr2::req_url_query(!!!ou_query("DESCENDANTS", id)))
+
+  } else {
+    te_enrl_req <- tracker_req |>
+      httr2::req_url_query(!!!stats::setNames(list("ACCESSIBLE"), mode_key))
+    event_reqs <- list(te_enrl_req)
+  }
+
+  reqs <- c(
+    list(
+      get_trackedEntities_request(
+        te_enrl_req,
+        dataset_options,
+        metadata$programId,
+        metadata$trackedEntityTypeId),
+      get_enrollments_request(
+        te_enrl_req, dataset_options, metadata$programId)),
+    lapply(event_reqs, \(req)
+      get_events_request(req, dataset_options, metadata$programId)))
 
   resps <- reqs |>
     httr2::req_perform_parallel(progress = FALSE, on_error = "continue")
@@ -208,7 +244,8 @@ import_dhis2 <- function(
   # Check for HTTP errors and surface the response body.
   # With on_error="continue", failed requests are stored as error objects
   # (class httr2_error), not response objects.
-  endpoints <- c("trackedEntities", "enrollments", "events")
+  endpoints <- c("trackedEntities", "enrollments",
+    rep("events", length(event_reqs)))
   for (i in seq_along(resps)) {
     if (rlang::is_error(resps[[i]])) {
       err <- resps[[i]]
@@ -225,18 +262,20 @@ import_dhis2 <- function(
     }
   }
 
-  data <- resps |>
-    httr2::resps_data(\(resp){
-      list(httr2::resp_body_json(resp) |>
-             tibble::tibble() |>
-             tidyr::unnest_longer(1) |>
-             tidyr::unnest_wider(1))})
+  parse_resp <- \(resp)
+    httr2::resp_body_json(resp) |>
+    tibble::tibble() |>
+    tidyr::unnest_longer(1) |>
+    tidyr::unnest_wider(1)
 
-  trackedEntities_raw <- data[[1]]
-  enrollments_raw <- data[[2]]
-  events_raw <- data[[3]]
+  trackedEntities_raw <- parse_resp(resps[[1]])
+  enrollments_raw <- parse_resp(resps[[2]])
+  events_raw <- resps[seq(3, length(resps))] |>
+    purrr::map(parse_resp) |>
+    purrr::list_rbind()
 
   patients <- read_patients(trackedEntities_raw, metadata, dataset_options)
+
   enrollments <- read_enrollments(enrollments_raw, patients, metadata, dataset_options)
   events <- read_events(events_raw, enrollments, patients, metadata, dataset_options)
   admissionData <- read_event_data(events_raw, events, metadata, dataset_options, "adm")
@@ -391,13 +430,59 @@ dhis2_request <- function(connection_options)
 
 get_user_info <- function(req)
 {
-  raw_info <- req |>
-    httr2::req_url_path_append("me") |>
-    httr2::req_url_query(
-      fields = "id,username,firstName,surname,email,created,userCredentials[lastLogin],organisationUnits[id],dataViewOrganisationUnits[id],teiSearchOrganisationUnits[id],userRoles[name,authorities],userGroups[name]") |>
-    httr2::req_perform() |>
-    httr2::resp_check_status() |>
-    httr2::resp_body_json(simplifyVector = TRUE)
+  resp <- tryCatch(
+    req |>
+      httr2::req_url_path_append("me") |>
+      httr2::req_url_query(
+        fields = "id,username,firstName,surname,email,created,userCredentials[lastLogin],organisationUnits[id],dataViewOrganisationUnits[id],teiSearchOrganisationUnits[id],userRoles[name,authorities],userGroups[name]") |>
+      httr2::req_perform(),
+    httr2_http_401 = function(cnd) {
+      rlang::abort(c(
+        "DHIS2 authentication failed (HTTP 401).",
+        i = "Check that your token or username/password is correct.",
+        i = "Token auth: set the NEOIPC_DHIS2_TOKEN environment variable.",
+        i = "Basic auth: set NEOIPC_DHIS2_USER and NEOIPC_DHIS2_PASSWORD environment variables."
+      ), call = NULL, parent = cnd)
+    },
+    httr2_http_403 = function(cnd) {
+      rlang::abort(c(
+        "DHIS2 access denied (HTTP 403).",
+        i = "Your credentials were accepted but you lack permission to access /api/me.",
+        i = "Contact a DHIS2 administrator to check your user role."
+      ), parent = cnd)
+    },
+    error = function(cnd) {
+      rlang::abort(c(
+        "Failed to connect to DHIS2.",
+        i = "Check your network connection and DHIS2 server URL.",
+        i = conditionMessage(cnd)
+      ), parent = cnd)
+    }
+  )
+
+  raw_info <- tryCatch(
+    resp |>
+      httr2::resp_check_status() |>
+      httr2::resp_body_json(simplifyVector = TRUE),
+    error = function(cnd) {
+      ct <- httr2::resp_content_type(resp)
+      sc <- httr2::resp_status(resp)
+      url <- resp$url
+      if (grepl("text/html", ct, fixed = TRUE)) {
+        rlang::abort(c(
+          sprintf("DHIS2 returned an HTML page instead of JSON (HTTP %d, URL: %s).", sc, url),
+          i = "This usually means the server redirected to a login page.",
+          i = "Your credentials may be missing, expired, or incorrect.",
+          i = "Token auth: set the NEOIPC_DHIS2_TOKEN environment variable.",
+          i = "Basic auth: set NEOIPC_DHIS2_USER and NEOIPC_DHIS2_PASSWORD environment variables."
+        ), call = NULL)
+      }
+      rlang::abort(c(
+        sprintf("Unexpected DHIS2 response content type: %s", ct),
+        i = conditionMessage(cnd)
+      ), parent = cnd)
+    }
+  )
 
   structure(list(
     id = raw_info$id,
@@ -421,19 +506,13 @@ get_user_info <- function(req)
   ), class = c("neoipc_dhis2_usrinfo", "list"))
 }
 
-add_key_column <- function(table, key_name = "key", as_factor = FALSE)
+add_key_column <- function(table, key_name = "key")
 {
-  tmp <- table |>
+  table |>
     dplyr::mutate(random = ids::random_id(nrow(table))) |>
     dplyr::arrange(.data$random) |>
-    dplyr::select(!"random")
-
-  if (as_factor) tmp <- tmp |>
-      dplyr::mutate(!!key_name := as.factor(dplyr::row_number()))
-  else tmp <- tmp |>
-      dplyr::mutate(!!key_name := dplyr::row_number())
-
-  tmp |>
+    dplyr::select(!"random") |>
+    dplyr::mutate(!!key_name := dplyr::row_number()) |>
     dplyr::relocate(key_name)
 }
 

@@ -724,7 +724,6 @@ get_birthweight_figure_data <- function(x) {
   # density.default needs at least two points
   if (length(x$patients$birth_weight) > 1) {
     bw_density <- x$patients$birth_weight |>
-      bw50(as_factor = F) |>
       stats::density(from = bw_scale_min, to = bw_scale_max)
 
     density_bw <- bw_density$x
@@ -772,7 +771,6 @@ get_gestational_age_figure_data <- function(x) {
   # density.default needs at least two points
   if (length(x$patients$total_gestation_days) > 1) {
     ga_density <- x$patients$total_gestation_days |>
-      ga7() |>
       stats::density(from = ga_scale_min, to = ga_scale_max)
 
     density_ga <- ga_density$x
@@ -1987,17 +1985,24 @@ get_dev_ass_incidence_density_rates <- function(
   if(use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
+  # Extract device-associated events, yielding event_key + dev columns.
+  # dev_ass may be absent when there are no events of that type in the dataset.
+  extract_dev_ass <- function(data, dev_map) {
+    if (!("dev_ass" %in% names(data)))
+      return(tibble::tibble(event_key = integer(), dev = character()))
+    data |>
+      dplyr::select("event_key", "dev_ass") |>
+      dplyr::filter(.data$dev_ass != 0) |>
+      dplyr::mutate(
+        dev = dplyr::case_match(
+          as.integer(as.character(.data$dev_ass)),
+          !!!dev_map),
+        .keep = "unused")
+  }
+
   x$events |>
     dplyr::inner_join(
-      x$sepsisData |>
-        dplyr::select("event_key","dev_ass") |>
-        dplyr::filter(.data$dev_ass != 0) |>
-        dplyr::mutate(
-          dev = dplyr::case_match(
-            as.integer(as.character(.data$dev_ass)),
-            1 ~ "cvc",
-            2 ~ "pvc"),
-          .keep = "unused"),
+      extract_dev_ass(x$sepsisData, list(1 ~ "cvc", 2 ~ "pvc")),
       dplyr::join_by("event_key")) |>
     dplyr::group_by(dplyr::across(tidyselect::all_of(
       c(group_cols,"dev")))) |>
@@ -2015,15 +2020,7 @@ get_dev_ass_incidence_density_rates <- function(
     dplyr::bind_rows(
       x$events |>
         dplyr::inner_join(
-          x$pneumoniaData |>
-            dplyr::select("event_key","dev_ass") |>
-            dplyr::filter(.data$dev_ass != 0) |>
-            dplyr::mutate(
-              dev = dplyr::case_match(
-                as.integer(as.character(.data$dev_ass)),
-                1 ~ "niv",
-                2 ~ "inv"),
-              .keep = "unused"),
+          extract_dev_ass(x$pneumoniaData, list(1 ~ "niv", 2 ~ "inv")),
           dplyr::join_by("event_key")) |>
         dplyr::group_by(dplyr::across(tidyselect::all_of(
           c(group_cols,"dev")))) |>
@@ -2428,9 +2425,11 @@ get_resistance_test_rate <- function(
     return(r)
 
   infectiousAgentFindings <- x$infectiousAgentFindings
-  if(!(resistance %in% names(infectiousAgentFindings)))
-    infectiousAgentFindings <- infectiousAgentFindings |>
-      dplyr::mutate(!!resistance := NA_character_)
+  for(col in union(resistance, intersect(group_cols, res_names))) {
+    if(!(col %in% names(infectiousAgentFindings)))
+      infectiousAgentFindings <- infectiousAgentFindings |>
+        dplyr::mutate(!!col := NA_character_)
+  }
 
   r <- x$events |>
     dplyr::inner_join(infectiousAgentFindings, dplyr::join_by("event_key")) |>
@@ -2594,9 +2593,11 @@ get_resistance_rate <- function(
     dplyr::select(!"with_pathogen")
 
   infectiousAgentFindings <- x$infectiousAgentFindings
-  if(!(resistance %in% names(infectiousAgentFindings)))
-    infectiousAgentFindings <- infectiousAgentFindings |>
-      dplyr::mutate(!!resistance := NA_character_)
+  for(col in union(resistance, intersect(group_cols, res_names))) {
+    if(!(col %in% names(infectiousAgentFindings)))
+      infectiousAgentFindings <- infectiousAgentFindings |>
+        dplyr::mutate(!!col := NA_character_)
+  }
 
   r <- x$patients |>
     dplyr::mutate(

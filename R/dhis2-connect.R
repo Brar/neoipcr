@@ -92,13 +92,15 @@ get_password <- function(url)
 get_auth_data <- function(url)
 {
   env_session_id <- Sys.getenv("NEOIPC_DHIS2_SESSION_ID", unset = NA)
-  if(!is.na(env_session_id)) return(list(session_id = env_session_id))
+  if(!is.na(env_session_id) && nzchar(env_session_id))
+    return(list(session_id = env_session_id))
 
   env_token <- Sys.getenv("NEOIPC_DHIS2_TOKEN", unset = NA)
-  if(!is.na(env_token)) return(list(token = read_token(env_token)))
+  if(!is.na(env_token) && nzchar(env_token))
+    return(list(token = read_token(env_token)))
 
   env_user <- Sys.getenv("NEOIPC_DHIS2_USER", unset = NA)
-  if(!is.na(env_user))
+  if(!is.na(env_user) && nzchar(env_user))
     return(list(username = env_user, password = get_password(url)))
 
   if(!interactive()) rlang::abort(
