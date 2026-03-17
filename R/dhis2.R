@@ -438,7 +438,7 @@ get_user_info <- function(req)
       httr2::req_perform(),
     httr2_http_401 = function(cnd) {
       rlang::abort(c(
-        "DHIS2 authentication failed (HTTP 401).",
+        sprintf("DHIS2 authentication failed (HTTP 401) at %s.", req$url),
         i = "Check that your token or username/password is correct.",
         i = "Token auth: set the NEOIPC_DHIS2_TOKEN environment variable.",
         i = "Basic auth: set NEOIPC_DHIS2_USER and NEOIPC_DHIS2_PASSWORD environment variables."
@@ -446,14 +446,14 @@ get_user_info <- function(req)
     },
     httr2_http_403 = function(cnd) {
       rlang::abort(c(
-        "DHIS2 access denied (HTTP 403).",
+        sprintf("DHIS2 access denied (HTTP 403) at %s.", req$url),
         i = "Your credentials were accepted but you lack permission to access /api/me.",
         i = "Contact a DHIS2 administrator to check your user role."
       ), parent = cnd)
     },
     error = function(cnd) {
       rlang::abort(c(
-        "Failed to connect to DHIS2.",
+        sprintf("Failed to connect to DHIS2 at %s.", req$url),
         i = "Check your network connection and DHIS2 server URL.",
         i = conditionMessage(cnd)
       ), parent = cnd)
