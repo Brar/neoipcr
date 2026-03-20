@@ -430,33 +430,42 @@ dhis2_request <- function(connection_options)
 
 get_user_info <- function(req)
 {
+  # Two-level tryCatch: inner level translates specific HTTP errors into
+
+  # user-friendly messages; outer level catches everything else (DNS failure,
+  # timeout, etc.) and wraps with a generic connection message.  The outer
+
+  # handler passes through errors already translated by the inner level.
   resp <- tryCatch(
-    req |>
-      httr2::req_url_path_append("me") |>
-      httr2::req_url_query(
-        fields = "id,username,firstName,surname,email,created,userCredentials[lastLogin],organisationUnits[id],dataViewOrganisationUnits[id],teiSearchOrganisationUnits[id],userRoles[name,authorities],userGroups[name]") |>
-      httr2::req_perform(),
-    httr2_http_401 = function(cnd) {
-      rlang::abort(c(
-        sprintf("DHIS2 authentication failed (HTTP 401) at %s.", req$url),
-        i = "Check that your token or username/password is correct.",
-        i = "Token auth: set the NEOIPC_DHIS2_TOKEN environment variable.",
-        i = "Basic auth: set NEOIPC_DHIS2_USER and NEOIPC_DHIS2_PASSWORD environment variables."
-      ), call = NULL, parent = cnd)
-    },
-    httr2_http_403 = function(cnd) {
-      rlang::abort(c(
-        sprintf("DHIS2 access denied (HTTP 403) at %s.", req$url),
-        i = "Your credentials were accepted but you lack permission to access /api/me.",
-        i = "Contact a DHIS2 administrator to check your user role."
-      ), parent = cnd)
-    },
+    tryCatch(
+      req |>
+        httr2::req_url_path_append("me") |>
+        httr2::req_url_query(
+          fields = "id,username,firstName,surname,email,created,userCredentials[lastLogin],organisationUnits[id],dataViewOrganisationUnits[id],teiSearchOrganisationUnits[id],userRoles[name,authorities],userGroups[name]") |>
+        httr2::req_perform(),
+      httr2_http_401 = function(cnd) {
+        rlang::abort(c(
+          sprintf("DHIS2 authentication failed (HTTP 401) at %s.", req$url),
+          i = "Check that your token or username/password is correct.",
+          i = "Token auth: set the NEOIPC_DHIS2_TOKEN environment variable.",
+          i = "Basic auth: set NEOIPC_DHIS2_USER and NEOIPC_DHIS2_PASSWORD environment variables."
+        ), class = "neoipcr_dhis2_error", call = NULL)
+      },
+      httr2_http_403 = function(cnd) {
+        rlang::abort(c(
+          sprintf("DHIS2 access denied (HTTP 403) at %s.", req$url),
+          i = "Your credentials were accepted but you lack permission to access /api/me.",
+          i = "Contact a DHIS2 administrator to check your user role."
+        ), class = "neoipcr_dhis2_error", call = NULL)
+      }
+    ),
     error = function(cnd) {
+      if (inherits(cnd, "neoipcr_dhis2_error")) stop(cnd)
       rlang::abort(c(
         sprintf("Failed to connect to DHIS2 at %s.", req$url),
         i = "Check your network connection and DHIS2 server URL.",
         i = conditionMessage(cnd)
-      ), parent = cnd)
+      ), class = "neoipcr_dhis2_error", call = NULL)
     }
   )
 
