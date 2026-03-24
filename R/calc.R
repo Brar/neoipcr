@@ -211,6 +211,19 @@ calculate_department_data <- function(x, use_cache = TRUE) {
         levels = c("cvc","pvc","vs","inv","niv","human_milk","probiotic",
                    "kangaroo_care","ab","a","w","r"))
     ) |>
+    (\(r) {
+      expected_levels <- c("cvc","pvc","vs","inv","niv","human_milk","probiotic",
+                           "kangaroo_care","ab","a","w","r")
+      missing <- setdiff(expected_levels, as.character(r$factor))
+      if (length(missing) > 0)
+        r <- r |>
+          dplyr::bind_rows(
+            tibble::tibble(
+              factor = factor(missing, levels = levels(r$factor)),
+              days = 0L,
+              rate = NA_real_))
+      r
+    })() |>
     dplyr::arrange(.data$factor)
 
   # Extract infection counts for metadata
@@ -466,7 +479,19 @@ get_benchmark_data <- function(...) {
         output$usage_density_rate_table <- tbl
       } else {
         output$usage_density_rate_table <- output$usage_density_rate_table |>
-          dplyr::full_join(tbl, dplyr::join_by("factor"))
+          dplyr::full_join(tbl, dplyr::join_by("factor")) |>
+          dplyr::mutate(
+            dplyr::across(
+              dplyr::starts_with("days_"),
+              ~tidyr::replace_na(.x, 0L)),
+            dplyr::across(
+              dplyr::starts_with("n_"),
+              ~tidyr::replace_na(.x, 0L)),
+            dplyr::across(
+              c(dplyr::starts_with("rate_"), dplyr::starts_with("pooled_"),
+                dplyr::starts_with("q")),
+              ~tidyr::replace_na(.x, NA_real_))
+          )
       }
     }
     if ("surgery_rate_table" %in% elements) {
@@ -1823,6 +1848,26 @@ get_resistance_test_rate_table <- function(
       .keep = "unused"
     ) |>
     dplyr::select("abr","cond","n"="tested","pooled"="rate",tidyselect::any_of(c("q1","q2","q3"))) |>
+    (\(r) {
+      expected <- tibble::tibble(
+        abr = factor(
+          c("3gcr","car","cor","mrsa","vre","car","cor"),
+          levels = c("3gcr","car","cor","mrsa","vre")),
+        cond = factor(
+          c("routine","routine","routine","routine","routine","if_3gcr","if_3gcr&car"),
+          levels = c("routine","if_3gcr","if_3gcr&car")))
+      missing <- dplyr::anti_join(expected, r, by = c("abr", "cond"))
+      if (nrow(missing) > 0) {
+        missing_rows <- missing |>
+          dplyr::mutate(n = 0L, pooled = NA_real_)
+        if ("q1" %in% names(r)) {
+          missing_rows <- missing_rows |>
+            dplyr::mutate(q1 = NA_real_, q2 = NA_real_, q3 = NA_real_)
+        }
+        r <- dplyr::bind_rows(r, missing_rows)
+      }
+      r
+    })() |>
     dplyr::arrange(.data$abr, .data$cond) |>
     add_class(return_class) |>
     cache(x, cache_key)
