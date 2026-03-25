@@ -150,3 +150,76 @@ test_that("neoipc_wilson_ci validates inputs", {
   expect_error(neoipc_wilson_ci(5, -1))   # negative n
   expect_error(neoipc_wilson_ci("a", 10)) # non-numeric
 })
+
+# --- poisson_ci_cols() (internal vectorized wrapper) ------------------------
+
+test_that("poisson_ci_cols returns correct structure", {
+  result <- neoipcr:::poisson_ci_cols(c(10, 20), c(1000, 2000), multiplier = 1000)
+  expect_s3_class(result, "tbl_df")
+  expect_named(result, c("ci_lower", "ci_upper"))
+  expect_equal(nrow(result), 2)
+})
+
+test_that("poisson_ci_cols handles zero events with valid exposure", {
+  result <- neoipcr:::poisson_ci_cols(c(0, 5), c(1000, 1000), multiplier = 1000)
+  expect_equal(result$ci_lower[1], 0)
+  expect_true(result$ci_upper[1] > 0)
+  expect_true(result$ci_lower[2] > 0)
+})
+
+test_that("poisson_ci_cols returns NA for NA/zero-exposure inputs", {
+  result <- neoipcr:::poisson_ci_cols(c(5, NA, 0, 3), c(1000, 1000, 0, NA),
+                                       multiplier = 1000)
+  expect_equal(nrow(result), 4)
+  expect_false(is.na(result$ci_lower[1]))
+  expect_true(is.na(result$ci_lower[2]))
+  expect_true(is.na(result$ci_lower[3]))
+  expect_true(is.na(result$ci_lower[4]))
+})
+
+test_that("poisson_ci_cols handles scalar exposure (recycled)", {
+  result <- neoipcr:::poisson_ci_cols(c(5, 10, 15), 1000, multiplier = 1000)
+  expect_equal(nrow(result), 3)
+  expect_true(all(!is.na(result$ci_lower)))
+})
+
+# --- wilson_ci_cols() (internal vectorized wrapper) -------------------------
+
+test_that("wilson_ci_cols returns correct structure", {
+  result <- neoipcr:::wilson_ci_cols(c(10, 20), c(50, 100), scale = 100)
+  expect_s3_class(result, "tbl_df")
+  expect_named(result, c("ci_lower", "ci_upper"))
+  expect_equal(nrow(result), 2)
+})
+
+test_that("wilson_ci_cols applies scale correctly", {
+  raw <- neoipcr:::wilson_ci_cols(c(10), c(50), scale = 1)
+  scaled <- neoipcr:::wilson_ci_cols(c(10), c(50), scale = 100)
+  expect_equal(scaled$ci_lower, raw$ci_lower * 100)
+  expect_equal(scaled$ci_upper, raw$ci_upper * 100)
+})
+
+test_that("wilson_ci_cols handles zero successes with valid n", {
+  result <- neoipcr:::wilson_ci_cols(c(0, 10), c(50, 50), scale = 100)
+  expect_equal(result$ci_lower[1], 0)
+  expect_true(result$ci_upper[1] > 0)
+})
+
+test_that("wilson_ci_cols returns NA for NA/zero-n inputs", {
+  result <- neoipcr:::wilson_ci_cols(c(5, NA, 0), c(50, 50, 0), scale = 100)
+  expect_equal(nrow(result), 3)
+  expect_false(is.na(result$ci_lower[1]))
+  expect_true(is.na(result$ci_lower[2]))
+  expect_true(is.na(result$ci_lower[3]))
+})
+
+test_that("poisson_ci_cols CI ordering is consistent", {
+  events <- c(0, 1, 5, 50, 200)
+  exposure <- c(1000, 1000, 1000, 1000, 1000)
+  result <- neoipcr:::poisson_ci_cols(events, exposure, multiplier = 1000)
+  rates <- events / exposure * 1000
+  for (i in seq_along(events)) {
+    expect_true(result$ci_lower[i] <= rates[i])
+    expect_true(result$ci_upper[i] >= rates[i])
+  }
+})

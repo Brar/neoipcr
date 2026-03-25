@@ -101,3 +101,53 @@ neoipc_wilson_ci <- function(x, n, conf.level = 0.95) {
     upper      = center + margin
   )
 }
+
+# --- Internal vectorized wrappers for table generators ---
+
+#' Compute Poisson CI columns for a vector of events/exposure pairs
+#'
+#' Returns a two-column tibble (`ci_lower`, `ci_upper`) suitable for
+#' `dplyr::bind_cols()`. Rows with NA events, NA exposure, or zero exposure
+#' return NA — these represent structurally absent metrics, not zero-event
+#' observations.
+#'
+#' @param events Integer vector.
+#' @param exposure Numeric vector (or scalar, recycled).
+#' @param multiplier Numeric scalar.
+#' @returns A tibble with columns `ci_lower` and `ci_upper`.
+#' @noRd
+poisson_ci_cols <- function(events, exposure, multiplier) {
+  purrr::pmap_dfr(
+    list(events = events, exposure = exposure),
+    function(events, exposure) {
+      if (is.na(events) || is.na(exposure) || exposure == 0) {
+        return(tibble::tibble(ci_lower = NA_real_, ci_upper = NA_real_))
+      }
+      ci <- neoipc_poisson_ci(events, exposure, multiplier = multiplier)
+      tibble::tibble(ci_lower = ci$lower, ci_upper = ci$upper)
+    })
+}
+
+#' Compute Wilson CI columns for a vector of x/n pairs
+#'
+#' Returns a two-column tibble (`ci_lower`, `ci_upper`) suitable for
+#' `dplyr::bind_cols()`. Bounds are multiplied by `scale` to match the
+#' rate column's unit (e.g., scale = 100 for percentages). Rows with NA x,
+#' NA n, or zero n return NA.
+#'
+#' @param x Integer vector of successes.
+#' @param n Integer vector of trials.
+#' @param scale Numeric scalar. Multiplier for the CI bounds. Default 1.
+#' @returns A tibble with columns `ci_lower` and `ci_upper`.
+#' @noRd
+wilson_ci_cols <- function(x, n, scale = 1) {
+  purrr::pmap_dfr(
+    list(x = x, n = n),
+    function(x, n) {
+      if (is.na(x) || is.na(n) || n == 0) {
+        return(tibble::tibble(ci_lower = NA_real_, ci_upper = NA_real_))
+      }
+      ci <- neoipc_wilson_ci(x, n)
+      tibble::tibble(ci_lower = ci$lower * scale, ci_upper = ci$upper * scale)
+    })
+}

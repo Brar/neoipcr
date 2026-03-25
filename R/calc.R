@@ -211,6 +211,7 @@ calculate_department_data <- function(x, use_cache = TRUE) {
         levels = c("cvc","pvc","vs","inv","niv","human_milk","probiotic",
                    "kangaroo_care","ab","a","w","r"))
     ) |>
+    (\(d) dplyr::bind_cols(d, poisson_ci_cols(d$days, rt$patient_days, multiplier = 100)))() |>
     (\(r) {
       expected_levels <- c("cvc","pvc","vs","inv","niv","human_milk","probiotic",
                            "kangaroo_care","ab","a","w","r")
@@ -221,7 +222,9 @@ calculate_department_data <- function(x, use_cache = TRUE) {
             tibble::tibble(
               factor = factor(missing, levels = levels(r$factor)),
               days = 0L,
-              rate = NA_real_))
+              rate = NA_real_,
+              ci_lower = NA_real_,
+              ci_upper = NA_real_))
       r
     })() |>
     dplyr::arrange(.data$factor)
@@ -489,7 +492,8 @@ get_benchmark_data <- function(...) {
               ~tidyr::replace_na(.x, 0L)),
             dplyr::across(
               c(dplyr::starts_with("rate_"), dplyr::starts_with("pooled_"),
-                dplyr::starts_with("q")),
+                dplyr::starts_with("q"),
+                dplyr::starts_with("ci_lower_"), dplyr::starts_with("ci_upper_")),
               ~tidyr::replace_na(.x, NA_real_))
           )
       }
@@ -506,8 +510,11 @@ get_benchmark_data <- function(...) {
           dplyr::full_join(tbl, dplyr::join_by("pro_cat")) |>
           dplyr::mutate(
             dplyr::across(
-              !tidyselect::matches("^q1|2|3", ignore.case = F),
-              ~ tidyr::replace_na(.x, 0)))
+              !tidyselect::matches("^q|^ci_", ignore.case = F),
+              ~ tidyr::replace_na(.x, 0)),
+            dplyr::across(
+              c(dplyr::starts_with("ci_lower_"), dplyr::starts_with("ci_upper_")),
+              ~tidyr::replace_na(.x, NA_real_)))
       }
     }
     if ("incidence_density_rate_table" %in% elements) {
@@ -524,7 +531,8 @@ get_benchmark_data <- function(...) {
           dplyr::mutate(
             dplyr::across(dplyr::starts_with("n_"), ~tidyr::replace_na(.x, 0)),
             dplyr::across(
-              c(dplyr::starts_with("pooled_"), dplyr::starts_with("q")),
+              c(dplyr::starts_with("pooled_"), dplyr::starts_with("q"),
+                dplyr::starts_with("ci_lower_"), dplyr::starts_with("ci_upper_")),
               ~tidyr::replace_na(.x, NA_real_))
           )
       }
@@ -545,7 +553,8 @@ get_benchmark_data <- function(...) {
               dplyr::starts_with("n_"),
               ~tidyr::replace_na(.x, 0)),
             dplyr::across(
-              c(dplyr::starts_with("pooled_"), dplyr::starts_with("q")),
+              c(dplyr::starts_with("pooled_"), dplyr::starts_with("q"),
+                dplyr::starts_with("ci_lower_"), dplyr::starts_with("ci_upper_")),
               ~tidyr::replace_na(.x, NA_real_))
           )
       }
@@ -593,7 +602,9 @@ get_benchmark_data <- function(...) {
               dplyr::across(
                 c(dplyr::starts_with("rate_"),
                   dplyr::starts_with("pooled_"),
-                  dplyr::starts_with("q")),
+                  dplyr::starts_with("q"),
+                  dplyr::starts_with("ci_lower_"),
+                  dplyr::starts_with("ci_upper_")),
                 ~tidyr::replace_na(.x, NA_real_))
             )
         }
@@ -631,7 +642,9 @@ get_benchmark_data <- function(...) {
               dplyr::across(
                 c(dplyr::starts_with("rate_"),
                   dplyr::starts_with("pooled_"),
-                  dplyr::starts_with("q")),
+                  dplyr::starts_with("q"),
+                  dplyr::starts_with("ci_lower_"),
+                  dplyr::starts_with("ci_upper_")),
                 ~tidyr::replace_na(.x, NA_real_))
             )
         }
@@ -910,7 +923,9 @@ get_usage_density_rate_table <- function(
           values_to = "pooled") |>
         dplyr::mutate(
           factor = stringr::str_remove(.data$factor, "_rate$")),
-      dplyr::join_by("factor")) |>
+      dplyr::join_by("factor"))
+  r <- r |>
+    dplyr::bind_cols(poisson_ci_cols(r$n, risk_time$patient_days, multiplier = 100)) |>
     add_class("neoipcr_tbl_udr")
 
   if(include_quartiles) {
@@ -969,7 +984,9 @@ get_usage_density_rate_table <- function(
       tibble::tibble(
         factor = missing,
         n = 0L,
-        pooled = NA_real_))
+        pooled = NA_real_,
+        ci_lower = NA_real_,
+        ci_upper = NA_real_))
 
   r |>
     dplyr::mutate(factor = factor(.data$factor, levels = expected_levels)) |>
@@ -1010,6 +1027,7 @@ get_surgery_rate_table <- function(x, use_cache = TRUE) {
         dplyr::select("n_patients")
     ) |>
     dplyr::mutate(pooled = .data$n / .data$n_patients * 100) |>
+    (\(d) dplyr::bind_cols(d, poisson_ci_cols(d$n, d$n_patients, multiplier = 100)))() |>
     dplyr::select(!"n_patients") |>
     add_class("neoipcr_tbl_sr") |>
     cache(x, "surgery_rate_table")
@@ -1129,7 +1147,10 @@ get_incidence_density_rate_table <- function(
 
   r <- x |>
     get_incidence_density_rates(use_cache = use_cache) |>
-    dplyr::rename("pooled" = "rate") |>
+    dplyr::rename("pooled" = "rate")
+  r <- r |>
+    dplyr::bind_cols(poisson_ci_cols(r$n, r$patient_days, multiplier = 1000)) |>
+    dplyr::select(!"patient_days") |>
     add_class("neoipcr_tbl_idr")
 
   if(include_quartiles) {
@@ -1185,7 +1206,9 @@ get_incidence_density_rate_table <- function(
       tibble::tibble(
         inf = missing,
         n = 0L,
-        pooled = NA_real_))
+        pooled = NA_real_,
+        ci_lower = NA_real_,
+        ci_upper = NA_real_))
 
   r |>
     dplyr::mutate(
@@ -1215,7 +1238,10 @@ get_dev_ass_incidence_density_rate_table <- function(
     return(r)
 
   r <- x |>
-    get_dev_ass_incidence_density_rates(use_cache = use_cache) |>
+    get_dev_ass_incidence_density_rates(use_cache = use_cache)
+  r <- r |>
+    dplyr::bind_cols(poisson_ci_cols(r$n, r$days, multiplier = 1000)) |>
+    dplyr::select(!"days") |>
     add_class("neoipcr_tbl_daidr")
 
   if(include_quartiles) {
@@ -1289,7 +1315,9 @@ get_dev_ass_incidence_density_rate_table <- function(
       tibble::tibble(
         dev = missing,
         n = 0L,
-        pooled = NA_real_))
+        pooled = NA_real_,
+        ci_lower = NA_real_,
+        ci_upper = NA_real_))
 
   r |>
     dplyr::rename("pooled" = "rate") |>
@@ -1323,13 +1351,16 @@ get_infectious_agent_detection_rate_per_inf_type_table <- function(
       x |>
         get_infectious_agent_detection_rates(
           use_cache = use_cache) |>
-        dplyr::select("inf_with_pathogen","pooled"="iwp_per_t")),
+        dplyr::select("inf_with_pathogen","total_inf","pooled"="iwp_per_t")),
     x |>
       get_infectious_agent_detection_rates(
         group_cols = "event_type_key",
         use_cache = use_cache) |>
-      dplyr::select("event_type_key","inf_with_pathogen","pooled"="iwp_per_t")
-    ) |>
+      dplyr::select("event_type_key","inf_with_pathogen","total_inf","pooled"="iwp_per_t")
+    )
+  r <- r |>
+    dplyr::bind_cols(wilson_ci_cols(r$inf_with_pathogen, r$total_inf, scale = 100)) |>
+    dplyr::select(!"total_inf") |>
     add_class("neoipcr_tbl_iadrpit")
 
   if(include_quartiles) {
@@ -1407,7 +1438,9 @@ get_infectious_agent_detection_rate_per_inf_type_table <- function(
       tibble::tibble(
         event_type_key = missing,
         inf_with_pathogen = 0L,
-        pooled = NA_real_))
+        pooled = NA_real_,
+        ci_lower = NA_real_,
+        ci_upper = NA_real_))
 
   r |>
     dplyr::rename("n"="inf_with_pathogen") |>
@@ -1444,14 +1477,14 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
     get_rates <- function(...) {
       get_infectious_agent_detection_rates_with_department_quartiles(...)
     }
-    rate_cols <- c("n","rate","q1","q2","q3")
+    rate_cols <- c("n","inf_with_pathogen","rate","q1","q2","q3")
     return_class <- c("neoipcr_tbl_iadrpa_ref", "neoipcr_tbl_iadrpa")
   } else {
     get_rates <- function(...) {
       get_infectious_agent_detection_rates(...) |>
         dplyr::rename(rate = "n_per_iwp")
     }
-    rate_cols <- c("n","rate")
+    rate_cols <- c("n","inf_with_pathogen","rate")
     return_class <- "neoipcr_tbl_iadrpa"
   }
 
@@ -1632,6 +1665,8 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
   }
 
   lv0 |>
+    (\(d) dplyr::bind_cols(d, poisson_ci_cols(d$n, d$inf_with_pathogen, multiplier = 100)))() |>
+    dplyr::select(!"inf_with_pathogen") |>
     dplyr::rename("level"="lv","taxon"="tl","pooled"="rate") |>
     add_class(return_class) |>
     cache(x, cache_key)
@@ -1663,14 +1698,14 @@ get_abr_infection_rate_table <- function(
     get_resistance <- function(...) {
       get_resistance_rate_with_department_quartiles(...)
     }
-    rate_cols <- c("n","rate","q1","q2","q3")
+    rate_cols <- c("n","inf_w_ia","rate","q1","q2","q3")
     return_class <- c("neoipcr_tbl_abr_ir_ref", "neoipcr_tbl_abr_ir")
   } else {
     get_resistance <- function(...) {
       get_resistance_rate(...) |>
         dplyr::rename("n"="inf_rs","rate"="inf_rs_rate")
     }
-    rate_cols <- c("n","rate")
+    rate_cols <- c("n","inf_w_ia","rate")
     return_class <- "neoipcr_tbl_abr_ir"
   }
 
@@ -1834,6 +1869,8 @@ get_abr_infection_rate_table <- function(
   tbl <-dplyr::bind_rows(tbl,lv0)
 
   tbl |>
+    (\(d) dplyr::bind_cols(d, wilson_ci_cols(d$n, d$inf_w_ia, scale = 100)))() |>
+    dplyr::select(!"inf_w_ia") |>
     dplyr::rename("abr"="abr_type","level"="lv","taxon"="tl","pooled"="rate") |>
     add_class(return_class) |>
     cache(x, cache_key)
@@ -1888,7 +1925,9 @@ get_resistance_test_rate_table <- function(
       cond = factor(.data$type, levels = c("routine","if_3gcr","if_3gcr&car")),
       .keep = "unused"
     ) |>
-    dplyr::select("abr","cond","n"="tested","pooled"="rate",tidyselect::any_of(c("q1","q2","q3"))) |>
+    dplyr::select("abr","cond","n"="tested","total","pooled"="rate",tidyselect::any_of(c("q1","q2","q3"))) |>
+    (\(d) dplyr::bind_cols(d, wilson_ci_cols(d$n, d$total, scale = 100)))() |>
+    dplyr::select(!"total") |>
     (\(r) {
       expected <- tibble::tibble(
         abr = factor(
@@ -1900,7 +1939,8 @@ get_resistance_test_rate_table <- function(
       missing <- dplyr::anti_join(expected, r, by = c("abr", "cond"))
       if (nrow(missing) > 0) {
         missing_rows <- missing |>
-          dplyr::mutate(n = 0L, pooled = NA_real_)
+          dplyr::mutate(n = 0L, pooled = NA_real_,
+                        ci_lower = NA_real_, ci_upper = NA_real_)
         if ("q1" %in% names(r)) {
           missing_rows <- missing_rows |>
             dplyr::mutate(q1 = NA_real_, q2 = NA_real_, q3 = NA_real_)
@@ -1935,7 +1975,10 @@ get_secondary_bsi_rate_table <- function(
   # Calculate pooled rates
   r <- x |>
     get_secondary_bsi_rates(use_cache = use_cache) |>
-    dplyr::rename("pooled" = "rate") |>
+    dplyr::rename("pooled" = "rate")
+  r <- r |>
+    dplyr::bind_cols(wilson_ci_cols(r$n, r$followup_n, scale = 100)) |>
+    dplyr::select(!"followup_n") |>
     add_class("neoipcr_tbl_sec_bsi")
 
   # Calculate quartiles if needed
@@ -1999,7 +2042,9 @@ get_secondary_bsi_rate_table <- function(
     missing_rows <- tibble::tibble(
       event_type_key = missing,
       n = 0L,
-      pooled = NA_real_)
+      pooled = NA_real_,
+      ci_lower = NA_real_,
+      ci_upper = NA_real_)
     if(include_quartiles) {
       missing_rows <- missing_rows |>
         dplyr::mutate(q1 = NA_real_, q2 = NA_real_, q3 = NA_real_)
@@ -2135,7 +2180,6 @@ get_dev_ass_incidence_density_rates <- function(
     dplyr::mutate(
       n = tidyr::replace_na(.data$n, 0),
       rate = .data$n / .data$days * 1000) |>
-    dplyr::select(!"days") |>
     cache(x, cache_key)
 }
 
@@ -2179,7 +2223,6 @@ get_incidence_density_rates <- function(
     dplyr::mutate(
       n = tidyr::replace_na(.data$n, 0),
       rate = .data$n / .data$patient_days * 1000) |>
-    dplyr::select(!"patient_days") |>
     cache(x, cache_key)
 }
 
@@ -2207,7 +2250,7 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(
     get_infectious_agent_detection_rates(
       group_cols = group_cols,
       use_cache = use_cache) |>
-    dplyr::select(c(group_cols,"n","rate"="n_per_iwp")) |>
+    dplyr::select(c(group_cols,"n","inf_with_pathogen","rate"="n_per_iwp")) |>
     dplyr::mutate(
       drop_quartiles = n_deps < 5 | round(100 / .data$rate) >= median_inf_with_pathogen)
 
@@ -2639,7 +2682,7 @@ get_resistance_rate_with_department_quartiles <- function(
         .data$drop_quartiles,
         NA,
         .data$q3)) |>
-    dplyr::select(!c("inf_nrs", "inf_tst_tot", "inf_w_ia", "ia_rs", "ia_nrs",
+    dplyr::select(!c("inf_nrs", "inf_tst_tot", "ia_rs", "ia_nrs",
                      "ia_tst_tot", "ia_rs_rate","n_deps","median",
                      "drop_quartiles")) |>
     dplyr::rename("n"="inf_rs","rate"="inf_rs_rate")
@@ -2830,7 +2873,6 @@ get_secondary_bsi_rates <- function(x, group_cols = NULL, use_cache = TRUE) {
     dplyr::mutate(
       n = tidyr::replace_na(.data$n, 0),
       rate = .data$n / .data$followup_n * 100) |>
-    dplyr::select(!"followup_n") |>
     cache(x, cache_key)
 
   r
