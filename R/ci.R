@@ -151,3 +151,121 @@ wilson_ci_cols <- function(x, n, scale = 1) {
       tibble::tibble(ci_lower = ci$lower * scale, ci_upper = ci$upper * scale)
     })
 }
+
+#' Two-level parametric bootstrap CI for benchmark quartiles
+#'
+#' Computes confidence intervals for the departmental quartiles (Q1, Q2, Q3)
+#' of a surveillance metric. This is the only CI method in the pipeline that
+#' uses simulation, because no closed-form solution exists for the two-layer
+#' uncertainty structure: within-department sampling noise and cross-department
+#' quantile estimation uncertainty.
+#'
+#' Uses Jeffreys non-informative priors to propagate parameter uncertainty even
+#' for zero-count departments. For Poisson rates, the prior is
+#' `Gamma(0.5, 0)`; for binomial proportions, `Beta(0.5, 0.5)`. This ensures
+#' honest uncertainty propagation where naive resampling from `Poisson(0)`
+#' would always return 0.
+#'
+#' @param events Integer vector. Observed event counts per department. Must be
+#'   non-negative.
+#' @param exposure Numeric vector. Denominators per department (patient-days,
+#'   device-days, total infections, etc.). Must be strictly positive. Same
+#'   length as `events`. Departments with zero denominators must be excluded
+#'   upstream.
+#' @param type Character. Rate type: `"poisson"` for count-over-exposure
+#'   densities, `"binomial"` for true proportions. Determines the resampling
+#'   distribution.
+#' @param multiplier Numeric. Scaling factor applied to bootstrap rates before
+#'   quantile computation. Default 1. Use 1000 for incidence densities, 100
+#'   for utilisation densities.
+#' @param B Integer. Number of bootstrap iterations. Default 2000.
+#' @param conf.level Numeric. Confidence level. Default 0.95.
+#' @param seed Numeric or NULL. RNG seed for reproducibility. Default 42.
+#'   Set to NULL to skip seeding (non-deterministic).
+#'
+#' @returns A one-row tibble with six columns:
+#'   `q1_ci_lower`, `q1_ci_upper`, `q2_ci_lower`, `q2_ci_upper`,
+#'   `q3_ci_lower`, `q3_ci_upper`.
+#'
+#' @examples
+#' # Poisson: 6 departments with infection counts over patient-days
+#' bootstrap_quantile_ci(
+#'   events = c(5, 0, 12, 3, 8, 20),
+#'   exposure = c(1000, 800, 1200, 600, 900, 1500),
+#'   type = "poisson", multiplier = 1000)
+#'
+#' # Binomial: detection proportions
+#' bootstrap_quantile_ci(
+#'   events = c(15, 8, 22, 5, 18, 30),
+#'   exposure = c(20, 10, 25, 8, 20, 35),
+#'   type = "binomial", multiplier = 100)
+#'
+#' @export
+bootstrap_quantile_ci <- function(events, exposure,
+                                   type = c("poisson", "binomial"),
+                                   multiplier = 1,
+                                   B = 2000,
+                                   conf.level = 0.95,
+                                   seed = 42) {
+  type <- rlang::arg_match(type)
+  check_number_decimal(multiplier, min = .Machine$double.eps)
+  check_number_whole(B, min = 1)
+  check_number_decimal(conf.level, min = 0, max = 1)
+
+  if (length(events) != length(exposure)) {
+    rlang::abort("`events` and `exposure` must have the same length.")
+  }
+  if (any(events < 0, na.rm = TRUE)) {
+    rlang::abort("`events` must be non-negative.")
+  }
+  if (any(exposure <= 0, na.rm = TRUE)) {
+    rlang::abort("`exposure` must be strictly positive.")
+  }
+  if (type == "binomial" && any(events > exposure, na.rm = TRUE)) {
+    rlang::abort("`events` must be <= `exposure` for binomial type.")
+  }
+
+  k <- length(events)
+  alpha <- 1 - conf.level
+
+  # RNG isolation: save and restore .Random.seed
+  if (!is.null(seed)) {
+    if (exists(".Random.seed", envir = globalenv())) {
+      old_seed <- get(".Random.seed", envir = globalenv())
+      on.exit(assign(".Random.seed", old_seed, envir = globalenv()))
+    } else {
+      on.exit(rm(".Random.seed", envir = globalenv()))
+    }
+    set.seed(seed)
+  }
+
+  # Pre-allocate bootstrap quantile storage
+  boot_q <- matrix(NA_real_, nrow = B, ncol = 3)
+
+  for (b in seq_len(B)) {
+    if (type == "poisson") {
+      # Jeffreys posterior: λ ~ Gamma(events + 0.5, exposure)
+      lambda <- stats::rgamma(k, shape = events + 0.5, rate = exposure)
+      boot_events <- stats::rpois(k, lambda = lambda * exposure)
+      boot_rates <- boot_events / exposure * multiplier
+    } else {
+      # Jeffreys posterior: p ~ Beta(events + 0.5, exposure - events + 0.5)
+      p <- stats::rbeta(k,
+                        shape1 = events + 0.5,
+                        shape2 = exposure - events + 0.5)
+      boot_events <- stats::rbinom(k, size = exposure, prob = p)
+      boot_rates <- boot_events / exposure * multiplier
+    }
+    boot_q[b, ] <- stats::quantile(boot_rates, probs = c(0.25, 0.5, 0.75),
+                                    names = FALSE)
+  }
+
+  tibble::tibble(
+    q1_ci_lower = stats::quantile(boot_q[, 1], probs = alpha / 2, names = FALSE),
+    q1_ci_upper = stats::quantile(boot_q[, 1], probs = 1 - alpha / 2, names = FALSE),
+    q2_ci_lower = stats::quantile(boot_q[, 2], probs = alpha / 2, names = FALSE),
+    q2_ci_upper = stats::quantile(boot_q[, 2], probs = 1 - alpha / 2, names = FALSE),
+    q3_ci_lower = stats::quantile(boot_q[, 3], probs = alpha / 2, names = FALSE),
+    q3_ci_upper = stats::quantile(boot_q[, 3], probs = 1 - alpha / 2, names = FALSE)
+  )
+}

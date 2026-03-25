@@ -856,7 +856,9 @@ check_ds_and_try_get_table <- function(
     if(!include_quartiles && is_neoipcr_ref_ds(x))
       return(
         x[[table_name]] |>
-          dplyr::select(!tidyselect::any_of(c("q1", "q2", "q3"))))
+          dplyr::select(!tidyselect::any_of(c("q1", "q2", "q3",
+            "q1_ci_lower", "q1_ci_upper", "q2_ci_lower", "q2_ci_upper",
+            "q3_ci_lower", "q3_ci_upper"))))
 
     return(x[[table_name]])
   }
@@ -873,7 +875,9 @@ check_ds_and_try_get_table <- function(
       if(any(c("q1", "q2", "q3") %in% rlang::names2(r))) {
         return(
           r |>
-            dplyr::select(!tidyselect::any_of(c("q1", "q2", "q3"))))
+            dplyr::select(!tidyselect::any_of(c("q1", "q2", "q3",
+            "q1_ci_lower", "q1_ci_upper", "q2_ci_lower", "q2_ci_upper",
+            "q3_ci_lower", "q3_ci_upper"))))
       }
 
       return(r)
@@ -929,17 +933,28 @@ get_usage_density_rate_table <- function(
     add_class("neoipcr_tbl_udr")
 
   if(include_quartiles) {
-    risk_time <- get_risk_time(
+    dept_risk_time <- get_risk_time(
       x,
       group_cols = "department_key",
       use_cache = use_cache)
 
-    n_deps <- length(risk_time$patient_days)
-    median_patient_days <- stats::median(risk_time$patient_days)
+    n_deps <- length(dept_risk_time$patient_days)
+    median_patient_days <- stats::median(dept_risk_time$patient_days)
+
+    # Pivot dept-level data to long format for bootstrap
+    dept_rates <- dept_risk_time |>
+      dplyr::select("department_key", "patient_days",
+                     tidyselect::ends_with("_days") & !"patient_days") |>
+      tidyr::pivot_longer(
+        cols = !c("department_key", "patient_days"),
+        names_to = "factor",
+        values_to = "events") |>
+      dplyr::mutate(
+        factor = stringr::str_remove(.data$factor, "_days$"))
 
     r <- r |>
       dplyr::inner_join(
-        risk_time |>
+        dept_risk_time |>
           dplyr::select(tidyselect::ends_with("_rate")) |>
           dplyr::reframe(
             dplyr::across(
@@ -966,7 +981,26 @@ get_usage_density_rate_table <- function(
         q3 = dplyr::if_else(
           .data$drop_quartiles,
           NA,
-          .data$q3)) |>
+          .data$q3))
+
+    # Bootstrap CIs for quartiles where gate passes
+    boot_cis <- r |>
+      dplyr::group_by(.data$factor) |>
+      dplyr::group_map(~ {
+        if (.x$drop_quartiles[1]) {
+          tibble::tibble(q1_ci_lower = NA_real_, q1_ci_upper = NA_real_,
+                         q2_ci_lower = NA_real_, q2_ci_upper = NA_real_,
+                         q3_ci_lower = NA_real_, q3_ci_upper = NA_real_)
+        } else {
+          d <- dept_rates |> dplyr::filter(.data$factor == .y$factor)
+          bootstrap_quantile_ci(d$events, d$patient_days,
+                                type = "poisson", multiplier = 100)
+        }
+      }) |>
+      dplyr::bind_rows()
+
+    r <- r |>
+      dplyr::bind_cols(boot_cis) |>
       dplyr::select(!"drop_quartiles") |>
       add_class("neoipcr_tbl_udr_ref")
   }
@@ -1162,14 +1196,16 @@ get_incidence_density_rate_table <- function(
     n_deps <- length(pat_days)
     median_patient_days <- stats::median(pat_days)
 
+    dept_rates <- x |>
+      get_incidence_density_rates(
+        group_cols = "department_key",
+        use_cache = use_cache) |>
+      dplyr::mutate(
+        rate = tidyr::replace_na(.data$rate, 0))
+
     r <- r |>
       dplyr::full_join(
-        x |>
-          get_incidence_density_rates(
-            group_cols = "department_key",
-            use_cache = use_cache) |>
-          dplyr::mutate(
-            rate = tidyr::replace_na(.data$rate, 0)) |>
+        dept_rates |>
           dplyr::group_by(.data$inf) |>
           dplyr::summarise(
             q = list(
@@ -1193,7 +1229,26 @@ get_incidence_density_rate_table <- function(
         q3 = dplyr::if_else(
           .data$drop_quartiles,
           NA,
-          .data$q3)) |>
+          .data$q3))
+
+    # Bootstrap CIs for quartiles where gate passes
+    boot_cis <- r |>
+      dplyr::group_by(.data$inf) |>
+      dplyr::group_map(~ {
+        if (.x$drop_quartiles[1]) {
+          tibble::tibble(q1_ci_lower = NA_real_, q1_ci_upper = NA_real_,
+                         q2_ci_lower = NA_real_, q2_ci_upper = NA_real_,
+                         q3_ci_lower = NA_real_, q3_ci_upper = NA_real_)
+        } else {
+          d <- dept_rates |> dplyr::filter(.data$inf == .y$inf)
+          bootstrap_quantile_ci(d$n, d$patient_days,
+                                type = "poisson", multiplier = 1000)
+        }
+      }) |>
+      dplyr::bind_rows()
+
+    r <- r |>
+      dplyr::bind_cols(boot_cis) |>
       dplyr::select(!"drop_quartiles") |>
       add_class("neoipcr_tbl_idr_ref")
   }
@@ -1268,14 +1323,16 @@ get_dev_ass_incidence_density_rate_table <- function(
         dplyr::join_by("dev")
       )
 
+    dept_rates <- x |>
+      get_dev_ass_incidence_density_rates(
+        group_cols = "department_key",
+        use_cache = use_cache) |>
+      dplyr::mutate(
+        rate = tidyr::replace_na(.data$rate, 0))
+
     r <- r |>
       dplyr::full_join(
-        x |>
-          get_dev_ass_incidence_density_rates(
-            group_cols = "department_key",
-            use_cache = use_cache) |>
-          dplyr::mutate(
-            rate = tidyr::replace_na(.data$rate, 0)) |>
+        dept_rates |>
           dplyr::group_by(.data$dev) |>
           dplyr::summarise(
             q = list(
@@ -1302,7 +1359,27 @@ get_dev_ass_incidence_density_rate_table <- function(
         q3 = dplyr::if_else(
           .data$drop_quartiles,
           NA,
-          .data$q3)) |>
+          .data$q3))
+
+    # Bootstrap CIs for quartiles where gate passes
+    boot_cis <- r |>
+      dplyr::group_by(.data$dev) |>
+      dplyr::group_map(~ {
+        if (.x$drop_quartiles[1]) {
+          tibble::tibble(q1_ci_lower = NA_real_, q1_ci_upper = NA_real_,
+                         q2_ci_lower = NA_real_, q2_ci_upper = NA_real_,
+                         q3_ci_lower = NA_real_, q3_ci_upper = NA_real_)
+        } else {
+          d <- dept_rates |> dplyr::filter(.data$dev == .y$dev,
+                                                    .data$days > 0)
+          bootstrap_quantile_ci(d$n, d$days,
+                                type = "poisson", multiplier = 1000)
+        }
+      }) |>
+      dplyr::bind_rows()
+
+    r <- r |>
+      dplyr::bind_cols(boot_cis) |>
       dplyr::select(!c("drop_quartiles","n_deps","median")) |>
       add_class("neoipcr_tbl_daidr_ref")
   }
@@ -1381,18 +1458,20 @@ get_infectious_agent_detection_rate_per_inf_type_table <- function(
         median = stats::median(.data$n),
         n = dplyr::n())
 
-    r <- r |>
-      dplyr::inner_join(
+    dept_rates <- x |>
+      get_infectious_agent_detection_rates(
+        group_cols = "department_key",
+        use_cache = use_cache) |>
+      dplyr::bind_cols(event_type_key = "all") |>
+      dplyr::bind_rows(
         x |>
           get_infectious_agent_detection_rates(
-            group_cols = "department_key",
-            use_cache = use_cache) |>
-          dplyr::bind_cols(event_type_key = "all") |>
-          dplyr::bind_rows(
-            x |>
-              get_infectious_agent_detection_rates(
-                group_cols = c("department_key","event_type_key"),
-                use_cache = use_cache)) |>
+            group_cols = c("department_key","event_type_key"),
+            use_cache = use_cache))
+
+    r <- r |>
+      dplyr::inner_join(
+        dept_rates |>
           dplyr::group_by(.data$event_type_key) |>
           dplyr::summarise(
             q = list(
@@ -1425,8 +1504,28 @@ get_infectious_agent_detection_rate_per_inf_type_table <- function(
         q3 = dplyr::if_else(
           .data$drop_quartiles,
           NA,
-          .data$q3)
-        ) |>
+          .data$q3))
+
+    # Bootstrap CIs for quartiles where gate passes
+    boot_cis <- r |>
+      dplyr::group_by(.data$event_type_key) |>
+      dplyr::group_map(~ {
+        if (.x$drop_quartiles[1]) {
+          tibble::tibble(q1_ci_lower = NA_real_, q1_ci_upper = NA_real_,
+                         q2_ci_lower = NA_real_, q2_ci_upper = NA_real_,
+                         q3_ci_lower = NA_real_, q3_ci_upper = NA_real_)
+        } else {
+          d <- dept_rates |>
+            dplyr::filter(.data$event_type_key == .y$event_type_key,
+                          .data$total_inf > 0)
+          bootstrap_quantile_ci(d$inf_with_pathogen, d$total_inf,
+                                type = "binomial", multiplier = 100)
+        }
+      }) |>
+      dplyr::bind_rows()
+
+    r <- r |>
+      dplyr::bind_cols(boot_cis) |>
       dplyr::select(!c("drop_quartiles","n","median")) |>
       add_class("neoipcr_tbl_iadrpit_ref")
   }
@@ -1477,7 +1576,9 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
     get_rates <- function(...) {
       get_infectious_agent_detection_rates_with_department_quartiles(...)
     }
-    rate_cols <- c("n","inf_with_pathogen","rate","q1","q2","q3")
+    rate_cols <- c("n","inf_with_pathogen","rate","q1","q2","q3",
+                   "q1_ci_lower","q1_ci_upper","q2_ci_lower","q2_ci_upper",
+                   "q3_ci_lower","q3_ci_upper")
     return_class <- c("neoipcr_tbl_iadrpa_ref", "neoipcr_tbl_iadrpa")
   } else {
     get_rates <- function(...) {
@@ -1698,7 +1799,9 @@ get_abr_infection_rate_table <- function(
     get_resistance <- function(...) {
       get_resistance_rate_with_department_quartiles(...)
     }
-    rate_cols <- c("n","inf_w_ia","rate","q1","q2","q3")
+    rate_cols <- c("n","inf_w_ia","rate","q1","q2","q3",
+                   "q1_ci_lower","q1_ci_upper","q2_ci_lower","q2_ci_upper",
+                   "q3_ci_lower","q3_ci_upper")
     return_class <- c("neoipcr_tbl_abr_ir_ref", "neoipcr_tbl_abr_ir")
   } else {
     get_resistance <- function(...) {
@@ -1925,7 +2028,10 @@ get_resistance_test_rate_table <- function(
       cond = factor(.data$type, levels = c("routine","if_3gcr","if_3gcr&car")),
       .keep = "unused"
     ) |>
-    dplyr::select("abr","cond","n"="tested","total","pooled"="rate",tidyselect::any_of(c("q1","q2","q3"))) |>
+    dplyr::select("abr","cond","n"="tested","total","pooled"="rate",
+                  tidyselect::any_of(c("q1","q2","q3",
+                    "q1_ci_lower","q1_ci_upper","q2_ci_lower","q2_ci_upper",
+                    "q3_ci_lower","q3_ci_upper"))) |>
     (\(d) dplyr::bind_cols(d, wilson_ci_cols(d$n, d$total, scale = 100)))() |>
     dplyr::select(!"total") |>
     (\(r) {
@@ -2029,7 +2135,27 @@ get_secondary_bsi_rate_table <- function(
         dplyr::mutate(
           dplyr::across(
             c("q1", "q2", "q3"),
-            ~dplyr::if_else(.data$drop_quartiles, NA_real_, .x))) |>
+            ~dplyr::if_else(.data$drop_quartiles, NA_real_, .x)))
+
+      # Bootstrap CIs for quartiles where gate passes
+      boot_cis <- r |>
+        dplyr::group_by(.data$event_type_key) |>
+        dplyr::group_map(~ {
+          if (.x$drop_quartiles[1]) {
+            tibble::tibble(q1_ci_lower = NA_real_, q1_ci_upper = NA_real_,
+                           q2_ci_lower = NA_real_, q2_ci_upper = NA_real_,
+                           q3_ci_lower = NA_real_, q3_ci_upper = NA_real_)
+          } else {
+            d <- dept_rates |>
+              dplyr::filter(.data$event_type_key == .y$event_type_key)
+            bootstrap_quantile_ci(d$n, d$followup_n,
+                                  type = "binomial", multiplier = 100)
+          }
+        }) |>
+        dplyr::bind_rows()
+
+      r <- r |>
+        dplyr::bind_cols(boot_cis) |>
         dplyr::select(!"drop_quartiles") |>
         add_class("neoipcr_tbl_sec_bsi_ref")
     }
@@ -2271,10 +2397,11 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(
       )
   }
 
-  r2 <- x |>
+  dept_data <- x |>
     get_infectious_agent_detection_rates(
       group_cols = c("department_key", group_cols),
-      use_cache = use_cache) |>
+      use_cache = use_cache)
+  r2 <- dept_data |>
     dplyr::select(c("department_key", group_cols,"n_per_iwp"))
 
   if (nrow(r2) < 1) {
@@ -2320,6 +2447,23 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(
     dplyr::mutate(dplyr::across(tidyselect::any_of(group_cols), as.character)) |>
     dplyr::inner_join(r2 , by = group_cols)
 
+  # Bootstrap CIs for quartiles where gate passes
+  boot_cis <- purrr::map_dfr(seq_len(nrow(r)), function(i) {
+    if (r$drop_quartiles[i]) {
+      return(tibble::tibble(q1_ci_lower = NA_real_, q1_ci_upper = NA_real_,
+                            q2_ci_lower = NA_real_, q2_ci_upper = NA_real_,
+                            q3_ci_lower = NA_real_, q3_ci_upper = NA_real_))
+    }
+    d <- dept_data
+    if (!is.null(group_cols)) {
+      for (gc in group_cols)
+        d <- d |> dplyr::filter(.data[[gc]] == r[[gc]][i])
+    }
+    d <- d |> dplyr::filter(.data$inf_with_pathogen > 0)
+    bootstrap_quantile_ci(d$n, d$inf_with_pathogen,
+                          type = "poisson", multiplier = 100)
+  })
+
   r |> dplyr::mutate(
     q1 = dplyr::if_else(
       .data$drop_quartiles,
@@ -2333,6 +2477,7 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(
       .data$drop_quartiles,
       NA,
       .data$q3)) |>
+    dplyr::bind_cols(boot_cis) |>
     cache(x, cache_key)
 }
 
@@ -2516,7 +2661,7 @@ get_resistance_test_rate_with_department_quartiles <- function(
     dplyr::inner_join(dep_stats, by = group_cols) |>
     dplyr::inner_join(quartiles, by = group_cols)
 
-  rate |>
+  rate <- rate |>
     dplyr::mutate(
       drop_quartiles = .data$n_deps < 5 | round(100 / .data$rate) >= .data$median,
       q1 = dplyr::if_else(
@@ -2530,7 +2675,27 @@ get_resistance_test_rate_with_department_quartiles <- function(
       q3 = dplyr::if_else(
         .data$drop_quartiles,
         NA,
-        .data$q3)) |>
+        .data$q3))
+
+  # Bootstrap CIs for quartiles where gate passes
+  boot_cis <- purrr::map_dfr(seq_len(nrow(rate)), function(i) {
+    if (rate$drop_quartiles[i]) {
+      return(tibble::tibble(q1_ci_lower = NA_real_, q1_ci_upper = NA_real_,
+                            q2_ci_lower = NA_real_, q2_ci_upper = NA_real_,
+                            q3_ci_lower = NA_real_, q3_ci_upper = NA_real_))
+    }
+    d <- dplyr::ungroup(deps)
+    if (!is.null(group_cols)) {
+      for (gc in group_cols)
+        d <- d |> dplyr::filter(.data[[gc]] == rate[[gc]][i])
+    }
+    d <- d |> dplyr::filter(.data$total > 0)
+    bootstrap_quantile_ci(d$tested, d$total,
+                          type = "binomial", multiplier = 100)
+  })
+
+  rate |>
+    dplyr::bind_cols(boot_cis) |>
     dplyr::select(!c("n_deps","median", "drop_quartiles"))
 }
 
@@ -2667,7 +2832,7 @@ get_resistance_rate_with_department_quartiles <- function(
     dplyr::inner_join(dep_stats, by = group_cols) |>
     dplyr::inner_join(quartiles, by = group_cols)
 
-  rate |>
+  rate <- rate |>
     dplyr::mutate(
       drop_quartiles = .data$n_deps < 5 | round(100 / .data$inf_rs_rate) >= .data$median,
       q1 = dplyr::if_else(
@@ -2681,7 +2846,27 @@ get_resistance_rate_with_department_quartiles <- function(
       q3 = dplyr::if_else(
         .data$drop_quartiles,
         NA,
-        .data$q3)) |>
+        .data$q3))
+
+  # Bootstrap CIs for quartiles where gate passes
+  boot_cis <- purrr::map_dfr(seq_len(nrow(rate)), function(i) {
+    if (rate$drop_quartiles[i]) {
+      return(tibble::tibble(q1_ci_lower = NA_real_, q1_ci_upper = NA_real_,
+                            q2_ci_lower = NA_real_, q2_ci_upper = NA_real_,
+                            q3_ci_lower = NA_real_, q3_ci_upper = NA_real_))
+    }
+    d <- dplyr::ungroup(deps)
+    if (!is.null(group_cols)) {
+      for (gc in group_cols)
+        d <- d |> dplyr::filter(.data[[gc]] == rate[[gc]][i])
+    }
+    d <- d |> dplyr::filter(.data$inf_w_ia > 0)
+    bootstrap_quantile_ci(d$inf_rs, d$inf_w_ia,
+                          type = "binomial", multiplier = 100)
+  })
+
+  rate |>
+    dplyr::bind_cols(boot_cis) |>
     dplyr::select(!c("inf_nrs", "inf_tst_tot", "ia_rs", "ia_nrs",
                      "ia_tst_tot", "ia_rs_rate","n_deps","median",
                      "drop_quartiles")) |>

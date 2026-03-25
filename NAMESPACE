@@ -3,6 +3,7 @@
 S3method(pretty_names,default)
 S3method(pretty_names,neoipcr_tbl_sr_ref)
 S3method(print,neoipcr_dhis2_conopt)
+export(bootstrap_quantile_ci)
 export(calculate_department_data)
 export(calculate_reference_data)
 export(dhis2_connection_options)

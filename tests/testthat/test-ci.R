@@ -223,3 +223,101 @@ test_that("poisson_ci_cols CI ordering is consistent", {
     expect_true(result$ci_upper[i] >= rates[i])
   }
 })
+
+# --- bootstrap_quantile_ci() -----------------------------------------------
+
+test_that("bootstrap_quantile_ci returns correct structure", {
+  result <- bootstrap_quantile_ci(
+    c(20, 15, 30, 25, 18, 22),
+    c(1000, 800, 1200, 900, 700, 1100),
+    type = "poisson", multiplier = 1000)
+  expect_s3_class(result, "tbl_df")
+  expect_equal(nrow(result), 1)
+  expect_named(result, c("q1_ci_lower", "q1_ci_upper",
+                          "q2_ci_lower", "q2_ci_upper",
+                          "q3_ci_lower", "q3_ci_upper"))
+})
+
+test_that("bootstrap_quantile_ci is deterministic with fixed seed", {
+  args <- list(events = c(20, 15, 30, 25, 18), exposure = c(1000, 800, 1200, 900, 700),
+               type = "poisson", multiplier = 1000, seed = 123)
+  r1 <- do.call(bootstrap_quantile_ci, args)
+  r2 <- do.call(bootstrap_quantile_ci, args)
+  expect_equal(r1, r2)
+})
+
+test_that("bootstrap_quantile_ci differs with different seeds", {
+  args <- list(events = c(20, 15, 30, 25, 18), exposure = c(1000, 800, 1200, 900, 700),
+               type = "poisson", multiplier = 1000)
+  r1 <- do.call(bootstrap_quantile_ci, c(args, seed = 1))
+  r2 <- do.call(bootstrap_quantile_ci, c(args, seed = 2))
+  expect_false(identical(r1, r2))
+})
+
+test_that("bootstrap_quantile_ci contains observed quartiles for large counts", {
+  # Large counts: Jeffreys prior has negligible influence, containment holds
+  events <- c(50, 40, 80, 60, 35, 70, 55, 45)
+  exposure <- rep(1000, 8)
+  rates <- events / exposure * 1000
+  observed_q <- stats::quantile(rates, probs = c(0.25, 0.5, 0.75), names = FALSE)
+  result <- bootstrap_quantile_ci(events, exposure, type = "poisson",
+                                   multiplier = 1000, B = 5000)
+  expect_true(result$q1_ci_lower <= observed_q[1])
+  expect_true(result$q1_ci_upper >= observed_q[1])
+  expect_true(result$q2_ci_lower <= observed_q[2])
+  expect_true(result$q2_ci_upper >= observed_q[2])
+  expect_true(result$q3_ci_lower <= observed_q[3])
+  expect_true(result$q3_ci_upper >= observed_q[3])
+})
+
+test_that("bootstrap_quantile_ci handles zero-event departments (Jeffreys prior)", {
+  # Several zero-count departments: Jeffreys prior produces non-degenerate CIs
+  # The bootstrap CI may NOT contain the point-estimate Q1 (which is 0.0) —
+  # this is expected behaviour: the prior propagates uncertainty that the
+  # point estimate ignores.
+  events <- c(0, 0, 0, 5, 10, 8)
+  exposure <- c(1000, 800, 1200, 900, 700, 1100)
+  result <- bootstrap_quantile_ci(events, exposure, type = "poisson",
+                                   multiplier = 1000, B = 2000)
+  # CI width should be > 0 (non-degenerate)
+  expect_true(result$q1_ci_upper > result$q1_ci_lower)
+  expect_true(result$q2_ci_upper > result$q2_ci_lower)
+})
+
+test_that("bootstrap_quantile_ci works for binomial type", {
+  result <- bootstrap_quantile_ci(
+    c(15, 8, 22, 5, 18, 30),
+    c(20, 10, 25, 8, 20, 35),
+    type = "binomial", multiplier = 100)
+  expect_s3_class(result, "tbl_df")
+  expect_equal(nrow(result), 1)
+  # Proportions scaled by 100: CIs should be in 0-100 range
+  expect_true(result$q1_ci_lower >= 0)
+  expect_true(result$q3_ci_upper <= 100)
+})
+
+test_that("bootstrap_quantile_ci conf.level = 0.99 gives wider CIs", {
+  args <- list(events = c(20, 15, 30, 25, 18, 22),
+               exposure = c(1000, 800, 1200, 900, 700, 1100),
+               type = "poisson", multiplier = 1000)
+  ci95 <- do.call(bootstrap_quantile_ci, c(args, conf.level = 0.95))
+  ci99 <- do.call(bootstrap_quantile_ci, c(args, conf.level = 0.99))
+  expect_true(ci99$q2_ci_upper - ci99$q2_ci_lower >=
+              ci95$q2_ci_upper - ci95$q2_ci_lower)
+})
+
+test_that("bootstrap_quantile_ci validates inputs", {
+  expect_error(bootstrap_quantile_ci(c(-1, 5), c(100, 100)))
+  expect_error(bootstrap_quantile_ci(c(5, 5), c(0, 100)))
+  expect_error(bootstrap_quantile_ci(c(5, 5), c(100)))
+  expect_error(bootstrap_quantile_ci(c(10, 5), c(5, 10), type = "binomial"))
+})
+
+test_that("bootstrap_quantile_ci does not corrupt global RNG state", {
+  set.seed(999)
+  expected <- stats::runif(1)
+  set.seed(999)
+  bootstrap_quantile_ci(c(5, 10), c(100, 100), type = "poisson", seed = 42)
+  actual <- stats::runif(1)
+  expect_equal(actual, expected)
+})
