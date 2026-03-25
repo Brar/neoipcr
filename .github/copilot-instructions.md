@@ -35,6 +35,7 @@ These guardrails are **universal** — mirrored in every NeoIPC repository's ins
 | `R/dhis2-enrollments.R` | Enrollment import |
 | `R/dhis2-events.R` | Event import and processing |
 | `R/calc.R` | Epidemiological calculations (`calculate_department_data()`, `get_benchmark_data()`) |
+| `R/ci.R` | Confidence interval functions (`neoipc_poisson_ci()`, `neoipc_wilson_ci()`) |
 | `R/filter.R` | Data filtering and subsetting |
 | `R/pathogens.R` | Pathogen taxonomy and resistance markers |
 | `R/validation.R` | Data validation rules |

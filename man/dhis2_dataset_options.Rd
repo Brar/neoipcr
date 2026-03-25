@@ -80,7 +80,7 @@ values are "no", "pseudonymised" and "yes"}
 \item{include_timestamps}{Include the createdAt and modifiedAt timestamps
 into the dataset.}
 
-\item{include_test_data}{Include data from test units into the dataset.}
+\item{include_test_data}{Include data from test departments into the dataset.}
 
 \item{include_ineligible_patients}{Include data from patients that do not
 meet the NeoIPC Core patient case eligibility criteria.}
