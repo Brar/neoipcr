@@ -571,7 +571,7 @@ get_benchmark_data <- function(...) {
         # level/taxon (from ref)
         key_cols <- intersect(
           names(tbl),
-          c("lv", "tl", "level", "taxon", "group"))
+          c("lv", "tl", "level", "taxon", "group", ".ontology_path"))
         tbl <- tbl |>
           dplyr::rename_with(
             ~ paste0(.x, suffix), !tidyselect::any_of(key_cols))
@@ -579,15 +579,13 @@ get_benchmark_data <- function(...) {
         if (is.null(output$infectious_agent_detection_rate_per_agent_table)) {
           output$infectious_agent_detection_rate_per_agent_table <- tbl
         } else {
-          # Use the key columns that exist in the output table
-          # We should homogenise the keys between the tables at some point soon
-          # to simplify the join
           join_cols <- intersect(
             names(output$infectious_agent_detection_rate_per_agent_table),
-            c("level", "taxon", "lv", "tl", "group"))
+            c("level", "taxon", "lv", "tl", "group", ".ontology_path"))
           output$infectious_agent_detection_rate_per_agent_table <-
             output$infectious_agent_detection_rate_per_agent_table |>
             dplyr::full_join(tbl, dplyr::join_by(!!!join_cols)) |>
+            dplyr::arrange(.data$.ontology_path) |>
             dplyr::mutate(
               dplyr::across(
                 dplyr::starts_with("n_"),
@@ -610,7 +608,8 @@ get_benchmark_data <- function(...) {
         # abr/level/taxon (from ref)
         key_cols <- intersect(
           names(tbl),
-          c("abr_type", "abr", "lv", "tl", "level", "taxon", "group"))
+          c("abr_type", "abr", "lv", "tl", "level", "taxon", "group",
+            ".ontology_path"))
         tbl <- tbl |>
           dplyr::rename_with(
             ~ paste0(.x, suffix), !tidyselect::any_of(key_cols))
@@ -618,14 +617,13 @@ get_benchmark_data <- function(...) {
         if (is.null(output$abr_infection_rate_table)) {
           output$abr_infection_rate_table <- tbl
         } else {
-          # Use the key columns that exist in the output table
-          # We should homogenise the keys between the tables at some point soon
-          # to simplify the join
           join_cols <- intersect(
             names(output$abr_infection_rate_table),
-            c("abr", "abr_type", "level", "taxon", "lv", "tl", "group"))
+            c("abr", "abr_type", "level", "taxon", "lv", "tl", "group",
+              ".ontology_path"))
           output$abr_infection_rate_table <- output$abr_infection_rate_table |>
             dplyr::full_join(tbl, dplyr::join_by(!!!join_cols)) |>
+            dplyr::arrange(.data$.ontology_path) |>
             dplyr::mutate(
               dplyr::across(
                 dplyr::starts_with("n_"),
@@ -1460,6 +1458,7 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
   lv0 <- dplyr::bind_cols(
     lv = 0L,
     tl = "none",
+    .ontology_path = "",
     group = "Total",
     x |>
       get_rates(use_cache = use_cache) |>
@@ -1473,7 +1472,9 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
   for (i in 1:nrow(d)) {
     di <- d[i,]
     if(!is.na(di$group) && di$group == "Bacteria") {
-      lv1 <- dplyr::bind_cols(lv = 1L, tl = "domain", di)
+      op_domain <- di$group
+      lv1 <- dplyr::bind_cols(lv = 1L, tl = "domain",
+        .ontology_path = op_domain, di)
       o <- x |>
         get_rates(
           group_cols = c("domain","order"),
@@ -1483,7 +1484,9 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
         dplyr::arrange(dplyr::desc(.data$rate))
       for (j in 1:nrow(o)) {
         oj <- o[j,]
-        lv2 <- dplyr::bind_cols(lv = 2L, tl = "order", oj)
+        op_order <- paste0(op_domain, "|", oj$group)
+        lv2 <- dplyr::bind_cols(lv = 2L, tl = "order",
+          .ontology_path = op_order, oj)
         g <- x |>
           get_rates(
             group_cols = c("order","genus"),
@@ -1493,7 +1496,10 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
           dplyr::arrange(dplyr::desc(.data$rate))
         for (k in 1:nrow(g)) {
           gk <- g[k,]
-          lv3 <- dplyr::bind_cols(lv = 3L, tl = "genus", gk |> dplyr::mutate(group = paste(.data$group, "spp.")))
+          op_genus <- paste0(op_order, "|", gk$group)
+          lv3 <- dplyr::bind_cols(lv = 3L, tl = "genus",
+            .ontology_path = op_genus,
+            gk |> dplyr::mutate(group = paste(.data$group, "spp.")))
           if(gk$group == "Staphylococcus") {
             c <- x |>
               get_rates(
@@ -1508,10 +1514,14 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
                 "n" = "Coagulase-negative staphylococci",
                 "p" = "Coagulase-positive staphylococci",
                 "Staphylococcus spp. n.o.s.")
+              op_coag <- paste0(op_genus, "|",
+                switch(as.character(cl$group),
+                  "n" = "n", "p" = "p", "~"))
               lv4 <- dplyr::bind_cols(
                 lv = 4L,
                 tl = switch (as.character(cl$group), "n" = "coag_type",
                              "p" = "coag_type", "coag_type_nos"),
+                .ontology_path = op_coag,
                 cl |> dplyr::mutate(group = c_text))
               s <- x |>
                 get_rates(
@@ -1524,12 +1534,16 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
                 dplyr::bind_cols(
                   lv = 5L,
                   tl = "species",
-                  s |> dplyr::filter(!is.na(.data$group))),
+                  s |> dplyr::filter(!is.na(.data$group)) |>
+                    dplyr::mutate(.ontology_path = paste0(
+                      op_coag, "|", .data$group))),
                 dplyr::bind_cols(
                   lv = 5L,
                   tl = "species_nos",
                   s |> dplyr::filter(is.na(.data$group)) |>
-                    dplyr::mutate(group = paste(c_text, "n.o.s."))))
+                    dplyr::mutate(
+                      .ontology_path = paste0(op_coag, "|~"),
+                      group = paste(c_text, "n.o.s."))))
               lv3 <- dplyr::bind_rows(lv3,lv4,lv5)
             }
           }
@@ -1545,12 +1559,16 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
               dplyr::bind_cols(
                 lv = 4L,
                 tl = "species",
-                s |> dplyr::filter(!is.na(.data$group))),
+                s |> dplyr::filter(!is.na(.data$group)) |>
+                  dplyr::mutate(.ontology_path = paste0(
+                    op_genus, "|", .data$group))),
               dplyr::bind_cols(
                 lv = 4L,
                 tl = "species_nos",
                 s |> dplyr::filter(is.na(.data$group)) |>
-                  dplyr::mutate(group = paste(gk$group,"spp. n.o.s."))))
+                  dplyr::mutate(
+                    .ontology_path = paste0(op_genus, "|~"),
+                    group = paste(gk$group,"spp. n.o.s."))))
             lv3 <- dplyr::bind_rows(lv3,lv4)
           }
           lv2 <- dplyr::bind_rows(lv2,lv3)
@@ -1569,7 +1587,9 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
         dplyr::arrange(dplyr::desc(.data$rate))
       for (j in 1:nrow(kd)) {
         kj <- kd[j,]
-        lv1 <- dplyr::bind_cols(lv = 1L, tl = "kingdom", kj)
+        op_kingdom <- paste0(di$group, "|", kj$group)
+        lv1 <- dplyr::bind_cols(lv = 1L, tl = "kingdom",
+          .ontology_path = op_kingdom, kj)
         g <- x |>
           get_rates(
             group_cols = c("kingdom","genus"),
@@ -1579,7 +1599,10 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
           dplyr::arrange(dplyr::desc(.data$rate))
         for (k in 1:nrow(g)) {
           gk <- g[k,]
-          lv2 <- dplyr::bind_cols(lv = 2L, tl = "genus", gk |> dplyr::mutate(group = paste(.data$group, "spp.")))
+          op_genus <- paste0(op_kingdom, "|", gk$group)
+          lv2 <- dplyr::bind_cols(lv = 2L, tl = "genus",
+            .ontology_path = op_genus,
+            gk |> dplyr::mutate(group = paste(.data$group, "spp.")))
           s <- x |>
             get_rates(
               group_cols = c("genus","coagulase","species"),
@@ -1591,12 +1614,16 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
             dplyr::bind_cols(
               lv = 3L,
               tl = "species",
-              s |> dplyr::filter(!is.na(.data$group))),
+              s |> dplyr::filter(!is.na(.data$group)) |>
+                dplyr::mutate(.ontology_path = paste0(
+                  op_genus, "|", .data$group))),
             dplyr::bind_cols(
               lv = 3L,
               tl = "species_nos",
               s |> dplyr::filter(is.na(.data$group)) |>
-                dplyr::mutate(group = paste(gk$group,"spp. n.o.s."))))
+                dplyr::mutate(
+                  .ontology_path = paste0(op_genus, "|~"),
+                  group = paste(gk$group,"spp. n.o.s."))))
           lv1 <- dplyr::bind_rows(lv1,lv2,lv3)
         }
       }
@@ -1661,6 +1688,7 @@ get_abr_infection_rate_table <- function(
       abr_type = abr_type,
       lv = 0L,
       tl = "none",
+      .ontology_path = abr_type,
       group = "Total",
       t)
 
@@ -1677,10 +1705,12 @@ get_abr_infection_rate_table <- function(
         oj <- o[j,]
 
         if(oj$n > 0) {
+          op_order <- paste0(abr_type, "|", oj$group)
           lv1 <- dplyr::bind_cols(
             abr_type = abr_type,
             lv = 2L,
             tl = "order",
+            .ontology_path = op_order,
             oj)
           g <- x |>
             get_resistance(
@@ -1695,10 +1725,12 @@ get_abr_infection_rate_table <- function(
             gk <- g[k,]
 
             if(gk$n > 0) {
+              op_genus <- paste0(op_order, "|", gk$group)
               lv2 <- dplyr::bind_cols(
                 abr_type = abr_type,
                 lv = 3L,
                 tl = "genus",
+                .ontology_path = op_genus,
                 gk |>
                   dplyr::mutate(group = paste(.data$group, "spp.")))
               s <- x |>
@@ -1715,14 +1747,18 @@ get_abr_infection_rate_table <- function(
                   lv = 4L,
                   tl = "species",
                   s |>
-                    dplyr::filter(!is.na(.data$group) & .data$n > 0)),
+                    dplyr::filter(!is.na(.data$group) & .data$n > 0) |>
+                    dplyr::mutate(.ontology_path = paste0(
+                      op_genus, "|", .data$group))),
                 dplyr::bind_cols(
                   abr_type = abr_type,
                   lv = 4L,
                   tl = "species_nos",
                   s |>
                     dplyr::filter(is.na(.data$group) & .data$n > 0) |>
-                    dplyr::mutate(group = paste(gk$group,"spp. n.o.s."))))
+                    dplyr::mutate(
+                      .ontology_path = paste0(op_genus, "|~"),
+                      group = paste(gk$group,"spp. n.o.s."))))
               lv2 <- dplyr::bind_rows(lv2,lv3)
               lv1 <- dplyr::bind_rows(lv1,lv2)
             }
@@ -1741,6 +1777,7 @@ get_abr_infection_rate_table <- function(
       abr_type = "mrsa",
       lv = 0L,
       tl = "species",
+      .ontology_path = "mrsa",
       x |>
         get_resistance(
           resistance = "mrsa",
@@ -1761,6 +1798,7 @@ get_abr_infection_rate_table <- function(
     abr_type = "vre",
     lv = 0L,
     tl = "genus",
+    .ontology_path = "vre",
     g)
 
   if(length(g$n) > 0 && g$n > 0) {
@@ -1778,14 +1816,17 @@ get_abr_infection_rate_table <- function(
         lv = 1L,
         tl = "species",
         s |>
-          dplyr::filter(!is.na(.data$group) & .data$n > 0)),
+          dplyr::filter(!is.na(.data$group) & .data$n > 0) |>
+          dplyr::mutate(.ontology_path = paste0("vre|", .data$group))),
       dplyr::bind_cols(
         abr_type = "vre",
         lv = 1L,
         tl = "species_nos",
         s |>
           dplyr::filter(is.na(.data$group) & .data$n > 0) |>
-          dplyr::mutate(group = paste(g$group," n.o.s."))))
+          dplyr::mutate(
+            .ontology_path = "vre|~",
+            group = paste(g$group," n.o.s."))))
 
     lv0 <- dplyr::bind_rows(lv0,lv1)
   }
