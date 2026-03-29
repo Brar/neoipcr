@@ -215,17 +215,30 @@ bootstrap_quantile_ci <- function(events, exposure,
   if (length(events) != length(exposure)) {
     rlang::abort("`events` and `exposure` must have the same length.")
   }
-  if (any(events < 0, na.rm = TRUE)) {
+
+  # Filter out NA pairs — departments without this metric are structurally
+  # absent, not zero-event observations
+  valid <- !is.na(events) & !is.na(exposure)
+  events <- events[valid]
+  exposure <- exposure[valid]
+
+  if (any(events < 0)) {
     rlang::abort("`events` must be non-negative.")
   }
-  if (any(exposure <= 0, na.rm = TRUE)) {
+  if (any(exposure <= 0)) {
     rlang::abort("`exposure` must be strictly positive.")
   }
-  if (type == "binomial" && any(events > exposure, na.rm = TRUE)) {
+  if (type == "binomial" && any(events > exposure)) {
     rlang::abort("`events` must be <= `exposure` for binomial type.")
   }
 
   k <- length(events)
+  if (k < 2) {
+    return(tibble::tibble(
+      q1_ci_lower = NA_real_, q1_ci_upper = NA_real_,
+      q2_ci_lower = NA_real_, q2_ci_upper = NA_real_,
+      q3_ci_lower = NA_real_, q3_ci_upper = NA_real_))
+  }
   alpha <- 1 - conf.level
 
   # RNG isolation: save and restore .Random.seed
