@@ -262,13 +262,22 @@ import_dhis2 <- function(
     }
   }
 
-  parse_resp <- \(resp)
-    httr2::resp_body_json(resp) |>
-    tibble::tibble() |>
-    tidyr::unnest_longer(1) |>
-    tidyr::unnest_wider(1)
+  parse_resp <- \(resp) {
+    tbl <- httr2::resp_body_json(resp) |>
+      tibble::tibble() |>
+      tidyr::unnest_longer(1)
+    if (nrow(tbl) == 0 || ncol(tbl) == 0)
+      return(tibble::tibble())
+    tidyr::unnest_wider(tbl, 1)
+  }
 
   trackedEntities_raw <- parse_resp(resps[[1]])
+  if (nrow(trackedEntities_raw) == 0)
+    rlang::abort(c(
+      "No tracked entities returned by DHIS2.",
+      "i" = "The selected organisation unit(s) may have no enrolled patients.",
+      "i" = paste0("Organisation unit(s): ",
+                   paste(connection_options$orgUnit, collapse = ", "))))
   enrollments_raw <- parse_resp(resps[[2]])
   events_raw <- resps[seq(3, length(resps))] |>
     purrr::map(parse_resp) |>

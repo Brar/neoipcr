@@ -23,7 +23,7 @@ fix_zero_event_ci <- function(tbl, suffixes, denominator_tbl,
     if (all(c(n_col, ci_lo) %in% names(tbl)) &&
         d_col %in% names(denominator_tbl)) {
       zero <- !is.na(tbl[[n_col]]) & tbl[[n_col]] == 0 & is.na(tbl[[ci_lo]])
-      if (any(zero)) {
+      if (any(zero) && denominator_tbl[[d_col]] > 0) {
         ci <- neoipc_poisson_ci(0, denominator_tbl[[d_col]],
                                  multiplier = multiplier)
         tbl[[ci_lo]][zero] <- ci$lower
@@ -2879,10 +2879,17 @@ get_resistance_rate_with_department_quartiles <- function(
   if (nrow(deps) < 1) {
     r <- tibble::tibble(
       n = 0L,
+      inf_w_ia = 0L,
       rate = NA_real_,
       q1 = NA_real_,
       q2 = NA_real_,
-      q3 = NA_real_)
+      q3 = NA_real_,
+      q1_ci_lower = NA_real_,
+      q1_ci_upper = NA_real_,
+      q2_ci_lower = NA_real_,
+      q2_ci_upper = NA_real_,
+      q3_ci_lower = NA_real_,
+      q3_ci_upper = NA_real_)
     if (!is.null(group_cols))
       r <- dplyr::bind_cols(
         tibble::tibble(!!!group_cols, .rows = 1, .name_repair = ~ group_cols),
