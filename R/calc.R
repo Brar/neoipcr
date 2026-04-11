@@ -198,6 +198,8 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE) {
         get_infectious_agent_detection_rate_per_agent_table(x, use_cache),
       abr_infection_rate_table =
         get_abr_infection_rate_table(x, use_cache),
+      organism_resistance_rate_table =
+        get_organism_resistance_rate_table(x, use_cache),
       secondary_bsi_rate_table =
         get_secondary_bsi_rate_table(x, use_cache),
       infectious_agent_detection_rate_per_inf_type_table =
@@ -307,6 +309,8 @@ calculate_department_data <- function(x, use_cache = TRUE) {
         get_infectious_agent_detection_rate_per_agent_table(x, use_cache, include_quartiles = FALSE),
       abr_infection_rate_table =
         get_abr_infection_rate_table(x, use_cache, include_quartiles = FALSE),
+      organism_resistance_rate_table =
+        get_organism_resistance_rate_table(x, use_cache, include_quartiles = FALSE),
       secondary_bsi_rate_table =
         get_secondary_bsi_rate_table(x, use_cache, include_quartiles = FALSE),
       infectious_agent_detection_rate_per_inf_type_table =
@@ -683,6 +687,44 @@ get_benchmark_data <- function(...) {
               dplyr::across(
                 c(dplyr::starts_with("rate_"),
                   dplyr::starts_with("pooled_"),
+                  dplyr::starts_with("q"),
+                  dplyr::starts_with("ci_lower_"),
+                  dplyr::starts_with("ci_upper_")),
+                ~tidyr::replace_na(.x, NA_real_))
+            )
+        }
+      }
+    }
+    if ("organism_resistance_rate_table" %in% elements) {
+      tbl <- ds$organism_resistance_rate_table
+
+      if (!is.null(tbl) && nrow(tbl) > 0) {
+        key_cols <- intersect(
+          names(tbl),
+          c("abr_type", "abr", "lv", "tl", "level", "taxon", "group",
+            ".ontology_path"))
+        tbl <- tbl |>
+          dplyr::rename_with(
+            ~ paste0(.x, suffix), !tidyselect::any_of(key_cols))
+
+        if (is.null(output$organism_resistance_rate_table)) {
+          output$organism_resistance_rate_table <- tbl
+        } else {
+          join_cols <- intersect(
+            names(output$organism_resistance_rate_table),
+            c("abr", "abr_type", "level", "taxon", "lv", "tl", "group",
+              ".ontology_path"))
+          output$organism_resistance_rate_table <- output$organism_resistance_rate_table |>
+            dplyr::full_join(tbl, dplyr::join_by(!!!join_cols)) |>
+            dplyr::arrange(.data$.ontology_path) |>
+            dplyr::mutate(
+              dplyr::across(
+                dplyr::starts_with("n_"),
+                ~tidyr::replace_na(.x, 0)),
+              dplyr::across(
+                c(dplyr::starts_with("rate_"),
+                  dplyr::starts_with("pooled_"),
+                  dplyr::starts_with("ia_tst_tot_"),
                   dplyr::starts_with("q"),
                   dplyr::starts_with("ci_lower_"),
                   dplyr::starts_with("ci_upper_")),
@@ -2058,6 +2100,149 @@ get_abr_infection_rate_table <- function(
     cache(x, cache_key)
 }
 
+#' Get a table with organism-specific resistance rates
+#'
+#' Unlike the ABR infection rate table which uses infection-level denominators
+#' (infections with resistant organism / all infections with a pathogen), this
+#' table uses organism-level denominators (resistant detections of organism X /
+#' all tested detections of organism X). This answers the question "what
+#' fraction of K. pneumoniae is carbapenem-resistant?"
+#'
+#' @param x The data set which can be either a neoipcr_ds or a neoipcr_rep_ds
+#'  object. In case of a neoipcr_rep_ds it has to be a neoipcr_ref_ds if
+#'  include_quartiles is TRUE.
+#' @param use_cache Use the cache. Ignored if x is a neoipcr_rep_ds object
+#' @param include_quartiles Include the quartile columns
+#'
+#' @returns A tibble with organism-specific resistance rates grouped by
+#'  resistance type
+#' @export
+get_organism_resistance_rate_table <- function(
+    x, use_cache = TRUE, include_quartiles = TRUE) {
+  cache_key <- "organism_resistance_rate_table"
+  if(!is.null(r <- x |> check_ds_and_try_get_table(
+    cache_key, use_cache, include_quartiles)))
+    return(r)
+
+  if(include_quartiles) {
+    get_resistance <- function(...) {
+      get_organism_resistance_rate_with_department_quartiles(...)
+    }
+    rate_cols <- c("n","ia_tst_tot","rate","q1","q2","q3",
+                   "q1_ci_lower","q1_ci_upper","q2_ci_lower","q2_ci_upper",
+                   "q3_ci_lower","q3_ci_upper")
+    return_class <- c("neoipcr_tbl_org_rr_ref", "neoipcr_tbl_org_rr")
+  } else {
+    get_resistance <- function(...) {
+      get_resistance_rate(...) |>
+        dplyr::rename("n"="ia_rs","rate"="ia_rs_rate")
+    }
+    rate_cols <- c("n","ia_tst_tot","rate")
+    return_class <- "neoipcr_tbl_org_rr"
+  }
+
+  abr_types <- c("3gcr","car","cor","mrsa","vre")
+  tbl <- NULL
+
+  for (abr_type in abr_types) {
+    g <- x |>
+      get_resistance(
+        resistance = abr_type,
+        group_cols = c("genus","species"),
+        use_cache = use_cache) |>
+      dplyr::filter(.data$ia_tst_tot >= 1)
+
+    if (nrow(g) < 1) next
+
+    for (k in seq_len(nrow(g))) {
+      gk <- g[k,]
+      genus_name <- gk$genus
+      species_name <- gk$species
+      op_genus <- paste0(abr_type, "|", genus_name)
+
+      if (!is.na(species_name)) {
+        lv <- 1L
+        tl <- "species"
+        op <- paste0(op_genus, "|", species_name)
+        grp <- species_name
+      } else {
+        lv <- 1L
+        tl <- "species_nos"
+        op <- paste0(op_genus, "|~")
+        grp <- paste(genus_name, "spp. n.o.s.")
+      }
+
+      row <- dplyr::bind_cols(
+        abr_type = abr_type,
+        lv = lv,
+        tl = tl,
+        .ontology_path = op,
+        group = grp,
+        gk |> dplyr::select(tidyselect::all_of(rate_cols)))
+
+      tbl <- dplyr::bind_rows(tbl, row)
+    }
+
+    # Add a genus summary row for every genus represented in g, so that every
+    # species and species_nos row has a visible parent in the rendered table.
+    unique_genera <- unique(g$genus)
+
+    if (length(unique_genera) > 0) {
+      genus_summary <- x |>
+        get_resistance(
+          resistance = abr_type,
+          group_cols = "genus",
+          use_cache = use_cache) |>
+        dplyr::filter(.data$genus %in% unique_genera)
+
+      for (j in seq_len(nrow(genus_summary))) {
+        gs <- genus_summary[j,]
+        genus_row <- dplyr::bind_cols(
+          abr_type = abr_type,
+          lv = 0L,
+          tl = "genus",
+          .ontology_path = paste0(abr_type, "|", gs$genus),
+          group = paste(gs$genus, "spp."),
+          gs |> dplyr::select(tidyselect::all_of(rate_cols)))
+        tbl <- dplyr::bind_rows(tbl, genus_row)
+      }
+    }
+  }
+
+  if (is.null(tbl) || nrow(tbl) == 0) {
+    tbl <- tibble::tibble(
+      abr_type = character(),
+      lv = integer(),
+      tl = character(),
+      .ontology_path = character(),
+      group = character(),
+      n = numeric(),
+      ia_tst_tot = numeric(),
+      rate = numeric())
+    if (include_quartiles)
+      tbl <- tbl |>
+        dplyr::mutate(
+          q1 = numeric(), q2 = numeric(), q3 = numeric(),
+          q1_ci_lower = numeric(), q1_ci_upper = numeric(),
+          q2_ci_lower = numeric(), q2_ci_upper = numeric(),
+          q3_ci_lower = numeric(), q3_ci_upper = numeric())
+  }
+
+  # Sort: within each abr_type, genus summary rows first, then species rows
+  # sorted by rate descending
+  tbl <- tbl |>
+    dplyr::arrange(
+      factor(.data$abr_type, levels = c("3gcr","car","cor","mrsa","vre")),
+      .data$.ontology_path,
+      -.data$rate)
+
+  tbl |>
+    (\(d) dplyr::bind_cols(d, wilson_ci_cols(d$n, d$ia_tst_tot, scale = 100)))() |>
+    dplyr::rename("abr"="abr_type","level"="lv","taxon"="tl","pooled"="rate") |>
+    add_class(return_class) |>
+    cache(x, cache_key)
+}
+
 #' Get the table with resistance test rates of the recorded resistance
 #'  mechanisms
 #'
@@ -2971,6 +3156,116 @@ get_resistance_rate_with_department_quartiles <- function(
                      "ia_tst_tot", "ia_rs_rate","n_deps","median",
                      "drop_quartiles")) |>
     dplyr::rename("n"="inf_rs","rate"="inf_rs_rate")
+}
+
+get_organism_resistance_rate_with_department_quartiles <- function(
+    x, resistance, group_cols = NULL, use_cache = TRUE) {
+  rate <- x |>
+    get_resistance_rate(
+      resistance = resistance,
+      group_cols = group_cols,
+      use_cache = use_cache)
+
+  deps <- x |>
+    get_resistance_rate(
+      resistance = resistance,
+      group_cols = c("department_key", group_cols),
+      use_cache = use_cache) |>
+    dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols)))
+
+  if (nrow(deps) < 1) {
+    r <- tibble::tibble(
+      n = 0L,
+      ia_tst_tot = 0L,
+      rate = NA_real_,
+      q1 = NA_real_,
+      q2 = NA_real_,
+      q3 = NA_real_,
+      q1_ci_lower = NA_real_,
+      q1_ci_upper = NA_real_,
+      q2_ci_lower = NA_real_,
+      q2_ci_upper = NA_real_,
+      q3_ci_lower = NA_real_,
+      q3_ci_upper = NA_real_)
+    if (!is.null(group_cols))
+      r <- dplyr::bind_cols(
+        tibble::tibble(!!!group_cols, .rows = 1, .name_repair = ~ group_cols),
+        r)
+    return(r)
+  } else {
+    dep_stats <- deps |>
+      dplyr::summarise(
+        n_deps = dplyr::n(),
+        median = stats::median(.data$ia_tst_tot),
+        .groups = "drop")
+
+    quartiles <- deps |>
+      dplyr::reframe(
+        value = stats::quantile(
+          .data$ia_rs_rate,
+          prob = c(.25,.5,.75),
+          na.rm = TRUE)) |>
+      dplyr::mutate(
+        name=names(.data$value),
+        name=dplyr::case_match(
+          .data$name,
+          "25%"~"q1",
+          "50%"~"q2",
+          "75%"~"q3")) |>
+      tidyr::pivot_wider()
+  }
+
+  if (is.null(group_cols))
+    rate <- rate |>
+    dplyr::bind_cols(dep_stats) |>
+    dplyr::bind_cols(quartiles)
+  else
+    rate <- rate |>
+    dplyr::inner_join(dep_stats, by = group_cols) |>
+    dplyr::inner_join(quartiles, by = group_cols)
+
+  rate <- rate |>
+    dplyr::mutate(
+      drop_quartiles = .data$n_deps < 5 | round(100 / .data$ia_rs_rate) >= .data$median,
+      q1 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q1),
+      q2 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q2),
+      q3 = dplyr::if_else(
+        .data$drop_quartiles,
+        NA,
+        .data$q3))
+
+  # Bootstrap CIs for quartiles where gate passes
+  na_boot <- tibble::tibble(q1_ci_lower = NA_real_, q1_ci_upper = NA_real_,
+                            q2_ci_lower = NA_real_, q2_ci_upper = NA_real_,
+                            q3_ci_lower = NA_real_, q3_ci_upper = NA_real_)
+  if (nrow(rate) == 0) {
+    boot_cis <- na_boot[0, ]
+  } else {
+    boot_cis <- purrr::map_dfr(seq_len(nrow(rate)), function(i) {
+      if (rate$drop_quartiles[i]) return(na_boot)
+      d <- dplyr::ungroup(deps)
+      if (!is.null(group_cols) && all(group_cols %in% names(d))) {
+        d <- d |> dplyr::semi_join(rate[i, , drop = FALSE], by = group_cols)
+      }
+      d <- d |> dplyr::filter(.data$ia_tst_tot > 0)
+      if (nrow(d) < 2) return(na_boot)
+      bootstrap_quantile_ci(d$ia_rs, d$ia_tst_tot,
+                            type = "binomial", multiplier = 100)
+    })
+  }
+
+  rate |>
+    dplyr::bind_cols(boot_cis) |>
+    dplyr::select(!c("inf_rs", "inf_nrs", "inf_tst_tot", "inf_w_ia",
+                     "ia_nrs", "inf_rs_rate", "n_deps", "median",
+                     "drop_quartiles")) |>
+    dplyr::rename("n"="ia_rs","rate"="ia_rs_rate")
 }
 
 get_resistance_rate <- function(

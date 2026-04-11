@@ -27,6 +27,8 @@ These guardrails are **universal** — mirrored in every NeoIPC repository's ins
 
 ### Key R Files
 
+> **This table describes the current layout.** A pending task — `tasks/neoipcr-file-restructure.md` in the `neoipc-workspace` — will split `R/calc.R`, `R/validation.R`, `R/dhis2.R`, and `R/dhis2-metadata.R` into smaller domain-coherent files, extract `apply_data_removal()` from `R/filter.R` into its own `R/data-removal.R`, and merge `R/obj-type.R` into `R/types-check.R`. If you are reading this in a workspace checkout, re-survey `R/` before relying on the file paths below — whichever neoipcr-touching task lands first publishes a fait accompli, and the table here may be ahead of or behind the actual state.
+
 | File | Purpose |
 |------|---------|
 | `R/dhis2-connect.R` | Connection options, authentication (token/basic/session/interactive) |
@@ -37,7 +39,7 @@ These guardrails are **universal** — mirrored in every NeoIPC repository's ins
 | `R/dhis2-events.R` | Event import and processing |
 | `R/calc.R` | Epidemiological calculations (`calculate_department_data()`, `get_benchmark_data()`) |
 | `R/ci.R` | Confidence interval functions (`neoipc_poisson_ci()`, `neoipc_wilson_ci()`) |
-| `R/filter.R` | Data filtering and subsetting |
+| `R/filter.R` | Data filtering and subsetting (also currently hosts `apply_data_removal()` — the data-protection guardian — until the restructure extracts it) |
 | `R/pathogens.R` | Pathogen taxonomy and resistance markers |
 | `R/validation.R` | Data validation rules |
 
