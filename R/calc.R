@@ -188,6 +188,8 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE) {
       n_infections = n_infections,
       usage_density_rate_table =
         get_usage_density_rate_table(x, use_cache),
+      antibiotic_utilisation_table =
+        get_antibiotic_utilisation_table(x, use_cache),
       surgery_rate_table =
         get_ref_surgery_rate_table(x, use_cache),
       incidence_density_rate_table =
@@ -294,6 +296,8 @@ calculate_department_data <- function(x, use_cache = TRUE) {
       n_surgical_procedures = list(total = sr$n_procedures),
       n_surgical_patients = list(total = sr$n_patients),
       usage_density_rate_table = usage_density_rate_table,
+      antibiotic_utilisation_table =
+        get_antibiotic_utilisation_table(x, use_cache, include_quartiles = FALSE),
       surgery_rate_table =
         get_surgery_rate_table(
           x,
@@ -531,6 +535,51 @@ get_benchmark_data <- function(...) {
           output$usage_density_rate_table, suffixes,
           denominator_tbl = output$n_patient_days,
           multiplier = 100)
+      }
+    }
+    if ("antibiotic_utilisation_table" %in% elements) {
+      structural <- c("row_id", "atc5_group", "row_type", "display_name", "aware")
+      tbl <- ds$antibiotic_utilisation_table |>
+        dplyr::rename_with(~ paste0(.x, suffix),
+                           !tidyselect::any_of(structural))
+
+      if (is.null(output$antibiotic_utilisation_table)) {
+        output$antibiotic_utilisation_table <- tbl
+      } else {
+        output$antibiotic_utilisation_table <-
+          output$antibiotic_utilisation_table |>
+          dplyr::full_join(tbl, dplyr::join_by("row_id"),
+                           suffix = c("", ".y")) |>
+          dplyr::mutate(
+            atc5_group = dplyr::coalesce(
+              .data$atc5_group, .data$atc5_group.y),
+            row_type = dplyr::coalesce(
+              .data$row_type, .data$row_type.y),
+            display_name = dplyr::coalesce(
+              .data$display_name, .data$display_name.y),
+            aware = dplyr::coalesce(
+              .data$aware, .data$aware.y)) |>
+          dplyr::select(!tidyselect::ends_with(".y")) |>
+          dplyr::mutate(
+            dplyr::across(
+              dplyr::starts_with("n_"),
+              ~ tidyr::replace_na(.x, 0L)),
+            dplyr::across(
+              c(dplyr::starts_with("pooled_"),
+                dplyr::starts_with("q"),
+                dplyr::starts_with("ci_lower_"),
+                dplyr::starts_with("ci_upper_")),
+              ~ tidyr::replace_na(.x, NA_real_)))
+
+        output$antibiotic_utilisation_table <- fix_zero_event_ci(
+          output$antibiotic_utilisation_table, suffixes,
+          denominator_tbl = output$n_patient_days,
+          multiplier = 100)
+
+        # Re-sort after merge: ATC5 group, then header before substances
+        output$antibiotic_utilisation_table <-
+          output$antibiotic_utilisation_table |>
+          dplyr::arrange(.data$atc5_group, .data$row_type, .data$row_id)
       }
     }
     if ("surgery_rate_table" %in% elements) {
@@ -1116,6 +1165,137 @@ get_usage_density_rate_table <- function(
   r |>
     dplyr::mutate(factor = factor(.data$factor, levels = expected_levels)) |>
     dplyr::arrange(.data$factor) |>
+    cache(x, cache_key)
+}
+
+#' Get the antibiotic utilisation table with ATC5/substance-level rates
+#'
+#' @param x The data set which can be either a neoipcr_ds or a neoipcr_rep_ds
+#'  object. In case of a neoipcr_rep_ds it has to be a neoipcr_ref_ds if
+#'  include_quartiles is TRUE.
+#' @param use_cache Use the cache. Ignored if x is a neoipcr_rep_ds object
+#' @param include_quartiles Include quartile columns (q1, q2, q3) in the output.
+#'  Set to FALSE for department-level reports to simplify output.
+#'
+#' @returns A table containing antibiotic exposure density rates per substance
+#'  and ATC5 group, with hierarchical row structure
+#' @export
+get_antibiotic_utilisation_table <- function(
+    x, use_cache = TRUE, include_quartiles = TRUE) {
+  cache_key <- "antibiotic_utilisation_table"
+  if (!is.null(r <- x |> check_ds_and_try_get_table(
+    cache_key, use_cache, include_quartiles)))
+    return(r)
+
+  patient_days <- get_risk_time(x, use_cache = use_cache)$patient_days
+
+  # ATC5-level totals
+  atc5_totals <- summarise_substance_days(x, level = "atc5", use_cache = use_cache) |>
+    dplyr::rename(n = "days") |>
+    dplyr::mutate(
+      row_id = .data$code,
+      atc5_group = .data$code,
+      row_type = factor("atc5", levels = c("atc5", "substance")),
+      aware = factor(NA_character_,
+                     levels = c("WHO_AWARE_ACCESS", "WHO_AWARE_WATCH",
+                                "WHO_AWARE_RESERVE")))
+
+  # Substance-level totals
+  substance_totals <- summarise_substance_days(
+    x, level = "substance", use_cache = use_cache) |>
+    dplyr::rename(n = "days") |>
+    dplyr::inner_join(
+      x$metadata$antimicrobialSubstances |>
+        dplyr::select(tidyselect::all_of(c("code", "WHO_AWARE", "ATC5"))),
+      dplyr::join_by("code")) |>
+    dplyr::mutate(
+      row_id = .data$code,
+      atc5_group = as.character(.data$ATC5),
+      row_type = factor("substance", levels = c("atc5", "substance")),
+      aware = .data$WHO_AWARE) |>
+    dplyr::select(!c("WHO_AWARE", "ATC5"))
+
+  # Combine and compute rates + CIs
+  r <- dplyr::bind_rows(atc5_totals, substance_totals) |>
+    dplyr::filter(.data$n > 0L) |>
+    dplyr::mutate(
+      pooled = .data$n / patient_days * 100) |>
+    (\(d) dplyr::bind_cols(d, poisson_ci_cols(d$n, patient_days, multiplier = 100)))()
+
+  if (include_quartiles) {
+    # Department-level aggregation for quartiles
+    dept_substance <- summarise_substance_days(
+      x, level = "substance", group_cols = "department_key",
+      use_cache = use_cache) |>
+      dplyr::rename(n = "days", row_id = "code") |>
+      dplyr::mutate(row_type = "substance")
+
+    dept_atc5 <- summarise_substance_days(
+      x, level = "atc5", group_cols = "department_key",
+      use_cache = use_cache) |>
+      dplyr::rename(n = "days", row_id = "code") |>
+      dplyr::mutate(row_type = "atc5")
+
+    dept_patient_days <- get_risk_time(
+      x, group_cols = "department_key", use_cache = use_cache) |>
+      dplyr::select("department_key", "patient_days")
+
+    dept_rates <- dplyr::bind_rows(dept_substance, dept_atc5) |>
+      dplyr::inner_join(dept_patient_days, dplyr::join_by("department_key")) |>
+      dplyr::mutate(rate = .data$n / .data$patient_days * 100)
+
+    n_deps <- nrow(dept_patient_days)
+    median_patient_days <- stats::median(dept_patient_days$patient_days)
+
+    # Compute quartiles per row_id
+    quartiles <- dept_rates |>
+      dplyr::group_by(.data$row_id) |>
+      dplyr::reframe(
+        q = list(stats::quantile(.data$rate, probs = quartile_probs,
+                                 names = FALSE))) |>
+      tidyr::unnest_wider("q", names_sep = "") |>
+      ensure_quartile_cols()
+
+    r <- r |>
+      dplyr::left_join(quartiles, dplyr::join_by("row_id")) |>
+      dplyr::mutate(
+        drop_quartiles = n_deps < 5 |
+          round(100 / .data$pooled) >= median_patient_days,
+        q1 = dplyr::if_else(.data$drop_quartiles, NA, .data$q1),
+        q2 = dplyr::if_else(.data$drop_quartiles, NA, .data$q2),
+        q3 = dplyr::if_else(.data$drop_quartiles, NA, .data$q3))
+
+    # Bootstrap CIs for quartiles where gate passes
+    boot_cis <- r |>
+      dplyr::group_by(.data$row_id) |>
+      dplyr::group_map(~ {
+        ci <- if (.x$drop_quartiles[1]) {
+          tibble::tibble(q1_ci_lower = NA_real_, q1_ci_upper = NA_real_,
+                         q2_ci_lower = NA_real_, q2_ci_upper = NA_real_,
+                         q3_ci_lower = NA_real_, q3_ci_upper = NA_real_)
+        } else {
+          d <- dept_rates |> dplyr::filter(.data$row_id == .y$row_id)
+          bootstrap_quantile_ci(d$n, d$patient_days,
+                                type = "poisson", multiplier = 100)
+        }
+        dplyr::bind_cols(.y, ci)
+      }) |>
+      dplyr::bind_rows()
+
+    r <- r |>
+      dplyr::left_join(boot_cis, by = "row_id") |>
+      dplyr::select(!"drop_quartiles")
+  }
+
+  # Sort: by ATC5 group, then ATC5 header before substances, then by code
+  r |>
+    dplyr::arrange(.data$atc5_group, .data$row_type, .data$row_id) |>
+    dplyr::select("row_id", "atc5_group", "row_type", "display_name", "aware",
+                  "n", "pooled", "ci_lower", "ci_upper",
+                  tidyselect::any_of(c("q1", "q2", "q3",
+                    "q1_ci_lower", "q1_ci_upper",
+                    "q2_ci_lower", "q2_ci_upper",
+                    "q3_ci_lower", "q3_ci_upper"))) |>
     cache(x, cache_key)
 }
 
@@ -3628,27 +3808,147 @@ get_procedures <- function(x, group_cols = NULL, use_cache = TRUE) {
     cache(x, cache_key)
 }
 
-get_aware_days <- function(x, use_cache = TRUE) {
-  if(use_cache && !is.null(r <- get_cached(x, "aware_days")))
+get_substance_days <- function(
+    x, level = c("substance", "atc5", "aware"), use_cache = TRUE) {
+  level <- match.arg(level)
+  cache_key <- paste0("substance_days.", level)
+  if (use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
-  x$substanceDays |>
+  # Per-event, per-substance base data
+  base <- x$substanceDays |>
     dplyr::group_by(.data$event_key, .data$substance_code) |>
     dplyr::summarise(days = sum(.data$days), .groups = "drop") |>
     dplyr::inner_join(
       x$metadata$antimicrobialSubstances |>
-        dplyr::mutate(
-          AWaRe = factor(
-            tolower(
-              stringr::str_extract(
-                .data$WHO_AWARE,
-                "^WHO_AWARE_(A|W|R).+$",
-                group = 1)),
-            levels = c("a","w","r"))) |>
-        dplyr::select(tidyselect::all_of(c("code", "AWaRe"))),
-      dplyr::join_by("substance_code" == "code")) |>
-    dplyr::group_by(.data$event_key, .data$AWaRe) |>
+        dplyr::select(tidyselect::all_of(c("code", "displayName", "WHO_AWARE", "ATC5"))),
+      dplyr::join_by("substance_code" == "code"))
+
+  r <- switch(level,
+    substance = base |>
+      dplyr::transmute(
+        .data$event_key,
+        code = .data$substance_code,
+        display_name = as.character(.data$displayName),
+        .data$days),
+
+    atc5 = {
+      atc5_names <- x$metadata$atc5Categories |>
+        dplyr::transmute(
+          atc5_code = as.character(.data$code),
+          atc5_name = as.character(.data$displayName))
+
+      base |>
+        dplyr::mutate(atc5_code = as.character(.data$ATC5)) |>
+        dplyr::left_join(atc5_names, dplyr::join_by("atc5_code")) |>
+        dplyr::group_by(.data$event_key, .data$atc5_code, .data$atc5_name) |>
+        dplyr::summarise(days = sum(.data$days), .groups = "drop") |>
+        dplyr::transmute(
+          .data$event_key,
+          code = .data$atc5_code,
+          display_name = .data$atc5_name,
+          .data$days)
+    },
+
+    aware = base |>
+      dplyr::mutate(
+        AWaRe = factor(
+          tolower(
+            stringr::str_extract(
+              .data$WHO_AWARE,
+              "^WHO_AWARE_(A|W|R).+$",
+              group = 1)),
+          levels = c("a", "w", "r"))) |>
+      dplyr::group_by(.data$event_key, .data$AWaRe) |>
+      dplyr::summarise(days = sum(.data$days), .groups = "drop") |>
+      dplyr::transmute(
+        .data$event_key,
+        code = .data$AWaRe,
+        display_name = NA_character_,
+        .data$days)
+  )
+
+  cache(r, x, cache_key)
+}
+
+summarise_substance_days <- function(
+    x, level = c("substance", "atc5", "aware"),
+    group_cols = NULL, use_cache = TRUE) {
+  level <- match.arg(level)
+  cache_key <- if (is.null(group_cols))
+    paste0("substance_days_sum.", level)
+  else
+    paste0("substance_days_sum.", level, ".", paste0(group_cols, collapse = "."))
+  if (use_cache && !is.null(r <- get_cached(x, cache_key)))
+    return(r)
+
+  # Per-event, per-substance base data
+  base <- x$substanceDays |>
+    dplyr::group_by(.data$event_key, .data$substance_code) |>
     dplyr::summarise(days = sum(.data$days), .groups = "drop") |>
+    dplyr::inner_join(
+      x$metadata$antimicrobialSubstances |>
+        dplyr::select(tidyselect::all_of(c("code", "displayName", "WHO_AWARE", "ATC5"))),
+      dplyr::join_by("substance_code" == "code"))
+
+  # Join group_cols from events if needed
+  if (!is.null(group_cols)) {
+    base <- base |>
+      dplyr::inner_join(
+        x$events |>
+          dplyr::select(tidyselect::all_of(c("event_key", group_cols))),
+        dplyr::join_by("event_key"))
+  }
+
+  r <- switch(level,
+    substance = base |>
+      dplyr::group_by(
+        dplyr::across(tidyselect::all_of(group_cols)),
+        code = .data$substance_code,
+        display_name = as.character(.data$displayName)) |>
+      dplyr::summarise(days = sum(.data$days), .groups = "drop"),
+
+    atc5 = {
+      atc5_names <- x$metadata$atc5Categories |>
+        dplyr::transmute(
+          atc5_code = as.character(.data$code),
+          atc5_name = as.character(.data$displayName))
+
+      base |>
+        dplyr::mutate(atc5_code = as.character(.data$ATC5)) |>
+        dplyr::left_join(atc5_names, dplyr::join_by("atc5_code")) |>
+        dplyr::group_by(
+          dplyr::across(tidyselect::all_of(group_cols)),
+          code = .data$atc5_code,
+          display_name = .data$atc5_name) |>
+        dplyr::summarise(days = sum(.data$days), .groups = "drop")
+    },
+
+    aware = base |>
+      dplyr::mutate(
+        AWaRe = factor(
+          tolower(
+            stringr::str_extract(
+              .data$WHO_AWARE,
+              "^WHO_AWARE_(A|W|R).+$",
+              group = 1)),
+          levels = c("a", "w", "r"))) |>
+      dplyr::group_by(
+        dplyr::across(tidyselect::all_of(group_cols)),
+        code = .data$AWaRe) |>
+      dplyr::summarise(days = sum(.data$days), .groups = "drop") |>
+      dplyr::mutate(display_name = NA_character_)
+  )
+
+  cache(r, x, cache_key)
+}
+
+get_aware_days <- function(x, use_cache = TRUE) {
+  if (use_cache && !is.null(r <- get_cached(x, "aware_days")))
+    return(r)
+
+  get_substance_days(x, level = "aware", use_cache = use_cache) |>
+    dplyr::select("event_key", AWaRe = "code", "days") |>
     tidyr::pivot_wider(
       names_from = "AWaRe",
       values_from = "days",
