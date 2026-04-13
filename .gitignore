@@ -56,3 +56,4 @@ rsconnect/
 
 # Local coverage report
 coverage.html
+lib/
