@@ -19,6 +19,31 @@ These guardrails are **universal** — mirrored in every NeoIPC repository's ins
 - **Always** push back when evidence contradicts the user's suggestion or implied assumption. Do not defer to the user's position when authoritative sources (AMA Manual of Style, protocol definitions, language specifications, etc.) say otherwise. Present the evidence clearly and let the user decide.
 - **Always** consider both personal data protection (GDPR) and organizational/reputational concerns when making decisions about data shared between partners, published in reports, or exposed through APIs. Small cell counts in shared reports can expose which departments had specific rare pathogens or resistance patterns.
 
+### R/ file structure
+
+The `R/` directory follows a deliberate structure established by the neoipcr file restructure. Maintaining it requires discipline — every new function and file must land in the right place, or the structure decays silently.
+
+#### File naming
+
+- **`import-*.R`** — user-facing import orchestrators. One per data source (currently only `import-dhis2.R`; a future Excel source would be `import-excel.R`).
+- **`dhis2-*.R`** — DHIS2-specific internals (connection, metadata, readers). These have no non-DHIS2 equivalent.
+- **`calc-api.R`** — exported pipeline entry points. **`calc-tables.R`** — exported table/figure builders. **`calc-rates.R`** — internal rate/count computers. **`calc-denominators.R`** — internal risk-time/population denominators. Each is a layer in the epidemiological analysis pipeline; new functions go in the layer they belong to.
+- **`validation-rules-*.R`** — one file per validation domain. The `validation_rules` registry list and `validate()` orchestrator stay in `validation.R`.
+- **`data-removal.R`** — single-purpose file for the data-protection guardian. Do not add unrelated functions here.
+
+#### Function placement
+
+- **Exported functions first**, internal helpers below. Within a group of peers, follow the domain's logical progression (e.g. epidemiological: usage → incidence → detection → resistance).
+- A new **table builder** goes in `calc-tables.R`. A new **rate computer** goes in `calc-rates.R`. A new **denominator** goes in `calc-denominators.R`. Do not add internal rate helpers to `calc-tables.R` or vice versa — the layers exist for a reason.
+- A new **validation rule** goes in the `validation-rules-*.R` file matching its domain. If no existing domain fits, create a new `validation-rules-<domain>.R` file rather than forcing a rule into the wrong group.
+- A new **metadata reader** goes in `dhis2-metadata-options.R` (option-set readers), `dhis2-metadata-reference.R` (reference data), or `dhis2-metadata-orgunits.R` (org unit structure) — whichever matches. Keep the orchestration file (`dhis2-metadata.R`) thin.
+- **If in doubt** where a new function belongs, ask the user rather than guessing. A function in the wrong file is worse than a brief conversation.
+
+#### Maintenance
+
+- When adding or renaming an `R/*.R` file, update the **Key R Files** table below (and mirror to `CLAUDE.md`).
+- When touching `R/` in any neoipcr task, scan for functions that have drifted into the wrong file (e.g. a helper added to a table-builder file during a rushed fix). Flag them to the user rather than silently moving them — the user may have context about why.
+
 ---
 
 ## Package Overview
