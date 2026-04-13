@@ -856,7 +856,7 @@ read_metadata_countries <- function(
     tidyr::unnest_wider(1) |>
     dplyr::mutate(dplyr::across(!"id", ordered)) |>
     dplyr::relocate("id", .before = 1) |>
-    dplyr::rename(country = .data$id) |>
+    dplyr::rename(country = "id") |>
     add_key_column('country_key')
 
   if(!is.null(world_bank_classes))

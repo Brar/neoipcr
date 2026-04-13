@@ -123,3 +123,63 @@ Two tracked entity attributes store gestational age -- both **must** be set cons
 **Note the inconsistent casing** of `NeoIPC_TEA_TOTAL_GESTATION_DAYS` -- this cannot be changed due to downstream dependencies.
 
 Conversion: `total_days = weeks * 7 + days` (e.g. `25+4` -> `25*7 + 4 = 179`).
+
+---
+
+## Testing
+
+### Test layout
+
+Test files mirror source files: `R/foo.R` -> `tests/testthat/test-foo.R`.
+
+| File | Scope |
+|------|-------|
+| `tests/testthat/test-ci.R` | `neoipc_poisson_ci()`, `neoipc_wilson_ci()`, bootstrap CI, vectorized wrappers |
+| `tests/testthat/test-dhis2-metadata.R` | `read_metadata()` validation and data-reading tests |
+| `tests/testthat/test-dhis2-connect.R` | `dhis2_connection_options()`, `get_auth_data()`, `read_token()`, `get_password()` |
+| `tests/testthat/helper-fixtures.R` | `read_test_metadata()` fixture compositor, `make_test_ds()` builder |
+
+Planned (not yet created):
+
+| File | Scope |
+|------|-------|
+| `test-dhis2.R` | `import_dhis2()`, `dhis2_dataset_options()` |
+| `test-dhis2-enrollments.R` | Enrollment import |
+| `test-dhis2-events.R` | Event import and processing |
+| `test-dhis2-trackedEntities.R` | Patient (tracked entity) import |
+| `test-filter.R` | Data filtering, `apply_data_removal()` |
+| `test-calc.R` | Epidemiological calculations |
+| `test-validation.R` | Data validation rules |
+| `test-pathogens.R` | Pathogen taxonomy and resistance markers |
+
+### Fixture files
+
+Static JSON fixtures live under `tests/testthat/fixtures/`. They represent minimal valid DHIS2 `/api/metadata` responses shaped as `read_metadata()` expects them.
+
+| File | Keys it provides |
+|------|-----------------|
+| `system.json` | `system` |
+| `program.json` | `programs`, `trackedEntityTypes` |
+| `org-units.json` | `organisationUnitGroups` |
+| `antimicrobials.json` | `options` (antimicrobials), `optionGroupSets` |
+
+### Running tests locally
+
+```r
+# From an R session in the package root:
+devtools::test()                                            # all tests
+devtools::test_file("tests/testthat/test-dhis2-connect.R")  # one file
+
+# Coverage report:
+Rscript scripts/coverage.R       # opens browser
+Rscript scripts/coverage.R quiet  # no browser
+```
+
+### Rules
+
+- Tests must **never** make real HTTP calls to DHIS2. All DHIS2 data comes from the static fixture files.
+- Never read from `data/local/` or `secrets/` in tests.
+- Use `withr::with_envvar()` to set environment variables in tests. Never use `Sys.setenv()` directly -- it leaks state between tests.
+- Use `withr::local_tempfile()` for temporary files. Never use `tempfile()` directly -- `local_tempfile()` ensures cleanup.
+- Internal (non-exported) functions are accessed via `neoipcr:::fn_name()` in tests.
+- **Test failure scenarios, not implementation details.** When a function can fail for multiple reasons (e.g. missing key vs. malformed value), test each failure path independently. Do not assume two failure modes produce the same result just because they happen to share an internal code path today.

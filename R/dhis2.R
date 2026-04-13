@@ -531,7 +531,7 @@ add_key_column <- function(table, key_name = "key")
     dplyr::arrange(.data$random) |>
     dplyr::select(!"random") |>
     dplyr::mutate(!!key_name := dplyr::row_number()) |>
-    dplyr::relocate(key_name)
+    dplyr::relocate(tidyselect::all_of(key_name))
 }
 
 convert_value <- function(values, valueTypes, levelsLists)
