@@ -421,6 +421,62 @@ make_populated_test_ds <- function(
     ...)
 }
 
+# ---------------------------------------------------------------------------
+# Calc pipeline fixture: realistic neoipcr_ds for calculate_department_data()
+# ---------------------------------------------------------------------------
+
+make_calc_test_ds <- function() {
+  md <- read_test_metadata(
+    dataset_options = dhis2_dataset_options(
+      include_department = "yes",
+      include_country    = "yes"))
+  md$departments      <- make_test_metadata_departments()
+  md$hospitals         <- make_test_metadata_hospitals()
+  md$countries         <- make_test_metadata_countries()
+  md$worldBankClasses  <- make_test_metadata_wb_classes()
+  md$eventTypes        <- make_test_metadata_event_types()
+  md$dataset_options   <- dhis2_dataset_options(
+    include_department = "yes",
+    include_country    = "yes")
+
+  patients <- make_test_patients(3,
+    department_key = c(1L, 1L, 2L),
+    birth_weight   = c(800L, 1200L, 2500L),
+    gest_age       = c("25+0", "30+0", "36+0"),
+    total_gestation_days = c(175L, 210L, 252L))
+
+  enrollments <- make_test_enrollments(3,
+    patient_keys   = 1:3,
+    department_key = c(1L, 1L, 2L),
+    enrolledAt     = as.Date(c("2024-01-01", "2024-01-05", "2024-01-10")))
+
+  events <- make_test_events(
+    n               = 9,
+    enrollment_keys = c(1,1,1, 2,2,2, 3,3,3),
+    patient_keys    = c(1,1,1, 2,2,2, 3,3,3),
+    event_type_keys = c("adm","end","bsi", "adm","end","pro", "adm","end","bsi"),
+    occurredAt      = as.Date(c(
+      "2024-01-01","2024-01-15","2024-01-08",
+      "2024-01-05","2024-01-20","2024-01-12",
+      "2024-01-10","2024-01-25","2024-01-18")),
+    department_key  = c(1,1,1, 1,1,1, 2,2,2))
+
+  make_test_ds(
+    metadata            = md,
+    patients            = patients,
+    enrollments         = enrollments,
+    events              = events,
+    admissionData       = make_test_admission_data(c(1L, 4L, 7L)),
+    surveillanceEndData = make_test_surveillance_end_data(c(2L, 5L, 8L),
+      patient_days = c(15L, 16L, 16L)),
+    sepsisData          = make_test_sepsis_data(c(3L, 9L),
+      dol = c(8L, 9L), los = c(7L, 8L),
+      dev_ass = factor(c("1", "0"))),
+    surgeryData         = make_test_surgery_data(6L),
+    infectiousAgentFindings = make_test_iaf(c(3L, 9L)),
+    substanceDays       = make_test_substance_days(c(2L, 5L, 8L)))
+}
+
 
 #' Construct a minimal structurally valid neoipcr_ds object.
 #'
