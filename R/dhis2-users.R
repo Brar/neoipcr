@@ -84,3 +84,65 @@ get_user_info <- function(req)
       sort()
   ), class = c("neoipc_dhis2_usrinfo", "list"))
 }
+
+read_user_info_table <- function(user_info, include_user)
+{
+  if(include_user == "no")
+    return(NULL)
+
+  if(include_user == "yes")
+    return(
+      user_info |>
+        list() |>
+        tibble::tibble() |>
+        tidyr::unnest_wider(1) |>
+        dplyr::select(!c(
+          "organisationUnits",
+          "dataViewOrganisationUnits",
+          "teiSearchOrganisationUnits",
+          "groups",
+          "roles",
+          "authorities")) |>
+        add_key_column("user_key"))
+
+  user_info <- tibble::tibble(
+    user_key = 1L,
+    user = user_info$id,
+    username = user_info$username)
+}
+
+read_metadata_users <- function(metadata, include_user)
+{
+  if(include_user == "no")
+    return(invisible(NULL))
+
+  users <- metadata |>
+    purrr::pluck("users")
+
+  if(rlang::is_null(users))
+    return(invisible(NULL))
+
+  users <- users |>
+    tibble::tibble() |>
+    tidyr::unnest_wider(1)
+
+  if(include_user == "yes")
+    users <- users |>
+    dplyr::select(
+      !c(
+        "organisationUnits",
+        "dataViewOrganisationUnits",
+        "teiSearchOrganisationUnits",
+        "userRoles")) |>
+    dplyr::mutate(
+      created = readr::parse_datetime(.data$created),
+      lastLogin = readr::parse_datetime(.data$lastLogin)) |>
+    dplyr::relocate("user" = "id","username","firstName","surname","email",
+                    "lastLogin","created")
+  else
+    users <- users |>
+    dplyr::rename("user" = "id")
+
+  users |>
+    add_key_column("user_key")
+}
