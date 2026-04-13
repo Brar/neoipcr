@@ -185,7 +185,15 @@ Test files mirror source files: `R/foo.R` -> `tests/testthat/test-foo.R`.
 | `tests/testthat/test-ci.R` | `neoipc_poisson_ci()`, `neoipc_wilson_ci()`, bootstrap CI, vectorized wrappers |
 | `tests/testthat/test-dhis2-metadata.R` | `read_metadata()` validation and data-reading tests |
 | `tests/testthat/test-dhis2-connect.R` | `dhis2_connection_options()`, `get_auth_data()`, `read_token()`, `get_password()` |
-| `tests/testthat/helper-fixtures.R` | `read_test_metadata()` fixture compositor, `make_test_ds()` builder |
+| `tests/testthat/test-data-removal.R` | `apply_data_removal()` — every `include_*` option, cascading removal |
+| `tests/testthat/test-validation.R` | `validate()` orchestrator, rule registry |
+| `tests/testthat/test-validation-rules-*.R` | Per-domain rule tests (42 rules; 34 skip-wrapped stubs for unmigrated rules) |
+| `tests/testthat/test-calc-api.R` | `calculate_department_data()` integration: structure, counts, table presence |
+| `tests/testthat/test-calc-tables.R` | All 16 `get_*_table()` + figure data builders, with numerical spot-checks |
+| `tests/testthat/test-pathogens.R` | `get_pathogen_taxonomy()`, `get_pathogen_list()`, synonym resolution |
+| `tests/testthat/test-filter.R` | `filter_*` family, `apply_postfilter()` cascade, `filter_dataset()` bug coverage |
+| `tests/testthat/test-test-units.R` | Test org unit tolerance — NA hierarchy keys through calc pipeline |
+| `tests/testthat/helper-fixtures.R` | `read_test_metadata()`, `make_test_ds()`, `make_populated_test_ds()`, `make_calc_test_ds()`, per-table builders |
 
 Planned (not yet created):
 
@@ -200,17 +208,11 @@ Planned (not yet created):
 | `test-dhis2-metadata-orgunits.R` | Org unit reading |
 | `test-dhis2-metadata-options.R` | Option-set readers |
 | `test-dhis2-metadata-reference.R` | Program structure + reference data readers |
-| `test-data-removal.R` | `apply_data_removal()` — data-protection guardian |
-| `test-filter.R` | Data filtering |
-| `test-calc-api.R` | Pipeline entry points |
-| `test-calc-tables.R` | Table builders |
 | `test-calc-rates.R` | Rate/count computers |
 | `test-calc-denominators.R` | Denominators |
 | `test-calc-procedure-categories.R` | Procedure category mapping |
 | `test-scales.R` | Binning helpers |
 | `test-cache.R` | Cache primitives |
-| `test-validation-rules.R` | Validation rules |
-| `test-pathogens.R` | Pathogen taxonomy and resistance markers |
 
 ### Fixture files
 
