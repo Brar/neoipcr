@@ -27,21 +27,44 @@ These guardrails are **universal** — mirrored in every NeoIPC repository's ins
 
 ### Key R Files
 
-> **This table describes the current layout.** A pending task — `tasks/neoipcr-file-restructure.md` in the `neoipc-workspace` — will split `R/calc.R`, `R/validation.R`, `R/dhis2.R`, and `R/dhis2-metadata.R` into smaller domain-coherent files, extract `apply_data_removal()` from `R/filter.R` into its own `R/data-removal.R`, and merge `R/obj-type.R` into `R/types-check.R`. If you are reading this in a workspace checkout, re-survey `R/` before relying on the file paths below — whichever neoipcr-touching task lands first publishes a fait accompli, and the table here may be ahead of or behind the actual state.
-
 | File | Purpose |
 |------|---------|
+| **Import pipeline** | |
+| `R/import-dhis2.R` | `import_dhis2()` orchestrator + cross-cutting utilities (`add_key_column`, `convert_value`) |
 | `R/dhis2-connect.R` | Connection options, authentication (token/basic/session/interactive) |
-| `R/dhis2.R` | `import_dhis2()` pipeline, `dhis2_dataset_options()` |
-| `R/dhis2-metadata.R` | Org unit hierarchy, departments, hospitals, countries |
+| `R/dhis2-options.R` | `dhis2_dataset_options()` constructor |
+| `R/dhis2-users.R` | `get_user_info()` API call, `read_user_info_table()`, `read_metadata_users()` |
+| `R/dhis2-metadata.R` | Metadata orchestration (`get_metadata`, request builders, response readers) |
+| `R/dhis2-metadata-orgunits.R` | Org unit request builder + `read_organisationUnits*` response readers |
+| `R/dhis2-metadata-options.R` | Option-set readers (12 `read_metadata_<optionset>` functions) + filter/convert helpers |
+| `R/dhis2-metadata-reference.R` | Program structure + reference data (substances, AWaRe, ATC5, TEAs, trials, WB classes, countries) |
 | `R/dhis2-trackedEntities.R` | Patient (tracked entity) import |
 | `R/dhis2-enrollments.R` | Enrollment import |
 | `R/dhis2-events.R` | Event import and processing |
-| `R/calc.R` | Epidemiological calculations (`calculate_department_data()`, `get_benchmark_data()`) |
+| **Calculations** | |
+| `R/calc-api.R` | Pipeline entry points (`calculate_reference_data`, `calculate_department_data`, `get_benchmark_data`, `pretty_names`) |
+| `R/calc-tables.R` | 15 public table/figure builders (epidemiological progression: usage → incidence → detection → resistance) |
+| `R/calc-rates.R` | 11 internal rate/count computers |
+| `R/calc-denominators.R` | Risk-time, population, substance-day, AWaRe denominators |
+| `R/calc-procedure-categories.R` | ICHI procedure category mapping |
+| `R/scales.R` | Birth-weight / gestational-age binning helpers (`ga7`, `bw50`, `bw125`, `bw250`, `bw500`) |
+| `R/cache.R` | Cache primitives (`cache`, `get_cached`, `new_cache`, `clean_cache`) + `add_class` |
 | `R/ci.R` | Confidence interval functions (`neoipc_poisson_ci()`, `neoipc_wilson_ci()`) |
-| `R/filter.R` | Data filtering and subsetting (also currently hosts `apply_data_removal()` — the data-protection guardian — until the restructure extracts it) |
+| **Data protection** | |
+| `R/data-removal.R` | `apply_data_removal()` — the authoritative data-protection guardian |
+| `R/filter.R` | `filter_*` family + `apply_postfilter` |
+| **Validation** | |
+| `R/validation.R` | `validation_rules` registry list + `validate()` orchestrator |
+| `R/validation-rules-enrollment.R` | Rules 1, 2, 17, 25, 26 — enrollment lifecycle |
+| `R/validation-rules-dates.R` | Rules 3, 4, 12–16 — date consistency |
+| `R/validation-rules-completeness.R` | Rules 5–11 — form completion |
+| `R/validation-rules-surgical.R` | Rules 19, 22–24 — surgical procedure validation |
+| `R/validation-rules-surveillance-end.R` | Rules 18, 21 — surveillance-end consistency |
+| `R/validation-rules-pathogens.R` | Rule 20 — pathogen resolution |
+| `R/validation-rules-event-timing.R` | Rules 27–42 — DOL/LOS verification + early-onset flags |
+| **Other** | |
 | `R/pathogens.R` | Pathogen taxonomy and resistance markers |
-| `R/validation.R` | Data validation rules |
+| `R/types-check.R` | `is_*` predicates + `check_*` assertions for neoipcr S3 classes |
 
 ---
 
@@ -143,13 +166,25 @@ Planned (not yet created):
 
 | File | Scope |
 |------|-------|
-| `test-dhis2.R` | `import_dhis2()`, `dhis2_dataset_options()` |
+| `test-import-dhis2.R` | `import_dhis2()` pipeline |
+| `test-dhis2-options.R` | `dhis2_dataset_options()` constructor |
+| `test-dhis2-users.R` | `get_user_info()`, `read_user_info_table()`, `read_metadata_users()` |
 | `test-dhis2-enrollments.R` | Enrollment import |
 | `test-dhis2-events.R` | Event import and processing |
 | `test-dhis2-trackedEntities.R` | Patient (tracked entity) import |
-| `test-filter.R` | Data filtering, `apply_data_removal()` |
-| `test-calc.R` | Epidemiological calculations |
-| `test-validation.R` | Data validation rules |
+| `test-dhis2-metadata-orgunits.R` | Org unit reading |
+| `test-dhis2-metadata-options.R` | Option-set readers |
+| `test-dhis2-metadata-reference.R` | Program structure + reference data readers |
+| `test-data-removal.R` | `apply_data_removal()` — data-protection guardian |
+| `test-filter.R` | Data filtering |
+| `test-calc-api.R` | Pipeline entry points |
+| `test-calc-tables.R` | Table builders |
+| `test-calc-rates.R` | Rate/count computers |
+| `test-calc-denominators.R` | Denominators |
+| `test-calc-procedure-categories.R` | Procedure category mapping |
+| `test-scales.R` | Binning helpers |
+| `test-cache.R` | Cache primitives |
+| `test-validation-rules.R` | Validation rules |
 | `test-pathogens.R` | Pathogen taxonomy and resistance markers |
 
 ### Fixture files
