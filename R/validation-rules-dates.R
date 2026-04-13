@@ -87,7 +87,7 @@ validation_rule_12 <- function(x, exceptions)
   check_neoipcr_ds(x)
 
   r <- dplyr::bind_cols(
-    rule_id = c(13L),
+    rule_id = c(12L),
     x$enrollments |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
@@ -195,7 +195,7 @@ validation_rule_14 <- function(x, exceptions)
   check_neoipcr_ds(x)
 
   r <- dplyr::bind_cols(
-    rule_id = c(13L),
+    rule_id = c(14L),
     x$enrollments |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
@@ -249,7 +249,7 @@ validation_rule_15 <- function(x, exceptions)
   check_neoipcr_ds(x)
 
   r <- dplyr::bind_cols(
-    rule_id = c(13L),
+    rule_id = c(15L),
     x$enrollments |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
@@ -303,7 +303,7 @@ validation_rule_16 <- function(x, exceptions)
   check_neoipcr_ds(x)
 
   r <- dplyr::bind_cols(
-    rule_id = c(13L),
+    rule_id = c(16L),
     x$enrollments |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),

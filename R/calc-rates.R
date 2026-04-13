@@ -142,7 +142,7 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(
     get_infectious_agent_detection_rates(
       group_cols = group_cols,
       use_cache = use_cache) |>
-    dplyr::select(c(group_cols,"n","inf_with_pathogen","rate"="n_per_iwp")) |>
+    dplyr::select(tidyselect::all_of(c(group_cols, "n", "inf_with_pathogen")), rate = "n_per_iwp") |>
     dplyr::mutate(
       drop_quartiles = n_deps < 5 | round(100 / .data$rate) >= median_inf_with_pathogen)
 
@@ -168,7 +168,7 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(
       group_cols = c("department_key", group_cols),
       use_cache = use_cache)
   r2 <- dept_data |>
-    dplyr::select(c("department_key", group_cols,"n_per_iwp"))
+    dplyr::select(tidyselect::all_of(c("department_key", group_cols, "n_per_iwp")))
 
   if (nrow(r2) < 1) {
     return(
@@ -181,7 +181,7 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(
   {
     r2 <- r2 |>
     tidyr::pivot_wider(
-      names_from = group_cols,
+      names_from = tidyselect::all_of(group_cols),
       values_from = "n_per_iwp",
       values_fill = 0)
 
@@ -292,6 +292,10 @@ get_infectious_agent_detection_rates <- function(
 
   if(is.null(group_cols))
     r <- r |> dplyr::bind_cols(inf_counts)
+  else if(length(inf_groups) == 0L)
+    r <- r |>
+    dplyr::cross_join(inf_counts) |>
+    dplyr::mutate(n = tidyr::replace_na(.data$n, 0))
   else
     r <- r |>
     dplyr::right_join(inf_counts, by = inf_groups) |>
@@ -524,7 +528,7 @@ get_resistance_test_rate <- function(
       .groups = "drop") |>
     dplyr::filter(!is.na(.data[[resistance]])) |>
     tidyr::pivot_wider(
-      names_from = resistance,
+      names_from = tidyselect::all_of(resistance),
       values_fill = 0L,
       names_expand = TRUE)
 
@@ -850,7 +854,7 @@ get_resistance_rate <- function(
       .groups = "drop") |>
     dplyr::filter(!is.na(.data[[resistance]]) & .data[[resistance]] != "not_tested") |>
     tidyr::pivot_wider(
-      names_from = resistance,
+      names_from = tidyselect::all_of(resistance),
       values_from = c("inf","ia_dtct"),
       values_fill = 0L,
       names_expand = TRUE) |>
