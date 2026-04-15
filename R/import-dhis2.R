@@ -166,6 +166,20 @@ import_dhis2 <- function(
 
   infectiousAgentFindings <- read_infectious_agent_findings(events_raw, events, metadata, dataset_options)
   # read_infectious_agent_findings_details
+
+  # Split the sparse free-text `name` column off into its own tibble so the
+  # main findings table doesn't carry a mostly-NA column. Only rows where the
+  # user manually typed a pathogen name (typically when pathogen_key == 0
+  # "unknown") end up in unknownPathogenNames.
+  unknownPathogenNames <- if ("name" %in% names(infectiousAgentFindings))
+      infectiousAgentFindings |>
+        dplyr::filter(!is.na(.data$name) & nzchar(.data$name)) |>
+        dplyr::select("agent_finding_key", "name")
+    else
+      tibble::tibble(agent_finding_key = integer(), name = character())
+  if ("name" %in% names(infectiousAgentFindings))
+    infectiousAgentFindings <- infectiousAgentFindings |> dplyr::select(!"name")
+
   substanceDays <- read_substance_days(events_raw, events, metadata, dataset_options)
   # read_substance_days_details
 
@@ -202,6 +216,7 @@ import_dhis2 <- function(
       ssiData = ssiData,
       substanceDays = substanceDays,
       infectiousAgentFindings = infectiousAgentFindings,
+      unknownPathogenNames = unknownPathogenNames,
       metadata = metadata,
       `.cache` = new.env(parent = emptyenv())),
     class = c("neoipcr_ds", "list"))
