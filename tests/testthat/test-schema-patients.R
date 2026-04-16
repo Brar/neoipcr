@@ -99,9 +99,9 @@ test_that("patient_id survives via also_when when include_invalid_patients is a 
 
 test_that("total_gestation_days pairs with gest_age (same patient_columns key)", {
   cols <- neoipcr:::patient_attribute_cols(
-    "total_gestation_days", integer(), patient_columns_key = "gest_age")
+    "total_gestation_days", integer(), patient_columns_key = "gestational_age")
   opts_ga   <- dhis2_dataset_options(include_patient = "full",
-                                     patient_columns = "gest_age")
+                                     patient_columns = "gestational_age")
   opts_none <- dhis2_dataset_options(include_patient = "full",
                                      patient_columns = "sex")
   expect_true(cols[[1]]$include_when(opts_ga))
@@ -338,7 +338,7 @@ test_that("patients_cols: inactive / potentialDuplicate have no companion column
 test_that("make_test_patients output matches patients_cols schema (full mode, all attrs)", {
   opts <- dhis2_dataset_options(
     include_patient    = "full",
-    patient_columns    = c("id", "sex", "birth_weight", "gest_age",
+    patient_columns    = c("id", "sex", "birth_weight", "gestational_age",
                            "delivery_mode", "siblings"),
     include_dhis2_ids  = "patients",
     include_user       = "full",
@@ -351,7 +351,7 @@ test_that("make_test_patients output matches patients_cols schema (full mode, al
   fixture <- make_test_patients(
     n = 2,
     include_patient    = "full",
-    patient_columns    = c("id", "sex", "birth_weight", "gest_age",
+    patient_columns    = c("id", "sex", "birth_weight", "gestational_age",
                            "delivery_mode", "siblings"),
     include_dhis2_ids  = "patients",
     include_user       = "full",

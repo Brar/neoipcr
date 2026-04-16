@@ -120,13 +120,15 @@ patients_cols <- with_entity_gate(
       "sex", factor(), factor_levels = character(),
       levels_source = "data"),
     patient_attribute_cols("birth_weight", integer()),
-    patient_attribute_cols("gest_age", character()),
+    patient_attribute_cols(
+      "gest_age", character(), patient_columns_key = "gestational_age"),
     # `total_gestation_days` pairs with `gest_age` — both TEAs carry
     # the same datum in two shapes (text "25+4" vs integer total days),
-    # kept in sync by DHIS2 program rules. Selection follows `gest_age`
-    # rather than being its own `patient_columns` entry.
+    # kept in sync by DHIS2 program rules. Selection follows
+    # `gestational_age` (the user-facing key) rather than being its own
+    # `patient_columns` entry.
     patient_attribute_cols(
-      "total_gestation_days", integer(), patient_columns_key = "gest_age"),
+      "total_gestation_days", integer(), patient_columns_key = "gestational_age"),
     patient_attribute_cols(
       "delivery_mode", factor(), factor_levels = character(),
       levels_source = "data"),

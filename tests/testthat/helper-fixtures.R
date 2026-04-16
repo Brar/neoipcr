@@ -97,7 +97,7 @@ read_test_metadata <- function(
 make_test_patients <- function(
     n                     = 3,
     include_patient       = "full",
-    patient_columns       = c("id", "sex", "birth_weight", "gest_age"),
+    patient_columns       = c("id", "sex", "birth_weight", "gestational_age"),
     include_dhis2_ids     = "patients",
     include_user          = "no",
     include_timestamps    = FALSE,

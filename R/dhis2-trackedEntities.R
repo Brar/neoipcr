@@ -93,8 +93,12 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
   # `gest_age` pulls its paired `total_gestation_days` — per the schema
   # note, both TEAs carry the same datum in two shapes (text vs
   # integer) and stay in sync via DHIS2 program rules.
-  if ("gest_age" %in% allowed_codes)
-    allowed_codes <- c(allowed_codes, "total_gestation_days")
+  # `gestational_age` is the user-facing patient_columns key; the
+  # DHIS2-derived column codes are `gest_age` (text "25+4") and
+  # `total_gestation_days` (integer total days). Both must be in
+  # allowed_codes so the pre-pivot factor pinning picks them up.
+  if ("gestational_age" %in% allowed_codes)
+    allowed_codes <- c(allowed_codes, "gest_age", "total_gestation_days")
   # `include_invalid_patients` can be a character vector of patient IDs
   # (exceptions to the invalid filter in `import_dhis2()`). When it is,
   # `patient_id` must remain accessible regardless of `patient_columns`
