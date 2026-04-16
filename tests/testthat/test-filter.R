@@ -278,3 +278,133 @@ test_that("apply_postfilter handles NULL metadata tables", {
   # Should complete without error
   expect_s3_class(result, "neoipcr_ds")
 })
+
+
+# --- apply_postfilter: fixed-point + dynamic-anchor cascade (C4) ---
+#
+# The C4 rewrite replaced the legacy one-pass enrollments-anchored
+# cascade with a fixed-point loop of (a) link-FK orphan cleanup + (b)
+# hierarchy-metadata upward cascade using a per-key dynamic anchor
+# (union of every data-carrying tibble that carries the key, excluding
+# the target). These tests verify the new behaviours that the legacy
+# cascade couldn't handle.
+
+test_that("apply_postfilter: multi-level cascade converges (hospital -> department -> country -> WB class)", {
+  ds <- make_populated_test_ds()
+
+  # Keep only enrollments in department 1 (department 2 should
+  # cascade all the way up through hospitals, countries, WB classes if
+  # nothing else keeps them alive).
+  ds$enrollments <- ds$enrollments[ds$enrollments$department_key == 1L, ]
+
+  result <- neoipcr:::apply_postfilter(ds)
+
+  # Direct cascade: department 2 removed.
+  expect_false(2L %in% result$metadata$departments$department_key)
+
+  # Cascade further: hospital_key / country_key / world_bank_class_key
+  # values uniquely belonging to department 2 should also be gone from
+  # their respective metadata tibbles (since the only anchor carrying
+  # them was enrollments → departments → … → that hierarchy row).
+  surviving_hospital_keys <-
+    result$metadata$departments$hospital_key
+  surviving_country_keys <-
+    result$metadata$departments$country_key
+  surviving_wb_keys <-
+    result$metadata$departments$world_bank_class_key
+
+  # Every remaining hierarchy row must appear in `surviving_*_keys`
+  # (union of what the departments anchor carries).
+  expect_true(all(
+    result$metadata$hospitals$hospital_key %in% surviving_hospital_keys))
+  expect_true(all(
+    result$metadata$countries$country_key %in% surviving_country_keys))
+  expect_true(all(
+    result$metadata$worldBankClasses$world_bank_class_key %in%
+      surviving_wb_keys))
+})
+
+test_that("apply_postfilter: cascade runs to fixed point (multi-iteration)", {
+  # Construct a ds where the cascade needs >1 iteration: removing
+  # enrollment triggers patient removal (iteration 1); patient removal
+  # in turn removes its only surviving enrollment (iteration 2); etc.
+  # We verify convergence by asserting the function returns (no hang).
+
+  ds <- make_populated_test_ds()
+
+  # Remove all events — this drops every per-event-type data tibble,
+  # but enrollments stay via the surveillance_end admission check
+  # (which runs once in the prefilter, not the cascade). The cascade
+  # should still terminate.
+  ds$events <- ds$events[0, ]
+
+  # This will hang (infinite loop) if the fixed-point check is broken.
+  # `expect_no_error` + the implicit timeout is enough — testthat
+  # aborts the whole run if a single test hangs.
+  expect_no_error(result <- neoipcr:::apply_postfilter(ds))
+  # Per-event-type data all drops to 0 rows.
+  expect_equal(nrow(result$admissionData), 0L)
+  expect_equal(nrow(result$surveillanceEndData), 0L)
+})
+
+test_that("apply_postfilter: link-FK cascade tolerates include_event = 'no' (no event_key)", {
+  # Under `include_event = "no"`, every per-event-type data tibble is
+  # 0x0 (no `event_key` column). Every `event_key`-based semi-join in
+  # the cascade must be skipped via the column-presence guard.
+  ds <- make_populated_test_ds()
+  ds$events <- tibble::tibble()  # simulate 0x0 under include_event = "no"
+  ds$admissionData <- tibble::tibble()
+  ds$surveillanceEndData <- tibble::tibble()
+
+  expect_no_error(result <- neoipcr:::apply_postfilter(ds))
+  expect_s3_class(result, "neoipcr_ds")
+})
+
+test_that("apply_postfilter: link-FK cascade tolerates include_patient = 'no' (no patient_key)", {
+  ds <- make_populated_test_ds()
+  # Drop `patient_key` from every fact tibble that carries it —
+  # simulates include_patient = "no" at the schema level.
+  drop_patient_key <- function(tib) {
+    if ("patient_key" %in% names(tib))
+      tib |> dplyr::select(!"patient_key")
+    else tib
+  }
+  ds$patients    <- tibble::tibble()  # 0x0 under gate
+  ds$enrollments <- drop_patient_key(ds$enrollments)
+  ds$events      <- drop_patient_key(ds$events)
+
+  expect_no_error(result <- neoipcr:::apply_postfilter(ds))
+  expect_s3_class(result, "neoipcr_ds")
+})
+
+test_that("apply_postfilter: dynamic anchor handles pseudo-event (hierarchy keys on per-event-type data)", {
+  # Under `include_event = "pseudo"` events is PK-only (no hierarchy
+  # keys). If per-event-type data carries hierarchy keys via
+  # inheritance, the dynamic anchor should pick those up for the
+  # metadata cascade.
+  ds <- make_populated_test_ds()
+
+  # Strip hierarchy keys from events (simulate pseudo mode).
+  ds$events <- ds$events |>
+    dplyr::select(!tidyselect::any_of(c(
+      "department_key", "hospital_key", "country_key",
+      "world_bank_class_key")))
+
+  # Strip hierarchy keys from enrollments too (simulate that the
+  # anchor has shifted deeper than the legacy enrollments-only code
+  # could handle). Admissions don't carry hierarchy keys in the fixture,
+  # but departments still does via the metadata pre-join — so the
+  # cascade uses `metadata$departments` as the anchor for the other
+  # three keys.
+  ds$enrollments <- ds$enrollments |>
+    dplyr::select(!tidyselect::any_of(c(
+      "hospital_key", "country_key", "world_bank_class_key")))
+
+  expect_no_error(result <- neoipcr:::apply_postfilter(ds))
+  # The cascade should have left countries / hospitals / WB classes
+  # non-empty (they're anchored off departments, which still carries
+  # the keys).
+  expect_gt(nrow(result$metadata$countries), 0L)
+  expect_gt(nrow(result$metadata$hospitals), 0L)
+  expect_gt(nrow(result$metadata$worldBankClasses), 0L)
+})

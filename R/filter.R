@@ -137,155 +137,283 @@ filter_countries <- function(
     dplyr::filter(.data$code %in% included_countries)
 }
 
+#' Orphan-cleanup post-filter.
+#'
+#' Runs after `filter_dataset()` (and after `import_dhis2()`'s
+#' narrowing passes) to prune every tibble in `x` so the final dataset
+#' is internally consistent: no fact row whose link-FK points at a
+#' removed parent, no metadata row whose hierarchy-key has no surviving
+#' descendant.
+#'
+#' Structure (post phase-c-audit):
+#'
+#' 1. **One-time prefilter** — neoipcr-specific enrollment invariants
+#'    (an enrollment only counts if it has a surveillance-end event
+#'    whose admission data is present; enrollments outside the filtered
+#'    country / department lists drop). Runs once before the cascade.
+#' 2. **Fixed-point cascade** — link-FK orphan cleanup (`patient_key`
+#'    / `enrollment_key` / `event_key`) + hierarchy-metadata upward
+#'    cascade with **per-hierarchy-key dynamic anchor selection**
+#'    (union of every data-carrying tibble that carries the key).
+#'    Iterates until no tibble loses a row in a full pass.
+#'
+#' Every join site is **column-presence-guarded**: under link-privacy
+#' gates (`include_patient` / `include_enrollment` / `include_event`
+#' = `"no"`) the relevant key column is absent from one or more
+#' tibbles, and the corresponding semi-join is skipped. Under the
+#' inheritance rule hierarchy keys materialize at whichever tibble the
+#' rule dictates; the dynamic anchor picks that up without per-entity
+#' branching.
+#'
+#' `country_key` retains **NA-tolerance** because test units have no
+#' country and must survive the cascade.
+#'
+#' @param x A `neoipcr_ds` object.
+#' @return `x` with every tibble semi-joined / filtered per the
+#'   cascade.
+#' @noRd
 apply_postfilter <- function(x)
 {
-  worldBankClasses <- x$metadata$worldBankClasses
-  countries <- x$metadata$countries
-  hospitals <- x$metadata$hospitals
-  departments <- x$metadata$departments
-  patients <- x$patients
-  enrollments <- x$enrollments
-  events <- x$events
-  eventNotes <- x$eventNotes
-  enrollment_notes <- x$enrollment_notes
-  admissionData <- x$admissionData
-  surveillanceEndData <- x$surveillanceEndData
-  sepsisData <- x$sepsisData
-  necData <- x$necData
-  pneumoniaData <- x$pneumoniaData
-  surgeryData <- x$surgeryData
-  ssiData <- x$ssiData
-  infectiousAgentFindings <- x$infectiousAgentFindings
-  substanceDays <- x$substanceDays
+  # Step 1: one-time dataset-driven enrollment prefilter.
+  x <- .postfilter_prefilter_enrollments(x)
 
-  surveillance_end_events <- x$events |>
-    dplyr::filter(.data$event_type_key != "end") |>
-    dplyr::select("enrollment_key", "event_key")
+  # Step 2: fixed-point cascade.
+  repeat {
+    before <- .postfilter_row_counts(x)
+    x      <- .postfilter_pass(x)
+    after  <- .postfilter_row_counts(x)
+    if (identical(before, after)) break
+  }
 
-  #############################
-  ## First filter enrollments #
-  #############################
-  # Filtering by patients, admissionData and surveillance_end_events will always work
-  enrollments <- enrollments |>
-    dplyr::semi_join(patients, dplyr::join_by("patient_key")) |>
-    dplyr::semi_join(
-      surveillance_end_events |>
-        dplyr::semi_join(
-          admissionData, dplyr::join_by("event_key")),
-      dplyr::join_by("enrollment_key"))
+  x
+}
 
-  # Filtering by country will only work if we have country information
-  # Keep enrollments with NA country_key (test data without a country).
-  # `countries` follows the three-mode schema contract and is always a
-  # tibble — guard on column presence, not null-ness.
-  if("country_key" %in% names(countries) &&
-     "country_key" %in% names(enrollments))
-    enrollments <- enrollments |>
-    dplyr::filter(
-      is.na(.data$country_key) |
-      .data$country_key %in% countries$country_key)
 
-  # Filtering by unit will only work if we have unit information
-  # `departments` is always a tibble (never NULL) under the three-mode
-  # schema contract — guard on column presence, not null-ness.
-  if("department_key" %in% names(departments) &&
-     "department_key" %in% names(enrollments))
-    enrollments <- enrollments |>
-    dplyr::semi_join(departments, dplyr::join_by("department_key"))
+# ---- Step 1: one-time prefilter ------------------------------------------
+#
+# Three pieces, each guarded on column presence so link-privacy gates
+# (`"no"`) don't crash:
+#   a. Enrollments keep only the ones whose surveillance-end event is
+#      present AND whose admission data row is present.
+#   b. Enrollments keep only NA-country or country-in-filtered-metadata.
+#   c. Enrollments keep only department-in-filtered-metadata.
+#
+# These propagate dataset-options-driven metadata narrowings (country
+# filter, department filter, surveillance-end-with-admission invariant)
+# down into enrollments. The cascade in Step 2 then carries the
+# narrowing through the rest of the fact and metadata tibbles.
+.postfilter_prefilter_enrollments <- function(x)
+{
+  if (!("enrollment_key" %in% names(x$enrollments)))
+    return(x)
 
-  ########################################################
-  ## Second filter all the other elements by enrollments #
-  ########################################################
-  if("department_key" %in% names(departments) &&
-     "department_key" %in% names(enrollments))
-    departments <- departments |>
-    dplyr::semi_join(enrollments, dplyr::join_by("department_key"))
-  # `hospitals` is always a tibble (never NULL) under the three-mode
-  # schema contract — guard on column presence, not null-ness.
-  if("hospital_key" %in% names(hospitals) &&
-     "hospital_key" %in% names(enrollments))
-    hospitals <- hospitals |>
-    dplyr::semi_join(enrollments, dplyr::join_by("hospital_key"))
-  if("country_key" %in% names(countries) &&
-     "country_key" %in% names(enrollments))
-    countries <- countries |>
-    dplyr::semi_join(enrollments, dplyr::join_by("country_key"))
-  # `worldBankClasses` is always a tibble (never NULL) since the reader
-  # honors the three-mode schema contract. Guard on column presence
-  # instead of null-ness: under "no" the tibble has 0 columns and the
-  # semi_join would fail to find `world_bank_class_key`.
-  if("world_bank_class_key" %in% names(worldBankClasses) &&
-     "world_bank_class_key" %in% names(enrollments))
-    worldBankClasses <- worldBankClasses |>
-    dplyr::semi_join(enrollments, dplyr::join_by("world_bank_class_key"))
+  # (a) surveillance-end-with-admission invariant.
+  if ("event_key" %in% names(x$events) &&
+      "enrollment_key" %in% names(x$events) &&
+      "event_key" %in% names(x$admissionData)) {
+    surveillance_end_events <- x$events |>
+      dplyr::filter(.data$event_type_key != "end") |>
+      dplyr::select("enrollment_key", "event_key")
+    se_with_admission <- surveillance_end_events |>
+      dplyr::semi_join(x$admissionData, dplyr::join_by("event_key"))
+    x$enrollments <- x$enrollments |>
+      dplyr::semi_join(se_with_admission, dplyr::join_by("enrollment_key"))
+  }
 
-  patients <- patients |>
-    dplyr::semi_join(enrollments, dplyr::join_by("patient_key"))
+  # (b) NA-tolerant country-filter propagation.
+  if ("country_key" %in% names(x$metadata$countries) &&
+      "country_key" %in% names(x$enrollments)) {
+    country_keys <- x$metadata$countries$country_key
+    x$enrollments <- x$enrollments |>
+      dplyr::filter(
+        is.na(.data$country_key) |
+          .data$country_key %in% country_keys)
+  }
 
-  events <- events |>
-    dplyr::semi_join(enrollments, dplyr::join_by("enrollment_key"))
+  # (c) department-filter propagation.
+  if ("department_key" %in% names(x$metadata$departments) &&
+      "department_key" %in% names(x$enrollments))
+    x$enrollments <- x$enrollments |>
+      dplyr::semi_join(
+        x$metadata$departments, dplyr::join_by("department_key"))
 
-  # (No `eventDetails` semi_join — merged into `events` in
-  # phase-b-event-details; entity-level user / timestamp / deleted /
-  # followup fields now travel on `events` itself and are carried by the
-  # events semi_join above.)
+  x
+}
 
-  # eventNotes + enrollment_notes are always tibbles under the schema
-  # contract — guard on column presence (0×0 under gate means no
-  # event_key / enrollment_key column to semi_join on).
-  if("event_key" %in% names(eventNotes))
-    eventNotes <- eventNotes |>
-    dplyr::semi_join(events, dplyr::join_by("event_key"))
 
-  if("enrollment_key" %in% names(enrollment_notes))
-    enrollment_notes <- enrollment_notes |>
-    dplyr::semi_join(enrollments, dplyr::join_by("enrollment_key"))
+# ---- Step 2: fixed-point cascade pass ------------------------------------
+#
+# Executes one full cascade pass:
+#   a. Link-FK orphan cleanup across fact tibbles.
+#   b. Hierarchy-metadata upward cascade with dynamic anchor selection.
+#
+# `apply_postfilter()` iterates this pass to a fixed point (no tibble
+# loses rows in a full pass).
+.postfilter_pass <- function(x)
+{
+  x <- .postfilter_link_fk_cascade(x)
+  x <- .postfilter_hierarchy_cascade(x)
+  x
+}
 
-  admissionData <- admissionData |>
-    dplyr::semi_join(events, dplyr::join_by("event_key"))
 
-  surveillanceEndData <- surveillanceEndData |>
-    dplyr::semi_join(events, dplyr::join_by("event_key"))
+# Link-FK cascade — fact-to-fact orphan cleanup.
+#
+# Every join guarded on column presence on both sides so link-privacy
+# gates (`include_patient` / `include_enrollment` / `include_event`
+# = `"no"`) turn off the corresponding branch.
+.postfilter_link_fk_cascade <- function(x)
+{
+  # events ← enrollments (link FK).
+  if ("enrollment_key" %in% names(x$events) &&
+      "enrollment_key" %in% names(x$enrollments))
+    x$events <- x$events |>
+      dplyr::semi_join(x$enrollments, dplyr::join_by("enrollment_key"))
 
-  sepsisData <- sepsisData |>
-    dplyr::semi_join(events, dplyr::join_by("event_key"))
+  # events ← patients (secondary link FK — under include_patient != "no"
+  # + include_enrollment == "no" this is the only events→patients
+  # linkage).
+  if ("patient_key" %in% names(x$events) &&
+      "patient_key" %in% names(x$patients))
+    x$events <- x$events |>
+      dplyr::semi_join(x$patients, dplyr::join_by("patient_key"))
 
-  necData <- necData |>
-    dplyr::semi_join(events, dplyr::join_by("event_key"))
+  # per-event-type data ← events.
+  event_child_tbls <- c(
+    "admissionData", "surveillanceEndData", "sepsisData", "necData",
+    "pneumoniaData", "surgeryData", "ssiData",
+    "infectiousAgentFindings", "substanceDays", "eventNotes")
+  for (t in event_child_tbls) {
+    if ("event_key" %in% names(x[[t]]) &&
+        "event_key" %in% names(x$events))
+      x[[t]] <- x[[t]] |>
+        dplyr::semi_join(x$events, dplyr::join_by("event_key"))
+  }
 
-  pneumoniaData <- pneumoniaData |>
-    dplyr::semi_join(events, dplyr::join_by("event_key"))
+  # enrollment_notes ← enrollments.
+  if ("enrollment_key" %in% names(x$enrollment_notes) &&
+      "enrollment_key" %in% names(x$enrollments))
+    x$enrollment_notes <- x$enrollment_notes |>
+      dplyr::semi_join(x$enrollments, dplyr::join_by("enrollment_key"))
 
-  surgeryData <- surgeryData |>
-    dplyr::semi_join(events, dplyr::join_by("event_key"))
+  # Upward prune: enrollments with no surviving patient.
+  if ("patient_key" %in% names(x$enrollments) &&
+      "patient_key" %in% names(x$patients))
+    x$enrollments <- x$enrollments |>
+      dplyr::semi_join(x$patients, dplyr::join_by("patient_key"))
 
-  ssiData <- ssiData |>
-    dplyr::semi_join(events, dplyr::join_by("event_key"))
+  # Upward prune: patients with no surviving enrollment.
+  if ("patient_key" %in% names(x$patients) &&
+      "patient_key" %in% names(x$enrollments))
+    x$patients <- x$patients |>
+      dplyr::semi_join(x$enrollments, dplyr::join_by("patient_key"))
 
-  infectiousAgentFindings <- infectiousAgentFindings |>
-    dplyr::semi_join(events, dplyr::join_by("event_key"))
+  x
+}
 
-  substanceDays <- substanceDays |>
-    dplyr::semi_join(events, dplyr::join_by("event_key"))
 
-  x$metadata$worldBankClasses <- worldBankClasses
-  x$metadata$countries <- countries
-  x$metadata$hospitals <- hospitals
-  x$metadata$departments <- departments
-  x$patients <- patients
-  x$enrollments <- enrollments
-  x$events <- events
-  x$eventNotes <- eventNotes
-  x$enrollment_notes <- enrollment_notes
-  x$admissionData <- admissionData
-  x$surveillanceEndData <- surveillanceEndData
-  x$sepsisData <- sepsisData
-  x$necData <- necData
-  x$pneumoniaData <- pneumoniaData
-  x$surgeryData <- surgeryData
-  x$ssiData <- ssiData
-  x$infectiousAgentFindings <- infectiousAgentFindings
-  x$substanceDays <- substanceDays
+# Hierarchy-metadata upward cascade with dynamic anchor selection.
+#
+# For each of the four hierarchy keys, compute the "surviving key"
+# anchor as the union of that key's values across every data-carrying
+# tibble (fact or metadata) that carries the column — excluding the
+# metadata tibble being filtered, which is the target of the cascade.
+#
+# The union-based anchor handles every inheritance configuration:
+#
+#   - Full-department-chain case: `metadata$departments` carries every
+#     hierarchy key via pre-join; fact tibbles don't materialize
+#     upstream keys directly. Anchor for `hospital_key` /
+#     `country_key` / `world_bank_class_key` comes from
+#     `metadata$departments`.
+#
+#   - Pseudo-event case: `events` is 1-column PK-only; per-event-type
+#     data tibbles materialize hierarchy keys via inheritance. Anchor
+#     for those keys comes from the per-event-type data tibbles.
+#
+#   - Full-fact-chain case: hierarchy keys materialize on every fact
+#     level. Anchor is the union across every non-empty fact tibble
+#     (the cascade converges after link-FK cleanup stabilizes).
+#
+# NA-tolerance is applied to `country_key` only (test units have no
+# country).
+.postfilter_hierarchy_cascade <- function(x)
+{
+  hierarchy_map <- list(
+    department_key       = "departments",
+    hospital_key         = "hospitals",
+    country_key          = "countries",
+    world_bank_class_key = "worldBankClasses")
 
-  return(x)
+  for (hk in names(hierarchy_map)) {
+    md_tbl <- hierarchy_map[[hk]]
+    md     <- x$metadata[[md_tbl]]
+    if (is.null(md) || !(hk %in% names(md))) next
+
+    surviving <- .surviving_hierarchy_keys(x, hk, exclude_md_tbl = md_tbl)
+    # If no other tibble carries the key, there's nothing to propagate
+    # from — leave metadata alone.
+    if (is.null(surviving)) next
+
+    x$metadata[[md_tbl]] <- md |>
+      dplyr::filter(.data[[hk]] %in% surviving)
+  }
+
+  x
+}
+
+
+# Collect the union of a hierarchy key's values across every data-
+# carrying tibble in `x` that carries the column, excluding the
+# metadata tibble being filtered (which is the target).
+#
+# Returns `NULL` when no tibble carries the key (caller should skip
+# filtering in that case — there's no source of truth).
+.surviving_hierarchy_keys <- function(x, hk, exclude_md_tbl)
+{
+  fact_tbls <- c(
+    "patients", "enrollments", "events",
+    "admissionData", "surveillanceEndData", "sepsisData", "necData",
+    "pneumoniaData", "surgeryData", "ssiData",
+    "infectiousAgentFindings", "substanceDays",
+    "eventNotes", "enrollment_notes")
+  md_tbls <- setdiff(
+    c("worldBankClasses", "countries", "hospitals", "departments"),
+    exclude_md_tbl)
+
+  vals <- list()
+  for (t in fact_tbls) {
+    tib <- x[[t]]
+    if (!is.null(tib) && hk %in% names(tib))
+      vals[[length(vals) + 1L]] <- tib[[hk]]
+  }
+  for (t in md_tbls) {
+    tib <- x$metadata[[t]]
+    if (!is.null(tib) && hk %in% names(tib))
+      vals[[length(vals) + 1L]] <- tib[[hk]]
+  }
+
+  if (length(vals) == 0L) return(NULL)
+  unique(unlist(vals))
+}
+
+
+# Snapshot row counts of every tibble in `x` for fixed-point detection.
+.postfilter_row_counts <- function(x)
+{
+  fact_tbls <- c(
+    "patients", "enrollments", "events",
+    "admissionData", "surveillanceEndData", "sepsisData", "necData",
+    "pneumoniaData", "surgeryData", "ssiData",
+    "infectiousAgentFindings", "substanceDays",
+    "eventNotes", "enrollment_notes")
+  md_tbls <- c("worldBankClasses", "countries", "hospitals", "departments")
+
+  c(
+    vapply(fact_tbls, function(t) {
+      tib <- x[[t]]; if (is.null(tib)) 0L else nrow(tib)
+    }, integer(1)),
+    vapply(md_tbls, function(t) {
+      tib <- x$metadata[[t]]; if (is.null(tib)) 0L else nrow(tib)
+    }, integer(1)))
 }
