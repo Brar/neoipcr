@@ -205,9 +205,8 @@ test_that("assert_schema does not check levels of data-derived factor columns", 
 
 test_that("finalize_to_schema selects declared columns in declaration order", {
   cols <- make_cols()
-  # Input has extras and wrong order.
+  # Input columns are declared in `cols` but in the wrong order.
   x <- tibble::tibble(
-    extra = 1:3,
     name  = letters[1:3],
     id    = 1:3,
     sex   = c("f", "m", "u"))
@@ -215,11 +214,49 @@ test_that("finalize_to_schema selects declared columns in declaration order", {
   expect_identical(names(out), c("id", "sex", "name"))
 })
 
-test_that("finalize_to_schema drops columns not in the schema", {
+test_that("finalize_to_schema drops columns listed in `scratch`", {
   cols <- list(neoipcr:::schema_col("keep", integer()))
   x <- tibble::tibble(keep = 1:3, drop = letters[1:3])
-  out <- neoipcr:::finalize_to_schema(x, cols, dhis2_dataset_options())
+  out <- neoipcr:::finalize_to_schema(
+    x, cols, dhis2_dataset_options(), scratch = "drop")
   expect_identical(names(out), "keep")
+})
+
+test_that("finalize_to_schema errors on undeclared-and-not-scratch columns", {
+  cols <- list(neoipcr:::schema_col("keep", integer()))
+  x <- tibble::tibble(keep = 1:3, stray = letters[1:3])
+  expect_error(
+    neoipcr:::finalize_to_schema(x, cols, dhis2_dataset_options()),
+    "not declared in schema and not in `scratch`")
+  expect_error(
+    neoipcr:::finalize_to_schema(x, cols, dhis2_dataset_options()),
+    "stray")
+})
+
+test_that("finalize_to_schema silently drops declared-but-gated-out columns", {
+  # `b` is declared but gated out; it is silently dropped (intentional
+  # option-gating, not a mismatch). Matches the invariant that `cols`
+  # lists *all* known columns, and `include_when` narrows them per opts.
+  cols <- list(
+    neoipcr:::schema_col("a", integer()),
+    neoipcr:::schema_col("b", integer(), \(opts) opts$include_country == "full")
+  )
+  x <- tibble::tibble(a = 1:3, b = 1:3)
+  out <- neoipcr:::finalize_to_schema(
+    x, cols, dhis2_dataset_options(include_country = "no"))
+  expect_identical(names(out), "a")
+})
+
+test_that("finalize_to_schema accepts mix of scratch and declared-gated-out", {
+  cols <- list(
+    neoipcr:::schema_col("a", integer()),
+    neoipcr:::schema_col("b", integer(), \(opts) opts$include_country == "full")
+  )
+  x <- tibble::tibble(a = 1:3, b = 1:3, raw_id = letters[1:3])
+  out <- neoipcr:::finalize_to_schema(
+    x, cols, dhis2_dataset_options(include_country = "no"),
+    scratch = "raw_id")
+  expect_identical(names(out), "a")
 })
 
 test_that("finalize_to_schema errors when a declared column is missing", {
@@ -247,9 +284,12 @@ test_that("finalize_to_schema respects include_when() filtering", {
     neoipcr:::schema_col("full_only", integer(),
                          \(opts) opts$include_country == "full")
   )
+  # `full_only` is declared but gated out → silently dropped.
+  # `extra` is not declared → must be listed in scratch.
   x <- tibble::tibble(always = 1:3, full_only = 1:3, extra = letters[1:3])
   out <- neoipcr:::finalize_to_schema(
-    x, cols, dhis2_dataset_options(include_country = "no"))
+    x, cols, dhis2_dataset_options(include_country = "no"),
+    scratch = "extra")
   expect_identical(names(out), "always")
 })
 
@@ -362,6 +402,45 @@ test_that("finalize_to_schema returns 0x0 when entity_gate rejects opts", {
   expect_s3_class(out, "tbl_df")
   expect_equal(ncol(out), 0L)
   expect_equal(nrow(out), 0L)
+})
+
+# ---- require_cols --------------------------------------------------------
+#
+# Consumer-side assertion helper. Replaces `dplyr::select(any_of(cols))`
+# at schema-to-consumer boundaries where the caller has already decided
+# the columns should be present (per the current schema + opts). Silent
+# `any_of` tolerance at these boundaries is the "Layer 2" half of the
+# silent-failure sandwich (see tasks/neoipcr-schema-arc/schema-finalize-loud.md).
+
+test_that("require_cols returns invisibly when every column is present", {
+  x <- tibble::tibble(a = 1:3, b = letters[1:3], c = 1:3)
+  expect_invisible(neoipcr:::require_cols(x, c("a", "b"), "test"))
+  expect_identical(neoipcr:::require_cols(x, c("a", "b"), "test"), x)
+})
+
+test_that("require_cols errors when a required column is missing", {
+  x <- tibble::tibble(a = 1:3)
+  expect_error(
+    neoipcr:::require_cols(x, c("a", "b"), "test"),
+    "Required columns missing from `test`")
+  expect_error(
+    neoipcr:::require_cols(x, c("a", "b"), "test"),
+    "b")
+})
+
+test_that("require_cols lists every missing column in the error", {
+  x <- tibble::tibble(a = 1:3)
+  err <- tryCatch(
+    neoipcr:::require_cols(x, c("a", "b", "c"), "departments"),
+    error = identity)
+  expect_match(conditionMessage(err), "b")
+  expect_match(conditionMessage(err), "c")
+  expect_match(conditionMessage(err), "departments")
+})
+
+test_that("require_cols passes when cols is empty", {
+  x <- tibble::tibble(a = 1:3)
+  expect_invisible(neoipcr:::require_cols(x, character(), "test"))
 })
 
 test_that("schema_codes honors entity_gate via compile_schema", {

@@ -248,8 +248,14 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
   # containing-entity gate on `hospitals_cols` short-circuits to 0×0
   # under `include_hospital = "no"`, dropping every internal-only
   # column in one step. Tail `assert_schema()` confirms the result.
+  #
+  # `country` (raw DHIS2 id from the hoisted parent reference) is
+  # reader-internal scratch: consumed by the orchestrator above for the
+  # country_key and WB-class inheritance joins, and explicitly not part
+  # of the public schema. Declared as `scratch` so the new loud
+  # finalize recognises it as intentional, not an unintended mismatch.
   metadata$hospitals <- metadata$hospitals |>
-    finalize_to_schema(hospitals_cols, dataset_options)
+    finalize_to_schema(hospitals_cols, dataset_options, scratch = "country")
   assert_schema(metadata$hospitals, hospitals_cols, dataset_options)
 
   # Pre-join hierarchy into departments so that read_patients/enrollments/events

@@ -288,8 +288,16 @@ read_metadata_wb_classes <- function(metadata, dataset_options)
     dplyr::select(tidyselect::all_of(
       c("world_bank_class_key", "organisationUnits")))
 
+  # `id`, `name`, `displayName`, `organisationUnits` are raw DHIS2 fields
+  # unnest_wider'd from the WB-class group response. The orchestrator
+  # consumes `organisationUnits` (via `country_map`) for the WB-class
+  # inheritance path on hospitals under `include_country = "no"`; the
+  # rest are unused public-side. Listed as `scratch` so the new loud
+  # finalize doesn't flag them as unintended mismatches.
   public <- filtered |>
-    finalize_to_schema(worldBankClasses_cols, opts)
+    finalize_to_schema(
+      worldBankClasses_cols, opts,
+      scratch = c("id", "name", "displayName", "organisationUnits"))
   assert_schema(public, worldBankClasses_cols, opts)
 
   list(public = public, country_map = country_map)
@@ -372,8 +380,13 @@ read_metadata_countries <- function(metadata, dataset_options, wb_country_map)
   internal_map <- countries |>
     dplyr::select(tidyselect::any_of(c("country", "code", "country_key")))
 
+  # `country` is the raw DHIS2 org-unit id; kept only on `internal_map`
+  # for orchestrator-side joins (country_filter narrowing, hospitals
+  # country_key lookup). The schema deliberately doesn't expose it in
+  # the public tibble (that's gated by `include_dhis2_ids == "countries"`
+  # at a future Phase B sub-task), so it's `scratch` for the finalize.
   public <- countries |>
-    finalize_to_schema(countries_cols, opts)
+    finalize_to_schema(countries_cols, opts, scratch = "country")
   assert_schema(public, countries_cols, opts)
 
   list(public = public, internal_map = internal_map)

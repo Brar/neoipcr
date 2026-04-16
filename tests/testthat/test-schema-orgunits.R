@@ -714,3 +714,91 @@ test_that("make_test_metadata_departments matches schema across key mode combina
     }
   }
 })
+
+# ---- Regression: loud finalize_to_schema at orchestrator boundary ---------
+#
+# The hazard class motivating tasks/neoipcr-schema-arc/schema-finalize-loud.md:
+# the orchestrator pre-joins a column onto a hierarchy entity expecting it to
+# survive, the schema doesn't declare it, and the old silent drop in
+# `finalize_to_schema` composed with downstream `any_of` silent tolerance to
+# produce wrong data with no error. These tests pin the new loud behaviour at
+# the schema boundary so that any future regression in the orchestrator → reader
+# contract surfaces as a clear error, not silent data loss.
+
+test_that("finalize_to_schema errors loudly on undeclared column joined into hospitals", {
+  # Simulate an orchestrator pre-join that puts a column onto the hospitals
+  # processed tibble that the schema doesn't declare and that isn't listed
+  # as scratch. Without the loud check, this would have been silently
+  # dropped — turning a schema ↔ orchestrator mismatch into downstream
+  # wrong data (per the schema-finalize-loud.md analysis).
+  opts <- dhis2_dataset_options(include_hospital = "full")
+  rogue <- tibble::tibble(
+    hospital_key = integer(),
+    code         = character(),
+    displayName  = character(),
+    displayShortName   = character(),
+    displayDescription = character(),
+    comment      = character(),
+    longitude    = double(),
+    latitude     = double(),
+    country_key  = integer(),
+    # orchestrator mistakenly pre-joined a `rogue_hierarchy_key` that
+    # isn't in `hospitals_cols` and isn't in the caller's scratch list.
+    rogue_hierarchy_key = integer())
+
+  expect_error(
+    neoipcr:::finalize_to_schema(rogue, neoipcr:::hospitals_cols, opts),
+    "rogue_hierarchy_key")
+  expect_error(
+    neoipcr:::finalize_to_schema(rogue, neoipcr:::hospitals_cols, opts),
+    "not declared in schema and not in `scratch`")
+})
+
+test_that("finalize_to_schema tolerates the `country` scratch column on hospitals", {
+  # The production hospitals orchestrator call passes scratch = "country"
+  # for the raw DHIS2 parent id it uses internally. Verify that the
+  # scratch declaration accepts it without error, matching the
+  # production code path.
+  opts <- dhis2_dataset_options(include_hospital = "full")
+  x <- tibble::tibble(
+    hospital_key = integer(),
+    code         = character(),
+    displayName  = character(),
+    displayShortName   = character(),
+    displayDescription = character(),
+    comment      = character(),
+    longitude    = double(),
+    latitude     = double(),
+    country_key  = integer(),
+    # scratch — raw DHIS2 parent id used only inside the orchestrator.
+    country      = character())
+
+  out <- neoipcr:::finalize_to_schema(
+    x, neoipcr:::hospitals_cols, opts, scratch = "country")
+  expect_false("country" %in% names(out))
+  expect_identical(names(out), names(
+    neoipcr:::compile_schema(neoipcr:::hospitals_cols, opts)))
+})
+
+test_that("finalize_to_schema silently drops schema-declared-but-gated-out cols on departments", {
+  # Under `include_department = "pseudo"`, departments narrows to
+  # `{department_key, hospital_key}` (+ isTest / orgUnit when their
+  # gates fire). Display columns (`code`, `displayName`, ...) remain in
+  # `departments_cols` but are gated out by `include_when`. A reader
+  # that still produces them in the narrower mode has the narrowing
+  # delegated to finalize's existing silent-drop-for-gated-out logic —
+  # *not* flagged as a mismatch. This is the intentional counterpart to
+  # the loud error on undeclared columns.
+  opts <- dhis2_dataset_options(include_department = "pseudo",
+                                include_hospital   = "pseudo")
+  x <- tibble::tibble(
+    department_key = integer(),
+    hospital_key   = integer(),
+    code           = character(),      # declared but gated OFF in pseudo
+    displayName    = character())      # declared but gated OFF in pseudo
+
+  out <- neoipcr:::finalize_to_schema(
+    x, neoipcr:::departments_cols, opts)
+  expect_identical(names(out), c("department_key", "hospital_key"))
+})
+

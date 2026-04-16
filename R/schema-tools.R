@@ -189,15 +189,37 @@ assert_schema <- function(x, cols, opts)
 # missing from `x` — the pre-pivot `names_expand = TRUE` contract
 # makes missing columns a real bug, not silent drift.
 #
+# `scratch` is the caller's allowlist of reader-internal columns that
+# the schema deliberately does not declare — e.g. the raw DHIS2
+# `country` id on the hospitals reader, which the orchestrator uses
+# for cross-response joins and then drops. Columns present in `x` that
+# are neither declared in `cols` (under any `opts`) nor listed in
+# `scratch` trip a loud `rlang::abort()` naming the offenders. This
+# closes the "Layer 1" half of the silent-failure sandwich identified
+# in `tasks/neoipcr-schema-arc/schema-finalize-loud.md`: the
+# orchestrator pre-joins a column expecting it to survive, the schema
+# doesn't declare it, and the silent drop feeds a downstream consumer
+# that also silently tolerates absence → wrong data, no error.
+#
 # Honours the containing-entity gate: when the gate rejects `opts`,
-# return a 0×0 tibble (no atoms iterated, no columns selected).
-finalize_to_schema <- function(x, cols, opts)
+# return a 0×0 tibble (no atoms iterated, no columns selected, scratch
+# check skipped because the entity itself is absent).
+finalize_to_schema <- function(x, cols, opts, scratch = character())
 {
   if (!entity_exists(cols, opts))
     return(tibble::tibble())
 
-  included  <- purrr::keep(cols, \(c) isTRUE(c$include_when(opts)))
-  exp_names <- purrr::map_chr(included, "name")
+  included     <- purrr::keep(cols, \(c) isTRUE(c$include_when(opts)))
+  exp_names    <- purrr::map_chr(included, "name")
+  declared     <- purrr::map_chr(cols, "name")
+  undeclared   <- setdiff(names(x), c(declared, scratch))
+
+  if (length(undeclared) > 0L)
+    rlang::abort(c(
+      "Input has column(s) not declared in schema and not in `scratch`:",
+      "x" = paste(undeclared, collapse = ", "),
+      "i" = "Declare them in the schema or list them in `scratch = ...`."
+    ))
 
   x <- x |>
     dplyr::select(tidyselect::all_of(exp_names))
@@ -208,4 +230,33 @@ finalize_to_schema <- function(x, cols, opts)
   }
 
   x
+}
+
+# Assert that `x` has every column in `cols`. A loud replacement for
+# `dplyr::select(tidyselect::any_of(cols))` at schema-to-consumer
+# boundaries: where the caller has already *decided* the columns must
+# be present (based on the current options and the schema contract),
+# `any_of`'s silent tolerance is a hazard. `require_cols` makes the
+# mismatch an error instead — typically paired with a subsequent
+# `dplyr::select(tidyselect::all_of(cols))` which double-checks on
+# forward-compat.
+#
+# `any_of` remains correct for truly option-dependent absence (e.g. a
+# column gated on one option the consumer does *not* want to force
+# present). Use `require_cols` specifically at boundaries where the
+# schema contract has already committed the column to exist.
+require_cols <- function(x, cols, entity_name)
+{
+  missing <- setdiff(cols, names(x))
+
+  if (length(missing) > 0L)
+    rlang::abort(c(
+      sprintf("Required columns missing from `%s`:", entity_name),
+      "x" = paste(missing, collapse = ", "),
+      "i" = sprintf(
+        paste0("Check that `%s_cols` schema declares these columns ",
+               "under the current options."),
+        entity_name)))
+
+  invisible(x)
 }

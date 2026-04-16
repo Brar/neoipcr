@@ -152,10 +152,19 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
     if(dataset_options$include_world_bank_class != "no")
       cols <- c(cols, "world_bank_class_key")
 
+    # Consumer-side assertion at the schema-to-consumer boundary. The
+    # option branches above already committed to these columns being
+    # present on `metadata$departments` under the current options; if
+    # the schema narrows them out (e.g. a future regression in
+    # `departments_cols`), silent `any_of` tolerance would turn the
+    # mismatch into downstream wrong data with no error. `require_cols`
+    # makes that mismatch a loud abort here, and `all_of` on the
+    # following select double-checks on forward-compat drift.
+    require_cols(metadata$departments, cols, "departments")
     patients <- patients |>
       dplyr::left_join(
         metadata$departments |>
-          dplyr::select(tidyselect::any_of(cols)),
+          dplyr::select(tidyselect::all_of(cols)),
         dplyr::join_by("orgUnit")) |>
       dplyr::select(!"orgUnit")
   }
