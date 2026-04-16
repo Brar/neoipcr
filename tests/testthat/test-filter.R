@@ -377,6 +377,55 @@ test_that("apply_postfilter: link-FK cascade tolerates include_patient = 'no' (n
   expect_s3_class(result, "neoipcr_ds")
 })
 
+# --- apply_postfilter: droplevels on data-sourced factors (C5) ---
+#
+# Protocol-fixed factors keep their full declared level list regardless
+# of which values survive filtering (schema-contract invariant).
+# Data-sourced factors (`levels_source = "data"` in the schema) have
+# `droplevels()` applied after the cascade so the level list matches
+# the surviving rows — preventing the "this country / event-type
+# existed in the pre-filter data" leak.
+
+test_that("apply_postfilter: droplevels on data-sourced factor levels (countries)", {
+  ds <- make_populated_test_ds()
+  # Record pre-filter country-code levels to verify the leak scenario:
+  # the fixture must carry >1 country-code level.
+  pre_levels <- levels(ds$metadata$countries$code)
+  skip_if(length(pre_levels) < 2L,
+          "fixture has only one country-code level — cannot exercise the leak")
+
+  # Narrow to the first country only, via metadata direct filtering
+  # (simulates what filter_dataset does with country_filter).
+  kept_code <- as.character(ds$metadata$countries$code[1])
+  ds$metadata$countries <- ds$metadata$countries[
+    as.character(ds$metadata$countries$code) == kept_code, ]
+
+  result <- neoipcr:::apply_postfilter(ds)
+
+  # Only the surviving code should remain in `levels()`. Without the
+  # droplevels step, the other pre-filter codes would still appear.
+  expect_equal(
+    as.character(levels(result$metadata$countries$code)),
+    kept_code)
+})
+
+test_that("apply_postfilter: droplevels leaves protocol-fixed factor levels untouched (status / event_type_key)", {
+  ds <- make_populated_test_ds()
+  # Narrow events to only "adm" type.
+  ds$events <- ds$events[ds$events$event_type_key == "adm", ]
+
+  result <- neoipcr:::apply_postfilter(ds)
+
+  # `event_type_key` on events is declared `levels_source = "fixed"`
+  # (7 protocol event types). Even though only "adm" survives filtering,
+  # the level list must retain all 7 — dropping would break the schema
+  # contract.
+  if (is.factor(result$events$event_type_key))
+    expect_setequal(
+      levels(result$events$event_type_key),
+      c("adm", "pro", "bsi", "nec", "ssi", "hap", "end"))
+})
+
 test_that("apply_postfilter: dynamic anchor handles pseudo-event (hierarchy keys on per-event-type data)", {
   # Under `include_event = "pseudo"` events is PK-only (no hierarchy
   # keys). If per-event-type data carries hierarchy keys via

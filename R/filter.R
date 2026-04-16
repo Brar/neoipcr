@@ -185,6 +185,14 @@ apply_postfilter <- function(x)
     if (identical(before, after)) break
   }
 
+  # Step 3: drop unused levels on data-sourced factor columns. Protocol-
+  # fixed factors (`levels_source = "fixed"`) keep their full level list
+  # per the schema contract; data-sourced factors
+  # (`levels_source = "data"`) get their levels regenerated so the level
+  # list matches the surviving rows. Prevents the "this country existed
+  # in the source data before filtering" leak via unused factor levels.
+  x <- .postfilter_droplevels_data_factors(x)
+
   x
 }
 
@@ -416,4 +424,71 @@ apply_postfilter <- function(x)
     vapply(md_tbls, function(t) {
       tib <- x$metadata[[t]]; if (is.null(tib)) 0L else nrow(tib)
     }, integer(1)))
+}
+
+
+# Drop unused levels on every data-sourced factor column in `x`.
+#
+# Per the schema contract, factor columns are either "fixed" (levels
+# come from the protocol / DHIS2 source and are asserted by
+# `assert_schema`) or "data" (levels come from DHIS2 data and may
+# change run-to-run). Fixed-levels factors retain their full declared
+# level list regardless of which values survive filtering. Data-sourced
+# factors have `droplevels()` applied after the cascade so the level
+# list matches the surviving rows — preventing the "this value existed
+# in the pre-filter data" leak.
+#
+# Only tibbles that carry data-sourced factor columns today appear
+# below (`countries`, `eventTypes`, `patients`). The helper is
+# idempotent and column-presence-guarded, so a future schema that
+# adds / removes data-sourced factors just needs its cols list wired
+# in here.
+.postfilter_droplevels_data_factors <- function(x)
+{
+  targets <- list(
+    list(path = c("metadata", "countries"),  cols = countries_cols),
+    list(path = c("metadata", "eventTypes"), cols = eventTypes_cols),
+    list(path = "patients",                  cols = patients_cols))
+
+  for (t in targets) {
+    tib <- .get_path(x, t$path)
+    if (is.null(tib) || nrow(tib) == 0L) next
+    tib <- .droplevels_data_factors_on(tib, t$cols)
+    x   <- .set_path(x, t$path, tib)
+  }
+
+  x
+}
+
+
+# Call `droplevels()` on every column of `tib` whose matching schema
+# atom is a factor with `levels_source = "data"`.
+.droplevels_data_factors_on <- function(tib, cols_list)
+{
+  for (col in cols_list) {
+    if (!identical(col$levels_source, "data")) next
+    if (!(col$name %in% names(tib)))           next
+    if (!is.factor(tib[[col$name]]))           next
+    tib[[col$name]] <- droplevels(tib[[col$name]])
+  }
+  tib
+}
+
+
+# Minimal path accessors so `metadata$countries` and `patients` can be
+# addressed uniformly in `.postfilter_droplevels_data_factors()`.
+.get_path <- function(x, path)
+{
+  for (p in path) x <- x[[p]]
+  x
+}
+
+.set_path <- function(x, path, value)
+{
+  if (length(path) == 1L) {
+    x[[path]] <- value
+    return(x)
+  }
+  x[[path[[1]]]] <- .set_path(x[[path[[1]]]], path[-1L], value)
+  x
 }
