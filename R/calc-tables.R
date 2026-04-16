@@ -101,6 +101,19 @@ check_ds_and_try_get_table <- function(
     check_neoipcr_ds_or_rep_ds(x)
   }
 
+  # When x is a raw neoipcr_ds (not a pre-computed neoipcr_rep_ds /
+  # neoipcr_ref_ds), the caller will compute the table from scratch via
+  # the calc pipeline. That pipeline needs the link-privacy gates
+  # non-"no" — check them here so every get_*_table() caller gets the
+  # same uniform precondition without repeating the assertion 11 times.
+  if (is_neoipcr_ds(x) && !is_neoipcr_rep_ds(x))
+    assert_options_for(x, required = list(
+      include_department = c("pseudo", "full"),
+      include_patient    = c("pseudo", "full"),
+      include_enrollment = c("pseudo", "full"),
+      include_event      = c("pseudo", "full")
+    ), fn_name = table_name)
+
   # First try, if it's a report dataset because in that case it already contains
   # the table and we can just return it (potentially after removing the quartile
   # columns)

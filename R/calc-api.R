@@ -8,9 +8,16 @@
 #' @export
 calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE) {
   check_neoipcr_ds(x)
-
-  if(is.null(x$enrollments$department_key))
-    rlang::abort("Cannot calculate reference data without department information. You need to include at least pseudonymised department information.")
+  # Three-valued gates all need to be non-"no" for the reference
+  # pipeline: department grouping, per-patient / per-enrollment / per-
+  # event denominators, and hierarchy metadata for the country-level
+  # joins all feed into the computed reference data.
+  assert_options_for(x, required = list(
+    include_department = c("pseudo", "full"),
+    include_patient    = c("pseudo", "full"),
+    include_enrollment = c("pseudo", "full"),
+    include_event      = c("pseudo", "full")
+  ), fn_name = "calculate_reference_data")
 
   # `metadata$countries` is always a tibble under the three-mode schema
   # contract; gate on the key column instead of null-ness. Under "no" the
@@ -188,6 +195,15 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE) {
 #' @export
 calculate_department_data <- function(x, use_cache = TRUE) {
   check_neoipcr_ds(x)
+  # Three-valued gates all need to be non-"no" for the department
+  # pipeline: department grouping, per-patient / per-enrollment / per-
+  # event denominators.
+  assert_options_for(x, required = list(
+    include_department = c("pseudo", "full"),
+    include_patient    = c("pseudo", "full"),
+    include_enrollment = c("pseudo", "full"),
+    include_event      = c("pseudo", "full")
+  ), fn_name = "calculate_department_data")
 
   rt <- x |>
     get_risk_time(use_cache = use_cache)

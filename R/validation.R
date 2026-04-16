@@ -469,6 +469,15 @@ validation_rules <- list(
 validate <- function(x, rules = NULL, exceptions = NULL)
 {
   check_neoipcr_ds(x)
+  # Validation rules access patients, enrollments, events, and per-event
+  # data. If any link-privacy gate is "no", rules that reference those
+  # tibbles would fail with unhelpful column-absent errors. Require the
+  # same gates as the calc pipeline.
+  assert_options_for(x, required = list(
+    include_patient    = c("pseudo", "full"),
+    include_enrollment = c("pseudo", "full"),
+    include_event      = c("pseudo", "full")
+  ), fn_name = "validate")
 
   r <- validation_rules |>
     lapply(\(r)if(is.null(rules)||r$id%in%rules)r$fun(x,exceptions)) |>

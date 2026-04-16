@@ -998,9 +998,16 @@ make_calc_test_ds <- function() {
   md$countries         <- make_test_metadata_countries()
   md$worldBankClasses  <- make_test_metadata_wb_classes()
   md$eventTypes        <- make_test_metadata_event_types()
+  # calculate_*_data preconditions (Phase C6) require the link-privacy
+  # gates non-"no". Defaults are "no" — set them explicitly here so
+  # make_calc_test_ds() produces a dataset that the calc pipeline
+  # accepts.
   md$dataset_options   <- dhis2_dataset_options(
     include_department = "full",
-    include_country    = "full")
+    include_country    = "full",
+    include_patient    = "full",
+    include_enrollment = "full",
+    include_event      = "full")
 
   patients <- make_test_patients(3,
     department_key = c(1L, 1L, 2L),
@@ -1060,6 +1067,18 @@ make_test_ds <- function(
     events      = tibble::tibble(),
     ...)
 {
+  # Ensure dataset_options is present so assert_options_for() doesn't
+  # abort with "dataset_options is NULL". import_dhis2() stores this;
+  # test fixtures must mirror it. Default: full gates on everything
+  # so calc-pipeline / validate / table builders can run without
+  # per-test opt-in.
+  if (is.null(metadata$dataset_options))
+    metadata$dataset_options <- dhis2_dataset_options(
+      include_department = "full",
+      include_patient    = "full",
+      include_enrollment = "full",
+      include_event      = "full")
+
   # Empty tibbles with correct column names so rules can select columns
   # even when no data rows exist.
   base <- list(
