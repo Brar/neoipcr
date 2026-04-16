@@ -250,23 +250,53 @@ make_test_events <- function(
     enrollment_keys = rep(1L, n),
     patient_keys    = rep(1L, n),
     event_type_keys = rep("adm", n),
+    include_event            = "full",
+    include_enrollment       = "full",
+    include_patient          = "full",
+    include_dhis2_ids        = "events",
+    include_incomplete       = "events",
+    include_department       = "pseudo",
+    include_hospital         = "pseudo",
+    include_country          = "pseudo",
+    include_world_bank_class = "pseudo",
     ...) {
-  d <- list(
-    event_key          = seq_len(n),
-    event              = paste0("EVT_", seq_len(n)),
-    occurredAt         = as.Date("2024-01-01") + seq_len(n) - 1L,
-    status             = factor(rep("COMPLETED", n),
-      levels = c("ACTIVE", "COMPLETED", "VISITED",
-                 "SCHEDULE", "OVERDUE", "SKIPPED")),
-    event_type_key     = event_type_keys[seq_len(n)],
-    enrollment_key     = enrollment_keys[seq_len(n)],
-    patient_key        = patient_keys[seq_len(n)],
-    department_key     = rep(1L, n),
-    hospital_key       = rep(1L, n),
-    country_key        = rep(1L, n),
+  opts <- dhis2_dataset_options(
+    include_event            = include_event,
+    include_enrollment       = include_enrollment,
+    include_patient          = include_patient,
+    include_dhis2_ids        = include_dhis2_ids,
+    include_incomplete       = include_incomplete,
+    include_department       = include_department,
+    include_hospital         = include_hospital,
+    include_country          = include_country,
+    include_world_bank_class = include_world_bank_class)
+  schema <- neoipcr:::compile_schema(neoipcr:::events_cols, opts)
+  if (ncol(schema) == 0L || n == 0L)
+    return(structure(schema, class = c("neoipcr_evt", class(schema))))
+
+  keys <- seq_len(n)
+  full <- list(
+    event_key            = keys,
+    event                = paste0("EVT_", keys),
+    occurredAt           = as.Date("2024-01-01") + keys - 1L,
+    status               = factor(rep("COMPLETED", n),
+                                  levels = c("ACTIVE", "COMPLETED", "VISITED",
+                                             "SCHEDULE", "OVERDUE", "SKIPPED")),
+    event_type_key       = factor(event_type_keys[keys],
+                                  levels = c("adm", "pro", "bsi", "nec",
+                                             "ssi", "hap", "end")),
+    enrollment_key       = enrollment_keys[keys],
+    patient_key          = patient_keys[keys],
+    department_key       = rep(1L, n),
+    hospital_key         = rep(1L, n),
+    country_key          = rep(1L, n),
     world_bank_class_key = rep(1L, n))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
+  full <- utils::modifyList(full, list(...))
+  d <- tibble::as_tibble(full[names(schema)])
+  for (col in names(schema)) {
+    if (is.factor(schema[[col]]) && !is.factor(d[[col]]))
+      d[[col]] <- factor(d[[col]], levels = levels(schema[[col]]))
+  }
   structure(d, class = c("neoipcr_evt", class(d)))
 }
 

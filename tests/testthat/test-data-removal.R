@@ -46,10 +46,14 @@ test_that("apply_data_removal keeps patient_id when 'id' is in patient_columns",
 # `departments_cols` in R/schema-orgunits.R, not by `apply_data_removal()`.
 # Coverage moved to `test-schema-orgunits.R`.
 
-test_that("apply_data_removal removes event ID when events not in include_dhis2_ids", {
+# `event` on the events tibble is now reader-owned via
+# `R/schema-events.R::events_cols` — gated on `"events" %in%
+# include_dhis2_ids` at the schema level. Legacy scrub removed. See
+# `test-schema-events.R` for the invariant. The scrub on `eventDetails`
+# stays until that tibble schematizes in its own sub-task.
+test_that("apply_data_removal removes event ID on eventDetails when events not in include_dhis2_ids", {
   result <- remove_with(include_dhis2_ids = c("patients", "enrollments",
     "departments", "notes", "event_types", "users"))
-  expect_false("event" %in% names(result$events))
   expect_false("event" %in% names(result$eventDetails))
 })
 

@@ -83,6 +83,7 @@ The `R/` directory follows a deliberate structure established by the neoipcr fil
 | `R/schema-orgunits.R` | Column declarations + `get_<entity>_schema(opts)` wrappers for the org-unit-derived metadata entities: WB classes, countries, hospitals, departments, users, event types. Loads after `schema-cols-shared.R`. Internal. |
 | `R/schema-patients.R` | `patient_attribute_cols()` wrapper + `patients_cols` + `get_patients_schema()`. First fact-layer schema. Loads after `schema-orgunits.R`. Internal. |
 | `R/schema-enrollments.R` | `enrollment_inherited_from()` helper + `enrollments_cols` + `get_enrollments_schema()`. Second fact-layer schema; atoms declared directly (no per-attribute wrapper — every user/timestamp field on enrollments is entity-level). Loads after `schema-patients.R`. Internal. |
+| `R/schema-events.R` | `event_hierarchy_col()` helper + `events_cols` + `get_events_schema()`. Third fact-layer schema; introduces the `include_event` gate; lean tibble (PK + id-opt-in + occurredAt + status + event_type_key + link FKs + hierarchy keys via direct materialization). Entity-level user / timestamp / deleted / followup fields stay on the separate `eventDetails` tibble (own sub-task). Loads after `schema-enrollments.R`. Internal. |
 | **Data protection** | |
 | `R/data-removal.R` | `apply_data_removal()` — the authoritative data-protection guardian |
 | `R/filter.R` | `filter_*` family + `apply_postfilter` |
@@ -206,6 +207,7 @@ Test files mirror source files: `R/foo.R` -> `tests/testthat/test-foo.R`.
 | `tests/testthat/test-schema-orgunits.R` | Per-domain schema assembly for org-unit-derived metadata entities: WB classes / countries / hospitals / departments / users / event types. |
 | `tests/testthat/test-schema-patients.R` | `patient_attribute_cols()` wrapper behaviour + `patients_cols` three-mode shape, hierarchy-key inheritance, companion-column semantics. |
 | `tests/testthat/test-schema-enrollments.R` | `enrollments_cols` three-mode shape, entity-level user/timestamp gating, hierarchy-key inheritance anchored on patients. |
+| `tests/testthat/test-schema-events.R` | `events_cols` three-mode shape, compound link-FK gating on enrollment/patient, hierarchy-key direct materialization, status/event_type_key factor levels, `isTest` absence invariant. |
 | `tests/testthat/helper-fixtures.R` | `read_test_metadata()`, `make_test_ds()`, `make_populated_test_ds()`, `make_calc_test_ds()`, per-table builders |
 | `tests/testthat/helper-schema.R` | `expect_schema_matches(x, expected)`, `iter_dataset_options(fields)` |
 

@@ -53,6 +53,44 @@ get_events_request <- function(req_base, dataset_options, programId)
 
 read_events <- function(events, enrollments, patients, metadata, dataset_options)
 {
+  opts <- dataset_options
+
+  # Entity gate short-circuit: under `include_event = "no"` the public
+  # events tibble is 0×0. Downstream readers that consume events
+  # (read_event_details, read_event_notes, read_event_data,
+  # read_infectious_agent_findings, read_substance_days) must tolerate
+  # the empty shape. Matches the pattern in read_patients() /
+  # read_enrollments().
+  if (opts$include_event == "no")
+    return(compile_schema(events_cols, opts))
+
+  # Preconditions: the inner-join substitution path below requires
+  # `enrollment_key + enrollment` on enrollments and `patient_key +
+  # trackedEntity` on patients. Those are present under
+  # `include_enrollment != "no"` + `"enrollments" %in% include_dhis2_ids`
+  # and `include_patient != "no"` + `"patients" %in% include_dhis2_ids`
+  # respectively. The fully-decoupled matrix (e.g. `include_event =
+  # "full"` with `include_enrollment = "no"`) requires
+  # `.enrollments_internal_map` / `.patients_internal_map` on the
+  # metadata orchestrator; those land in a follow-up sub-task. For now
+  # the reader requires both link sides to be at least present as
+  # ids, matching the legacy reader's implicit dependency.
+  if (opts$include_enrollment == "no" ||
+      opts$include_patient    == "no" ||
+      !("enrollments" %in% opts$include_dhis2_ids) ||
+      !("patients"    %in% opts$include_dhis2_ids))
+    rlang::abort(c(
+      paste("`read_events()` requires enrollment and patient link",
+            "substitution to be available."),
+      "i" = paste(
+        "Set `include_enrollment` and `include_patient` to a non-\"no\"",
+        "value and include \"enrollments\" + \"patients\" in",
+        "`include_dhis2_ids`."),
+      "i" = paste(
+        "Full decoupling (e.g. include_event=\"full\" with",
+        "include_enrollment=\"no\") will land in a follow-up via",
+        "orchestrator-internal link maps.")))
+
   # Raw `programStage` → `event_type_key` substitution uses the
   # orchestrator-internal map (`.eventTypes_internal_map`), not
   # `metadata$eventTypes`. The public tibble drops `programStage` when
@@ -76,32 +114,35 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
       occurredAt = readr::parse_date(
         stringr::str_sub(.data$occurredAt, end = 10)))
 
-  if(dataset_options$include_test_data ||
-     dataset_options$include_department != "no" ||
-     dataset_options$include_hospital != "no" ||
-     dataset_options$include_country != "no" ||
-     dataset_options$include_world_bank_class != "no")
-  {
-    cols <- "orgUnit"
-    if(dataset_options$include_department != "no")
-      cols <- c(cols, "department_key")
-    if(dataset_options$include_hospital != "no")
-      cols <- c(cols, "hospital_key")
-    if(dataset_options$include_country != "no")
-      cols <- c(cols, "country_key")
-    if(dataset_options$include_world_bank_class != "no")
-      cols <- c(cols, "world_bank_class_key")
-    if(dataset_options$include_test_data)
-      cols <- c(cols, "isTest")
+  # Hierarchy-key fat-lookup: pull each key that events_cols declares
+  # under the current opts directly off `metadata$departments`. Under
+  # the three-mode schema contract, departments carries exactly the
+  # hierarchy keys whose `include_*` option is non-"no" (when
+  # `include_department == "full"`), so the column list is a pure
+  # function of opts — no legacy branching needed.
+  hierarchy_keys <- c("department_key", "hospital_key",
+                      "country_key", "world_bank_class_key")
+  expected <- names(compile_schema(events_cols, opts))
+  needed   <- intersect(hierarchy_keys, expected)
 
+  if (length(needed) > 0L || opts$include_test_data) {
+    cols <- "orgUnit"
+    if (length(needed) > 0L) cols <- c(cols, needed)
+    if (opts$include_test_data) cols <- c(cols, "isTest")
+
+    # Consumer-side assertion at the schema-to-consumer boundary —
+    # the hierarchy-key columns we just decided to pull must actually
+    # be on `metadata$departments`; silent `any_of` tolerance would
+    # turn a schema ↔ reader mismatch into downstream wrong data.
+    require_cols(metadata$departments, cols, "departments")
     events <- events |>
       dplyr::left_join(
         metadata$departments |>
-          dplyr::select(tidyselect::any_of(cols)),
+          dplyr::select(tidyselect::all_of(cols)),
         dplyr::join_by("orgUnit"))
   }
 
-  if("events" %in% dataset_options$include_incomplete)
+  if ("events" %in% opts$include_incomplete)
     events <- events |>
       dplyr::mutate(
         status = factor(
@@ -110,27 +151,31 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
             "ACTIVE", "COMPLETED", "VISITED", "SCHEDULE", "OVERDUE", "SKIPPED"))
       )
 
-  if(!dataset_options$include_test_data ||
-     length(dataset_options$country_filter) > 0 ||
-     !is.null(dataset_options$trial_keys))
+  if (!opts$include_test_data ||
+      length(opts$country_filter) > 0 ||
+      !is.null(opts$trial_keys))
     events <- events |>
       dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
 
-  events |>
-    dplyr::select(
-      tidyselect::any_of(
-        c(
-          "event",
-          "occurredAt",
-          "status",
-          "event_type_key",
-          "enrollment_key",
-          "patient_key",
-          "department_key",
-          "hospital_key",
-          "country_key",
-          "world_bank_class_key"))) |>
-    add_key_column("event_key")
+  # `orgUnit`, `programStage`, `trackedEntity`, `enrollment`, `isTest`
+  # are reader-internal scratch — fetched for the joins / filter above
+  # and either substituted (programStage → event_type_key, trackedEntity
+  # → patient_key, enrollment → enrollment_key) or used only for the
+  # departments lookup (orgUnit) / not declared on events (isTest).
+  # `event` stays if the id opt-in is set; the schema gates it.
+  events <- events |>
+    add_key_column("event_key") |>
+    finalize_to_schema(
+      events_cols, opts,
+      scratch = c(
+        "orgUnit", "programStage", "trackedEntity", "enrollment",
+        "isTest", "dataValues", "followup", "scheduledAt", "completedAt",
+        "createdAt", "createdAtClient", "updatedAt", "updatedAtClient",
+        "createdBy", "updatedBy", "storedBy", "deleted", "notes"))
+
+  assert_schema(events, events_cols, opts)
+
+  events
 }
 
 read_event_details <- function(events, processed_events, metadata, dataset_options)

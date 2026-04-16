@@ -16,13 +16,21 @@ apply_data_removal <- function(x, dataset_options)
   # gated on `"enrollments" %in% include_dhis2_ids` at the schema
   # level; legacy scrub removed.
 
+  # `include_event` / `"events" %in% include_dhis2_ids` — tibble shape
+  # is reader-owned via `R/schema-events.R::events_cols`. The `event`
+  # id, `event_type_key`, `status`, and the link / hierarchy keys are
+  # all gated at the schema level. Legacy scrubs for `event` on events
+  # and for each hierarchy key on events are redundant and removed.
+  # The scrub for `event` on `eventDetails` stays until that tibble
+  # schematizes in its own sub-task.
+
   # `include_department` — tibble shape is reader-owned via
   # `R/schema-orgunits.R::departments_cols`. The `orgUnit` column is
   # gated by `"departments" %in% include_dhis2_ids` at the schema level,
   # so `finalize_to_schema()` in the metadata orchestrator drops it when
   # needed; the legacy scrub here is redundant and removed. The guardian
-  # keeps the FK-scrub cascade on fact tables until those entities
-  # schematize.
+  # keeps the FK-scrub cascade on fact tables as belt-and-suspenders for
+  # fixture-based test surfaces; Phase C turns these into assertions.
   if(dataset_options$include_department == "no")
   {
     x$patients <- x$patients |>
@@ -34,9 +42,10 @@ apply_data_removal <- function(x, dataset_options)
   }
 
   # `include_hospital` — tibble shape is reader-owned via
-  # `R/schema-orgunits.R::hospitals_cols`. The guardian keeps the
-  # FK-scrub cascade on fact / adjacent-metadata tables until those
-  # entities schematize.
+  # `R/schema-orgunits.R::hospitals_cols` + each schematized fact
+  # entity's cols. The guardian keeps the FK-scrub cascade on
+  # metadata cross-refs and fact tables as belt-and-suspenders for
+  # fixture-based test surfaces; Phase C turns these into assertions.
   if(dataset_options$include_hospital == "no")
   {
     if(!is.null(x$metadata$departments))
@@ -50,12 +59,11 @@ apply_data_removal <- function(x, dataset_options)
       dplyr::select(!tidyselect::any_of("hospital_key"))
   }
 
-  # `include_country` — the tibble shape in `metadata$countries` is now
-  # reader-owned via `R/schema-orgunits.R::countries_cols`. The three
-  # mode shapes (0×0 / 1-col / full) are produced by
-  # `read_metadata_countries()` with a tail `assert_schema()`. The
-  # guardian keeps the FK-scrub cascade on fact and adjacent-metadata
-  # tables until those entities land in their own Phase B sub-tasks.
+  # `include_country` — tibble shape is reader-owned via
+  # `R/schema-orgunits.R::countries_cols` + each schematized fact
+  # entity's cols. The guardian keeps the FK-scrub cascade on
+  # metadata cross-refs and fact tables as belt-and-suspenders for
+  # fixture-based test surfaces; Phase C turns these into assertions.
   if(dataset_options$include_country == "no")
   {
     if(!is.null(x$metadata$hospitals))
@@ -72,14 +80,11 @@ apply_data_removal <- function(x, dataset_options)
       dplyr::select(!tidyselect::any_of("country_key"))
   }
 
-  # `include_world_bank_class` — downstream narrowing is now handled by the
-  # reader via the schema contract. `x$metadata$worldBankClasses` follows
-  # the three-mode shape (0×0 / 1-col / full) produced by
-  # `read_metadata_wb_classes()`; the remaining per-fact-table scrubbing of
-  # `world_bank_class_key` will move into the fact-table schemas as those
-  # entities land in Phase B. Until then, keep the fact-table columns
-  # scrubbed here so the guardian still catches leaks via
-  # `include_world_bank_class` on entities that haven't been schematized.
+  # `include_world_bank_class` — tibble shape is reader-owned via
+  # `R/schema-orgunits.R::worldBankClasses_cols` + each schematized
+  # fact entity's cols. The guardian keeps the FK-scrub cascade on
+  # metadata cross-refs and fact tables as belt-and-suspenders for
+  # fixture-based test surfaces; Phase C turns these into assertions.
   if(dataset_options$include_world_bank_class == "no")
   {
     if(!is.null(x$metadata$countries))
@@ -99,10 +104,11 @@ apply_data_removal <- function(x, dataset_options)
       dplyr::select(!tidyselect::any_of("world_bank_class_key"))
   }
 
+  # `eventDetails` still carries `event` until it schematizes in its
+  # own sub-task; keep the scrub for that table only. The events scrub
+  # moved into `events_cols` via the schema contract.
   if(!("events" %in% dataset_options$include_dhis2_ids))
   {
-    x$events <- x$events |>
-      dplyr::select(!tidyselect::any_of("event"))
     if(!is.null(x$eventDetails))
       x$eventDetails <- x$eventDetails |>
         dplyr::select(!tidyselect::any_of("event"))
