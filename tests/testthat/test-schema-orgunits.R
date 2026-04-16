@@ -889,15 +889,13 @@ test_that("users fixture honors the three-mode contract across include_user x in
   }
 })
 
-# ---- Metadata companion-column assertion (apply_data_removal) -------------
+# ---- Metadata companion-column assertion (assert_data_protection) ---------
 #
-# The phase-b-users acceptance criterion asks for the assertion to land
-# in apply_data_removal now, so it's picked up when the function is
-# renamed to assert_data_protection() in Phase C. Covered by tests here
-# rather than test-data-removal because the invariant is tightly
-# coupled to the metadata schema contract.
+# Covered here rather than in test-data-protection.R because the
+# invariant is tightly coupled to the metadata schema contract exercised
+# by the schema-orgunits tests above.
 
-test_that("apply_data_removal errors loudly when metadata carries companion columns", {
+test_that("assert_data_protection errors loudly when metadata carries companion columns", {
   # A metadata-reader regression that accidentally emits `createdBy` /
   # `updatedBy` / `createdAt` / `updatedAt` on a curated metadata
   # tibble must be loud — these columns are reserved for
@@ -909,17 +907,17 @@ test_that("apply_data_removal errors loudly when metadata carries companion colu
       departments = tibble::tibble(department_key = integer())))
 
   expect_error(
-    neoipcr:::apply_data_removal(ds, dhis2_dataset_options()),
+    neoipcr:::assert_data_protection(ds, dhis2_dataset_options()),
     "companion column")
   expect_error(
-    neoipcr:::apply_data_removal(ds, dhis2_dataset_options()),
+    neoipcr:::assert_data_protection(ds, dhis2_dataset_options()),
     "createdBy")
   expect_error(
-    neoipcr:::apply_data_removal(ds, dhis2_dataset_options()),
+    neoipcr:::assert_data_protection(ds, dhis2_dataset_options()),
     "`users`")
 })
 
-test_that("apply_data_removal succeeds when metadata tibbles carry no companion columns", {
+test_that("assert_data_protection succeeds when metadata tibbles carry no companion columns", {
   ds <- make_test_ds(
     metadata = list(
       users       = tibble::tibble(user_key = 1L),
@@ -927,7 +925,7 @@ test_that("apply_data_removal succeeds when metadata tibbles carry no companion 
 
   # Should not throw the companion-column error.
   expect_no_error(
-    neoipcr:::apply_data_removal(ds, dhis2_dataset_options()))
+    neoipcr:::assert_data_protection(ds, dhis2_dataset_options()))
 })
 
 # ---- Event types ----------------------------------------------------------

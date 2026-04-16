@@ -256,7 +256,7 @@ import_dhis2 <- function(
     apply_postfilter()
 
   r |>
-    apply_data_removal(dataset_options)
+    assert_data_protection(dataset_options)
 }
 
 dhis2_request <- function(connection_options)

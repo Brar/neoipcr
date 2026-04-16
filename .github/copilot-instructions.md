@@ -31,7 +31,7 @@ The `R/` directory follows a deliberate structure established by the neoipcr fil
 - **`dhis2-*.R`** — DHIS2-specific internals (connection, metadata, readers). These have no non-DHIS2 equivalent.
 - **`calc-api.R`** — exported pipeline entry points. **`calc-tables.R`** — exported table/figure builders. **`calc-rates.R`** — internal rate/count computers. **`calc-denominators.R`** — internal risk-time/population denominators. Each is a layer in the epidemiological analysis pipeline; new functions go in the layer they belong to.
 - **`validation-rules-*.R`** — one file per validation domain. The `validation_rules` registry list and `validate()` orchestrator stay in `validation.R`.
-- **`data-removal.R`** — single-purpose file for the data-protection guardian. Do not add unrelated functions here.
+- **`data-protection.R`** — single-purpose file for the data-protection guardian (`assert_data_protection()`). Do not add unrelated functions here.
 
 #### Function placement
 
@@ -87,7 +87,7 @@ The `R/` directory follows a deliberate structure established by the neoipcr fil
 | `R/schema-event-data.R` | Per-event-type data schemas for all seven event types (`admissionData_cols`, `surveillanceEndData_cols`, `sepsisData_cols`, `necData_cols`, `pneumoniaData_cols`, `surgeryData_cols`, `ssiData_cols`) + `event_data_col()` wrapper (payload + three DE-level companion columns via `event_data_attribute_cols()`) + `event_data_cols_for(event_type_key)` dispatcher. Pre-pivot factor pinning via `schema_codes()` + `pivot_wider(names_expand = TRUE)` closes the pivot-volatility hazard in `read_event_data()`. `vs_days` on surveillance-end is declared on the schema and computed post-pivot from the guaranteed `inv_days + niv_days`. Also hosts the three findings-family schemas — `findings_cols` (`infectiousAgentFindings` — `source` + resistance markers + `multiple` all unconditionally declared under full mode, fixing failure pattern #6), `substanceDays_cols`, and `unknownPathogenNames_cols` — all consumed by `read_infectious_agent_findings()`, `read_substance_days()`, and `read_unknown_pathogen_names()` with pre-pivot factor pinning on the pathogen-subfield `type` and `names_expand = TRUE`. Loads after `schema-events.R`. Internal. |
 | `R/schema-notes.R` | `event_notes_cols` and `enrollment_notes_cols` with a shared `.notes_payload_cols(parent_full)` factory (same payload shape: `note`, `value`, `storedBy`, `storedAt`, `createdBy`). Entity gate compounds `include_<parent> != "no"` with `"<parent>" %in% include_notes`. Hierarchy-key inheritance via `col_inherited_from(..., <parent>_cols)` — lean children under fat parents, direct materialization under pseudo parents. Loads after `schema-enrollments.R` + `schema-events.R`. Internal. |
 | **Data protection** | |
-| `R/data-removal.R` | `apply_data_removal()` — the authoritative data-protection guardian |
+| `R/data-protection.R` | `assert_data_protection()` — the authoritative data-protection guardian. Asserts invariants under the schema contract (reader-owned tibble shapes); only one scrub remains, on `eventDetails` pending its own schematization. |
 | `R/filter.R` | `filter_*` family + `apply_postfilter` |
 | **Validation** | |
 | `R/validation.R` | `validation_rules` registry list + `validate()` orchestrator |
@@ -115,17 +115,17 @@ Every stage of the `import_dhis2()` pipeline should shed data it no longer needs
 1. **API request** -- fetch only the org units the user asked for (`ouMode` + `orgUnit`)
 2. **Metadata processing** -- filter countries/departments/hospitals early; only build hierarchy columns downstream steps will use
 3. **`read_patients/enrollments/events`** -- only join and keep columns needed for remaining processing and the final output
-4. **`apply_data_removal()`** -- final redundant safety net; ideally a near-no-op because earlier stages already removed everything unnecessary
+4. **`assert_data_protection()`** -- final guardian that asserts every reader has honored the user's `include_*` options; aborts loudly on a reader regression. Named scrubber in earlier revisions (`apply_data_removal()`), but under the schema contract the readers own every tibble's shape, so this function now asserts rather than scrubs.
 
 ### Redundant foreign keys
 
 Hierarchy keys (`department_key`, `hospital_key`, `country_key`, `world_bank_class_key`) appear *directly* in patients, enrollments, and events -- not only via the relational chain. This allows breaking the chain without losing the ability to classify records by higher-level categories (e.g., events can carry `world_bank_class_key` without exposing the country or patient).
 
-### `apply_data_removal()` as authoritative guardian
+### `assert_data_protection()` as authoritative guardian
 
-`apply_data_removal()` is intended to be the **authoritative guardian** that ensures no unauthorized data leaks into the final dataset. It runs last and strips columns/tables based on `include_*` options. Earlier pipeline stages should already have removed most data, making `apply_data_removal()` a redundant safety net in the best case.
+`assert_data_protection()` is the **authoritative guardian** that verifies no unauthorized data leaks into the final dataset. It runs last in the `import_dhis2()` pipeline. Under the schema contract every reader owns its tibble's shape, so this function's job is to **assert invariants** — not to scrub columns. A schema regression that leaks a column reserved for another option value surfaces here with an actionable `rlang::abort()` naming the leaking tibble and the column.
 
-> **Note:** `apply_data_removal()` has not yet been thoroughly vetted. A future task should audit it against every `include_*` option.
+The only remaining scrub is on `eventDetails`, which is not yet schematized — see [tasks/merge-event-details-into-events.md](../../../tasks/merge-event-details-into-events.md). Once that lands, the scrub turns into an assertion like the rest.
 
 ---
 
@@ -196,7 +196,7 @@ Test files mirror source files: `R/foo.R` -> `tests/testthat/test-foo.R`.
 | `tests/testthat/test-ci.R` | `neoipc_poisson_ci()`, `neoipc_wilson_ci()`, bootstrap CI, vectorized wrappers |
 | `tests/testthat/test-dhis2-metadata.R` | `read_metadata()` validation and data-reading tests |
 | `tests/testthat/test-dhis2-connect.R` | `dhis2_connection_options()`, `get_auth_data()`, `read_token()`, `get_password()` |
-| `tests/testthat/test-data-removal.R` | `apply_data_removal()` — every `include_*` option, cascading removal |
+| `tests/testthat/test-data-protection.R` | `assert_data_protection()` — happy-path (schema-compliant ds passes) and failure-path (reader regression leaks a forbidden column → abort) coverage; single remaining eventDetails scrub shim |
 | `tests/testthat/test-validation.R` | `validate()` orchestrator, rule registry |
 | `tests/testthat/test-validation-rules-*.R` | Per-domain rule tests (42 rules; 34 skip-wrapped stubs for unmigrated rules) |
 | `tests/testthat/test-calc-api.R` | `calculate_department_data()` integration: structure, counts, table presence |

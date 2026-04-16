@@ -46,7 +46,7 @@ Collate:
     'calc-rates.R'
     'calc-tables.R'
     'ci.R'
-    'data-removal.R'
+    'data-protection.R'
     'dhis2-connect.R'
     'dhis2-enrollments.R'
     'dhis2-events.R'
