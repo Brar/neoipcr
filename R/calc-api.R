@@ -12,7 +12,10 @@ calculate_reference_data <- function(x, use_cache = TRUE, redact = TRUE) {
   if(is.null(x$enrollments$department_key))
     rlang::abort("Cannot calculate reference data without department information. You need to include at least pseudonymised department information.")
 
-  if(is.null(x$metadata$countries))
+  # `metadata$countries` is always a tibble under the three-mode schema
+  # contract; gate on the key column instead of null-ness. Under "no" the
+  # tibble is 0×0 so `country_key` is absent.
+  if(!("country_key" %in% names(x$metadata$countries)))
     rlang::warn("The data is missing country metadata. The resulting dataset connot be used to create reference reports")
 
   pd <- get_risk_time(x, use_cache = use_cache)$patient_days
@@ -883,7 +886,11 @@ fix_zero_event_ci <- function(tbl, suffixes, denominator_tbl,
 }
 
 get_countries_with_wb_class <- function(x) {
-  if (!is.null(x$metadata$countries)) {
+  # `metadata$countries` is always a tibble under the three-mode schema
+  # contract. Gate on `displayName` presence — it only appears under
+  # `include_country == "full"`. The helper's name-based output only
+  # makes sense under "full" where labels exist.
+  if ("displayName" %in% names(x$metadata$countries)) {
     countries_data <- x$enrollments |>
       dplyr::inner_join(
         x$metadata$countries |>

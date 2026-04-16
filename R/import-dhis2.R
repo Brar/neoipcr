@@ -66,7 +66,11 @@ import_dhis2 <- function(
       httr2::req_url_query(!!!ou_query("SELECTED", id)))
 
   } else if (length(dataset_options$country_filter) > 0) {
-    country_ids <- metadata$countries |> dplyr::pull(.data$country)
+    # The raw DHIS2 `country` id lives on the orchestrator-internal
+    # countries map (not on `metadata$countries`, which is the
+    # schema-conformant public tibble under the three-mode contract).
+    country_ids <- metadata$.countries_internal_map |>
+      dplyr::pull(.data$country)
 
     te_enrl_req <- tracker_req |>
       httr2::req_url_query(!!!ou_query("DESCENDANTS", multi_uid(country_ids)))
@@ -198,6 +202,11 @@ import_dhis2 <- function(
   class(pneumoniaData) <- c("neoipcr_hap", class(pneumoniaData))
   class(substanceDays) <- c("neoipcr_sbd", class(substanceDays))
   class(infectiousAgentFindings) <- c("neoipcr_iaf", class(infectiousAgentFindings))
+
+  # Strip the orchestrator-internal countries lookup before stamping
+  # the final S3 class — it is not part of the public `neoipcr_metadata`
+  # shape. See `read_metadata_reponses()` for where it is set.
+  metadata$.countries_internal_map <- NULL
   class(metadata) <- c("neoipcr_metadata", class(metadata))
 
   r <- structure(

@@ -134,9 +134,15 @@ test_that("read_metadata parses countries when include_country is full", {
     c("CH", "DE"))
 })
 
-test_that("read_metadata returns NULL countries with default options", {
+test_that("read_metadata returns 0x0 countries tibble with default options", {
+  # Default `dhis2_dataset_options()` has `include_country = "no"`; under
+  # the three-mode schema contract the reader emits a 0×0 tibble (never
+  # NULL) so downstream code can gate on column presence consistently.
   metadata <- read_test_metadata()
-  expect_null(metadata$countries)
+  expect_false(is.null(metadata$countries))
+  expect_s3_class(metadata$countries, "tbl_df")
+  expect_equal(ncol(metadata$countries), 0L)
+  expect_equal(nrow(metadata$countries), 0L)
 })
 
 test_that("read_metadata parses antimicrobial substances", {
@@ -309,4 +315,133 @@ test_that("read_metadata stores worldBankClasses as an empty tibble (never NULL)
   expect_s3_class(metadata$worldBankClasses, "tbl_df")
   expect_equal(ncol(metadata$worldBankClasses), 0L)
   expect_equal(nrow(metadata$worldBankClasses), 0L)
+})
+
+# --- read_metadata_countries — three-mode shape contract ---
+#
+# The reader honors the three-mode contract declared by `countries_cols`
+# and also returns an orchestrator-internal lookup tibble
+# (`internal_map` with `country`, `code`, `country_key`) used by
+# post-read joins that can't reach into the public schema-conformant
+# tibble. Both components are exercised here.
+
+test_that("read_metadata_countries returns 0x0 public tibble under include_country='no' + wb='no'", {
+  opts <- dhis2_dataset_options(
+    include_country = "no", include_world_bank_class = "no")
+  # The underlying COUNTRY org unit group is present in the fixture but
+  # the reader's early-exit skips the read entirely under this option
+  # combo.
+  fixture_metadata <- list()
+  result <- neoipcr:::read_metadata_countries(
+    fixture_metadata, opts, wb_country_map = NULL)
+
+  expect_named(result, c("public", "internal_map"))
+  expect_equal(ncol(result$public), 0L)
+  expect_equal(nrow(result$public), 0L)
+  expect_null(result$internal_map)
+})
+
+test_that("read_metadata_countries produces 1-col public under pseudo + wb='no'", {
+  metadata <- read_test_metadata(
+    dataset_options = dhis2_dataset_options(
+      include_country          = "pseudo",
+      include_world_bank_class = "no"))
+
+  expect_equal(ncol(metadata$countries), 1L)
+  expect_identical(names(metadata$countries), "country_key")
+  expect_true(is.integer(metadata$countries$country_key))
+  expect_equal(nrow(metadata$countries), 2L)  # CH, DE from fixture
+})
+
+test_that("read_metadata_countries produces 2-col public under pseudo + wb='full'", {
+  # Even without WB-class raw metadata, the schema declares wb_class_key
+  # under pseudo + wb-non-"no". The WB-class join happens only when the
+  # WB metadata contains entries; with no WB classes in the fixture, the
+  # wb_class_key column is present but NA.
+  metadata <- read_test_metadata(
+    dataset_options = dhis2_dataset_options(
+      include_country          = "pseudo",
+      include_world_bank_class = "full"))
+
+  expect_equal(ncol(metadata$countries), 2L)
+  expect_identical(
+    names(metadata$countries),
+    c("country_key", "world_bank_class_key"))
+})
+
+test_that("read_metadata_countries produces full schema under include_country='full'", {
+  opts <- dhis2_dataset_options(
+    include_country          = "full",
+    include_world_bank_class = "no")
+  metadata <- read_test_metadata(dataset_options = opts)
+
+  expect_schema_matches(
+    metadata$countries,
+    neoipcr:::get_countries_schema(opts))
+  expect_equal(nrow(metadata$countries), 2L)
+  expect_identical(
+    sort(as.character(metadata$countries$code)),
+    c("CH", "DE"))
+})
+
+test_that("read_metadata_countries returns empty shape when COUNTRY group absent", {
+  # Metadata without the COUNTRY organisationUnitGroup — reader must
+  # still return a schema-conformant empty tibble (never NULL).
+  for (mode in c("no", "pseudo", "full")) {
+    opts <- dhis2_dataset_options(include_country = mode)
+    metadata <- read_test_metadata(
+      exclude         = "countries",
+      dataset_options = opts)
+
+    expect_false(is.null(metadata$countries),
+      info = sprintf("mode = '%s'", mode))
+    expect_equal(nrow(metadata$countries), 0L,
+      info = sprintf("mode = '%s'", mode))
+    expect_schema_matches(
+      metadata$countries,
+      neoipcr:::get_countries_schema(opts))
+  }
+})
+
+test_that("read_metadata_countries internal_map carries country/code/country_key", {
+  opts <- dhis2_dataset_options(include_country = "full")
+  result <- neoipcr:::read_metadata_countries(
+    list(organisationUnitGroups = list(
+      list(
+        code = "COUNTRY",
+        organisationUnits = list(
+          list(id = "CID_1", code = "CH", displayName = "Switzerland",
+               displayShortName = "Switzerland"),
+          list(id = "CID_2", code = "DE", displayName = "Germany",
+               displayShortName = "Germany"))))),
+    opts,
+    wb_country_map = NULL)
+
+  expect_false(is.null(result$internal_map))
+  expect_true(all(c("country", "code", "country_key") %in%
+                  names(result$internal_map)))
+  expect_equal(nrow(result$internal_map), 2L)
+})
+
+# --- read_metadata orchestrator — countries always in ret ---
+
+test_that("read_metadata stores countries as an empty tibble (never NULL) under 'no'", {
+  metadata <- read_test_metadata(
+    dataset_options = dhis2_dataset_options(
+      include_country = "no", include_world_bank_class = "no"))
+
+  expect_false(is.null(metadata$countries))
+  expect_s3_class(metadata$countries, "tbl_df")
+  expect_equal(ncol(metadata$countries), 0L)
+  expect_equal(nrow(metadata$countries), 0L)
+})
+
+test_that("read_metadata countries has no `country` column under the schema contract", {
+  # The raw DHIS2 `country` id lives on `.countries_internal_map`, not
+  # on the public `metadata$countries`. Downstream code that needs it
+  # (e.g. `import-dhis2.R` for country-filter request building) must
+  # consume the internal map.
+  metadata <- read_test_metadata(
+    dataset_options = dhis2_dataset_options(include_country = "full"))
+  expect_false("country" %in% names(metadata$countries))
 })

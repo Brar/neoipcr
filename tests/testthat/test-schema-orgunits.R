@@ -149,3 +149,151 @@ test_that("make_test_metadata_wb_classes('no') matches empty schema", {
   expect_equal(ncol(fixture), 0L)
   expect_equal(nrow(fixture), 0L)
 })
+
+# ---- countries_cols — per-column include_when predicates ---
+
+test_that("col_country_key appears iff include_country != 'no'", {
+  key_col <- neoipcr:::col_country_key
+
+  expect_false(key_col$include_when(dhis2_dataset_options(
+    include_country = "no")))
+  expect_true(key_col$include_when(dhis2_dataset_options(
+    include_country = "pseudo")))
+  expect_true(key_col$include_when(dhis2_dataset_options(
+    include_country = "full")))
+})
+
+test_that("country display columns appear only under include_country = 'full'", {
+  for (name in c("code", "displayName", "displayShortName")) {
+    col <- purrr::detect(
+      neoipcr:::countries_cols, \(c) c$name == name)
+    expect_false(is.null(col))
+    expect_false(col$include_when(dhis2_dataset_options(
+      include_country = "no")),
+      info = name)
+    expect_false(col$include_when(dhis2_dataset_options(
+      include_country = "pseudo")),
+      info = name)
+    expect_true(col$include_when(dhis2_dataset_options(
+      include_country = "full")),
+      info = name)
+    expect_identical(col$levels_source, "data", info = name)
+  }
+})
+
+test_that("countries world_bank_class_key appears iff BOTH country and WB are non-'no'", {
+  wb_col <- purrr::detect(
+    neoipcr:::countries_cols, \(c) c$name == "world_bank_class_key")
+  expect_false(is.null(wb_col))
+
+  # Direct parent-link FK — requires countries tibble AND WB tibble to
+  # both exist. Shared `col_wb_class_key` atom's single-option predicate
+  # is intentionally not reused here; see the comment in schema-orgunits.R
+  # on the compound gate.
+  expect_false(wb_col$include_when(dhis2_dataset_options(
+    include_country = "no", include_world_bank_class = "full")))
+  expect_false(wb_col$include_when(dhis2_dataset_options(
+    include_country = "full", include_world_bank_class = "no")))
+  expect_true(wb_col$include_when(dhis2_dataset_options(
+    include_country = "pseudo", include_world_bank_class = "pseudo")))
+  expect_true(wb_col$include_when(dhis2_dataset_options(
+    include_country = "full", include_world_bank_class = "full")))
+})
+
+# --- get_countries_schema — three-mode shape contract ---
+
+test_that("get_countries_schema is 0x0 under include_country = 'no'", {
+  # Strict 0×0 regardless of include_world_bank_class (inheritance
+  # through an absent entity is still absent).
+  for (wb_mode in c("no", "pseudo", "full")) {
+    opts <- dhis2_dataset_options(
+      include_country = "no", include_world_bank_class = wb_mode)
+    schema <- neoipcr:::get_countries_schema(opts)
+    expect_equal(ncol(schema), 0L,
+      info = sprintf("wb_mode='%s'", wb_mode))
+    expect_equal(nrow(schema), 0L,
+      info = sprintf("wb_mode='%s'", wb_mode))
+  }
+})
+
+test_that("get_countries_schema is 1 column under include_country='pseudo', wb='no'", {
+  schema <- neoipcr:::get_countries_schema(dhis2_dataset_options(
+    include_country = "pseudo", include_world_bank_class = "no"))
+
+  expect_equal(ncol(schema), 1L)
+  expect_identical(names(schema), "country_key")
+  expect_true(is.integer(schema$country_key))
+})
+
+test_that("get_countries_schema is 2 columns under pseudo + wb non-'no'", {
+  # Under pseudo mode, the public schema keeps `country_key` + the
+  # direct WB-class link FK — that's how pseudo countries still group
+  # into WB classes.
+  for (wb_mode in c("pseudo", "full")) {
+    schema <- neoipcr:::get_countries_schema(dhis2_dataset_options(
+      include_country = "pseudo", include_world_bank_class = wb_mode))
+    expect_equal(ncol(schema), 2L,
+      info = sprintf("wb_mode='%s'", wb_mode))
+    expect_identical(
+      names(schema),
+      c("country_key", "world_bank_class_key"),
+      info = sprintf("wb_mode='%s'", wb_mode))
+  }
+})
+
+test_that("get_countries_schema is full schema under include_country='full'", {
+  # Full schema with all display columns + direct WB-class link when WB
+  # is non-"no".
+  schema <- neoipcr:::get_countries_schema(dhis2_dataset_options(
+    include_country = "full", include_world_bank_class = "full"))
+
+  expect_equal(ncol(schema), 5L)
+  expect_identical(
+    names(schema),
+    c("country_key", "code", "displayName", "displayShortName",
+      "world_bank_class_key"))
+  expect_true(is.integer(schema$country_key))
+  expect_s3_class(schema$code, "ordered")
+  expect_s3_class(schema$displayName, "ordered")
+  expect_s3_class(schema$displayShortName, "ordered")
+  expect_true(is.integer(schema$world_bank_class_key))
+})
+
+test_that("get_countries_schema full - wb_no = 4 columns (no WB FK)", {
+  schema <- neoipcr:::get_countries_schema(dhis2_dataset_options(
+    include_country = "full", include_world_bank_class = "no"))
+
+  expect_equal(ncol(schema), 4L)
+  expect_identical(
+    names(schema),
+    c("country_key", "code", "displayName", "displayShortName"))
+})
+
+test_that("get_countries_schema strict 0 -> 1 -> N column-count progression under wb='no'", {
+  opts_no     <- dhis2_dataset_options(
+    include_country = "no", include_world_bank_class = "no")
+  opts_pseudo <- dhis2_dataset_options(
+    include_country = "pseudo", include_world_bank_class = "no")
+  opts_full   <- dhis2_dataset_options(
+    include_country = "full", include_world_bank_class = "no")
+
+  expect_equal(ncol(neoipcr:::get_countries_schema(opts_no)),     0L)
+  expect_equal(ncol(neoipcr:::get_countries_schema(opts_pseudo)), 1L)
+  expect_true(ncol(neoipcr:::get_countries_schema(opts_full))   > 1L)
+})
+
+test_that("make_test_metadata_countries matches schema across all (country, wb) modes", {
+  for (c_mode in c("no", "pseudo", "full")) {
+    for (wb_mode in c("no", "pseudo", "full")) {
+      opts <- dhis2_dataset_options(
+        include_country = c_mode, include_world_bank_class = wb_mode)
+      schema  <- neoipcr:::get_countries_schema(opts)
+      fixture <- make_test_metadata_countries(
+        n = 2,
+        include_country = c_mode,
+        include_world_bank_class = wb_mode)
+
+      expect_schema_matches(fixture, schema)
+    }
+  }
+})

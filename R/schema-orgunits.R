@@ -50,3 +50,61 @@ worldBankClasses_cols <- list(
 
 get_worldBankClasses_schema <- function(opts)
   compile_schema(worldBankClasses_cols, opts)
+
+# ---- Countries ------------------------------------------------------------
+#
+# Second tier of the org-unit hierarchy. Each country belongs to exactly
+# one World Bank income class (via the WB-class membership lookup), so
+# `world_bank_class_key` is the direct parent-link FK — not an inherited
+# key. The plan's `col_inherited_from()` helper is for hierarchy keys
+# *further up* the chain that the immediate parent might or might not
+# carry (e.g. patients inheriting `country_key` from departments). For a
+# direct parent-child link the FK is *always* present when both sides
+# exist; we declare it inline with a compound predicate here rather than
+# reusing the shared `col_wb_class_key` atom, because the shared atom's
+# predicate (`include_world_bank_class != "no"`) does not also require
+# the containing entity to exist. Without the compound gate, a
+# `compile_schema(countries_cols, opts)` under
+# `include_country = "no"` + `include_world_bank_class = "full"`
+# would produce a 1-col tibble with just `world_bank_class_key` — a
+# violation of the `0 → 1 → N` strict progression for countries.
+#
+# Display columns are ordered factors with data-derived levels, matching
+# the current reader's `dplyr::across(!"id", ordered)` conversion. Under
+# the three-mode contract the reader's `finalize_to_schema()` narrows
+# any extra columns (e.g. the intermediate `country` DHIS2 id used for
+# orchestrator-level joins) that aren't in the public schema.
+#
+# Three-mode shape:
+#   "no"     — 0×0 tibble.
+#   "pseudo" — `country_key` only, plus `world_bank_class_key` when
+#              `include_world_bank_class != "no"` (direct link-FK).
+#   "full"   — adds `code`, `displayName`, `displayShortName`.
+
+countries_cols <- list(
+  col_country_key,
+  schema_col(
+    "code", ordered(),
+    include_when  = \(opts) opts$include_country == "full",
+    levels_source = "data"
+  ),
+  schema_col(
+    "displayName", ordered(),
+    include_when  = \(opts) opts$include_country == "full",
+    levels_source = "data"
+  ),
+  schema_col(
+    "displayShortName", ordered(),
+    include_when  = \(opts) opts$include_country == "full",
+    levels_source = "data"
+  ),
+  schema_col(
+    "world_bank_class_key", integer(),
+    include_when = \(opts)
+      opts$include_country != "no" &&
+      opts$include_world_bank_class != "no"
+  )
+)
+
+get_countries_schema <- function(opts)
+  compile_schema(countries_cols, opts)

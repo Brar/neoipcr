@@ -139,10 +139,16 @@ test_that("include_hospital = pseudo removes hospitals table but keeps hospital_
 })
 
 # --- include_country ---
+#
+# Like WB classes, the `metadata$countries` tibble shape is reader-owned
+# under the three-mode schema contract (`countries_cols` in
+# R/schema-orgunits.R, verified in test-dhis2-metadata.R). Tests here
+# cover `apply_data_removal()`'s remaining responsibility: scrubbing the
+# `country_key` foreign key from fact and adjacent-metadata tables when
+# the user opted out of countries entirely.
 
-test_that("include_country = no removes countries table and country_key from all tables", {
+test_that("include_country = no removes country_key from every fact and metadata table", {
   result <- remove_with(include_country = "no")
-  expect_null(result$metadata$countries)
   expect_false("country_key" %in% names(result$patients))
   expect_false("country_key" %in% names(result$enrollments))
   expect_false("country_key" %in% names(result$events))
@@ -151,10 +157,21 @@ test_that("include_country = no removes countries table and country_key from all
   expect_false("country_key" %in% names(result$metadata$departments))
 })
 
-test_that("include_country = pseudo removes countries table but keeps country_key", {
+test_that("include_country = pseudo keeps country_key in fact tables", {
+  # The fact-table FK is retained so pseudo keys can still group joins
+  # across fact tables. The table-shape contract is enforced by the
+  # reader and tested in `test-dhis2-metadata.R`.
   result <- remove_with(include_country = "pseudo")
-  expect_null(result$metadata$countries)
   expect_true("country_key" %in% names(result$patients))
+  expect_true("country_key" %in% names(result$enrollments))
+  expect_true("country_key" %in% names(result$events))
+})
+
+test_that("include_country = full keeps country_key in fact tables", {
+  result <- remove_with(include_country = "full")
+  expect_true("country_key" %in% names(result$patients))
+  expect_true("country_key" %in% names(result$enrollments))
+  expect_true("country_key" %in% names(result$events))
 })
 
 # --- include_world_bank_class ---
@@ -202,18 +219,20 @@ test_that("removing country with hospital = no does not error on missing hospita
     include_hospital = "no",
     include_country  = "no")
   expect_null(result$metadata$hospitals)
-  expect_null(result$metadata$countries)
+  # `countries` shape is reader-owned — verified in test-dhis2-metadata.R.
+  # Here we just confirm the FK-scrub cascade fires on patients.
+  expect_false("country_key" %in% names(result$patients))
 })
 
 test_that("removing world_bank_class with country = no does not error on missing countries", {
   result <- remove_with(
     include_country          = "no",
     include_world_bank_class = "no")
-  expect_null(result$metadata$countries)
-  # `worldBankClasses` shape itself is reader-owned — verified in
-  # test-dhis2-metadata.R; here we just confirm the cascade doesn't crash
-  # when both options are "no" simultaneously and that the FK column is
-  # scrubbed from patients as a consequence.
+  # `countries` + `worldBankClasses` shapes are reader-owned — verified
+  # in test-dhis2-metadata.R. Here we just confirm the cascade doesn't
+  # crash when both options are "no" simultaneously and that the FK
+  # columns are scrubbed from patients as a consequence.
+  expect_false("country_key" %in% names(result$patients))
   expect_false("world_bank_class_key" %in% names(result$patients))
 })
 
@@ -236,10 +255,12 @@ test_that("all include flags at most restrictive removes all optional data", {
   expect_false("trackedEntity" %in% names(result$patients))
   expect_null(result$metadata$departments)
   expect_null(result$metadata$hospitals)
-  expect_null(result$metadata$countries)
-  # `worldBankClasses` table shape is reader-owned under the three-mode
-  # schema contract and asserted in test-dhis2-metadata.R. Here we just
-  # confirm the `world_bank_class_key` fact-table scrub cascaded.
+  # `countries` + `worldBankClasses` shapes are reader-owned under the
+  # three-mode schema contract and asserted in test-dhis2-metadata.R.
+  # Here we just confirm the FK-column scrub cascaded.
+  expect_false("country_key" %in% names(result$patients))
+  expect_false("country_key" %in% names(result$enrollments))
+  expect_false("country_key" %in% names(result$events))
   expect_false("world_bank_class_key" %in% names(result$patients))
   expect_false("world_bank_class_key" %in% names(result$enrollments))
   expect_false("world_bank_class_key" %in% names(result$events))

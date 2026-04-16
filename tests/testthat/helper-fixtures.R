@@ -334,13 +334,35 @@ make_test_metadata_hospitals <- function(n = 2) {
     world_bank_class_key = seq_len(n))
 }
 
-make_test_metadata_countries <- function(n = 2) {
-  tibble::tibble(
-    country_key          = seq_len(n),
-    country              = paste0("CTRY_", seq_len(n)),
-    code                 = ordered(paste0("C", seq_len(n))),
-    displayName          = ordered(paste0("Country ", seq_len(n))),
-    world_bank_class_key = seq_len(n))
+# Shape matches `countries_cols` in R/schema-orgunits.R. Default mode is
+# "full" with both `include_country` and `include_world_bank_class` at
+# "full" so downstream test code that needs every column keeps working.
+# Pass specific modes to test narrower shapes.
+make_test_metadata_countries <- function(
+    n = 2,
+    include_country = "full",
+    include_world_bank_class = "full")
+{
+  country_mode <- rlang::arg_match(
+    include_country, c("no", "pseudo", "full"))
+  wb_mode <- rlang::arg_match(
+    include_world_bank_class, c("no", "pseudo", "full"))
+
+  if (country_mode == "no")
+    return(tibble::tibble())
+
+  out <- tibble::tibble(country_key = seq_len(n))
+
+  if (country_mode == "full") {
+    out$code             <- ordered(paste0("C", seq_len(n)))
+    out$displayName      <- ordered(paste0("Country ", seq_len(n)))
+    out$displayShortName <- ordered(paste0("Ctry ", seq_len(n)))
+  }
+
+  if (wb_mode != "no")
+    out$world_bank_class_key <- seq_len(n)
+
+  out
 }
 
 # Shape matches `worldBankClasses_cols` in R/schema-orgunits.R under the

@@ -170,8 +170,11 @@ apply_postfilter <- function(x)
       dplyr::join_by("enrollment_key"))
 
   # Filtering by country will only work if we have country information
-  # Keep enrollments with NA country_key (test data without a country)
-  if(!is.null(countries) && "country_key" %in% names(enrollments))
+  # Keep enrollments with NA country_key (test data without a country).
+  # `countries` follows the three-mode schema contract and is always a
+  # tibble — guard on column presence, not null-ness.
+  if("country_key" %in% names(countries) &&
+     "country_key" %in% names(enrollments))
     enrollments <- enrollments |>
     dplyr::filter(
       is.na(.data$country_key) |
@@ -191,7 +194,8 @@ apply_postfilter <- function(x)
   if(!is.null(hospitals) && "hospital_key" %in% names(enrollments))
     hospitals <- hospitals |>
     dplyr::semi_join(enrollments, dplyr::join_by("hospital_key"))
-  if(!is.null(countries) && "country_key" %in% names(enrollments))
+  if("country_key" %in% names(countries) &&
+     "country_key" %in% names(enrollments))
     countries <- countries |>
     dplyr::semi_join(enrollments, dplyr::join_by("country_key"))
   # `worldBankClasses` is always a tibble (never NULL) since the reader

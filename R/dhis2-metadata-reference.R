@@ -295,36 +295,88 @@ read_metadata_wb_classes <- function(metadata, dataset_options)
   list(public = public, country_map = country_map)
 }
 
-read_metadata_countries <- function(
-    metadata, include_country, has_country_filter, wb_country_map)
+# Read the country metadata from the DHIS2 metadata response.
+#
+# Returns a named list with two components:
+#   * `public`       — schema-conformant tibble matching
+#                      `compile_schema(countries_cols, dataset_options)`.
+#                      Always returned (never NULL); shape follows the
+#                      three-mode contract on `include_country` (0×0 / 1-col
+#                      / full) plus the direct WB-class link-FK when
+#                      `include_world_bank_class != "no"`.
+#   * `internal_map` — orchestrator-internal lookup tibble with columns
+#                      `country` (raw DHIS2 id), `code`, and
+#                      `country_key`. Consumed by the orchestrator's
+#                      post-read joins (country_filter narrowing,
+#                      hospitals country_key lookup). NULL when there is
+#                      no country metadata to map against (e.g. no
+#                      COUNTRY organisationUnitGroup, or the user opted
+#                      out of everything country-related).
+read_metadata_countries <- function(metadata, dataset_options, wb_country_map)
 {
-  if(!has_country_filter && include_country == "no" && is.null(wb_country_map))
-    return(NULL)
+  opts <- dataset_options
+  empty_result <- list(
+    public       = compile_schema(countries_cols, opts),
+    internal_map = NULL
+  )
+
+  has_country_filter <- length(opts$country_filter) > 0L
+
+  # Early-exit when the user wants nothing country-related and no WB
+  # join is needed. Retains legacy behaviour of returning the empty
+  # shape without attempting to read the COUNTRY group.
+  if (!has_country_filter &&
+      opts$include_country == "no" &&
+      opts$include_world_bank_class == "no")
+    return(empty_result)
 
   organisationUnitGroups <- read_metadata_organisationUnitGroups(
     metadata, "COUNTRY")
 
-  if(rlang::is_null(organisationUnitGroups) || nrow(organisationUnitGroups) < 1)
-    return(NULL)
+  if (rlang::is_null(organisationUnitGroups) ||
+      nrow(organisationUnitGroups) < 1L)
+    return(empty_result)
 
-  organisationUnitGroups <- organisationUnitGroups |>
+  countries <- organisationUnitGroups |>
     dplyr::select("organisationUnits") |>
     tidyr::unnest_longer(1) |>
     tidyr::unnest_wider(1) |>
     dplyr::mutate(dplyr::across(!"id", ordered)) |>
     dplyr::relocate("id", .before = 1) |>
     dplyr::rename(country = "id") |>
-    add_key_column('country_key')
+    add_key_column("country_key")
 
-  if(!is.null(wb_country_map))
-    organisationUnitGroups <- organisationUnitGroups |>
+  if (opts$include_world_bank_class != "no" && !is.null(wb_country_map))
+    countries <- countries |>
     dplyr::left_join(
       wb_country_map |>
         tidyr::unnest_longer("organisationUnits") |>
         tidyr::hoist("organisationUnits", country = list(1L)),
       dplyr::join_by("country"))
 
-  organisationUnitGroups
+  # The schema declares `world_bank_class_key` under any non-"no" WB
+  # option — this is a static schema-level fact, independent of whether
+  # actual WB-class metadata was present in the response. If the WB
+  # metadata was empty (wb_country_map NULL or no matching rows),
+  # materialize the column as NA so finalize_to_schema can select it.
+  if (opts$include_world_bank_class != "no" &&
+      !("world_bank_class_key" %in% names(countries)))
+    countries$world_bank_class_key <- NA_integer_
+
+  # Orchestrator-internal lookup — carries the raw DHIS2 `country` id
+  # and the `code` needed for `country_filter` narrowing plus
+  # `country_key` for joining back to the public tibble. Kept outside
+  # the public schema because DHIS2 id exposure is gated separately
+  # (`include_dhis2_ids == "countries"`), and `code` is internal to
+  # filtering, not to the public output.
+  internal_map <- countries |>
+    dplyr::select(tidyselect::any_of(c("country", "code", "country_key")))
+
+  public <- countries |>
+    finalize_to_schema(countries_cols, opts)
+  assert_schema(public, countries_cols, opts)
+
+  list(public = public, internal_map = internal_map)
 }
 
 read_metadata_optionGroupSets <- function(

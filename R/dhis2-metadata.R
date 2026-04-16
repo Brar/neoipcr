@@ -121,6 +121,16 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
     lapply(read_metadata_reponse, dataset_options) |>
     unlist(recursive = FALSE)
 
+  # `metadata$.countries_internal_map` is the orchestrator-internal
+  # countries lookup — it carries the raw DHIS2 `country` id + `code` +
+  # `country_key` used by every post-read country/hospital/department
+  # join that can't reach into `metadata$countries` (which is the
+  # schema-conformant public tibble without the raw id or `code`). The
+  # field is kept on `metadata` through the rest of `import_dhis2()` so
+  # that request-building code (e.g. country_filter → event request
+  # URLs) can consume it, and stripped at the `import_dhis2()` exit
+  # just before the final dataset is assembled.
+
   if (!("users" %in% names(metadata)))
     metadata$users <- read_user_info_table(
       user_info,
@@ -139,16 +149,29 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
       dplyr::filter(.data$code %in% dataset_options$department_filter)
 
   # Filter countries by country_filter and remove departments not in those countries
-  if (length(dataset_options$country_filter) > 0 && !is.null(metadata$countries))
+  if (length(dataset_options$country_filter) > 0 &&
+      !is.null(metadata$.countries_internal_map))
   {
-    metadata$countries <- metadata$countries |>
-      dplyr::filter(.data$code %in% dataset_options$country_filter)
+    surviving_keys <- metadata$.countries_internal_map |>
+      dplyr::filter(.data$code %in% dataset_options$country_filter) |>
+      dplyr::pull("country_key")
+
+    # Narrow the public tibble only when it actually carries the key
+    # (i.e. include_country != "no"). The map is always narrowed so
+    # downstream joins see the filtered country set.
+    if ("country_key" %in% names(metadata$countries))
+      metadata$countries <- metadata$countries |>
+        dplyr::filter(.data$country_key %in% surviving_keys)
+
+    metadata$.countries_internal_map <- metadata$.countries_internal_map |>
+      dplyr::filter(.data$country_key %in% surviving_keys)
 
     if (!is.null(metadata$hospitals) &&
         "hospital_key" %in% names(metadata$departments))
     {
       filtered_hospital_keys <- metadata$hospitals |>
-        dplyr::semi_join(metadata$countries, dplyr::join_by("country")) |>
+        dplyr::semi_join(
+          metadata$.countries_internal_map, dplyr::join_by("country")) |>
         dplyr::pull("hospital_key")
 
       if (dataset_options$include_test_data &&
@@ -175,15 +198,19 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
         dplyr::join_by("hospital_key"))
   }
 
-  # Join country_key into hospitals
-  if(dataset_options$include_country != "no" ||
-     length(dataset_options$country_filter) > 0 ||
-     dataset_options$include_world_bank_class != "no")
+  # Join country_key into hospitals via the raw `country` id held by the
+  # orchestrator-internal map. The public countries tibble no longer
+  # carries `country` under the schema contract, so the join has to
+  # consume the map.
+  if ((dataset_options$include_country != "no" ||
+       length(dataset_options$country_filter) > 0 ||
+       dataset_options$include_world_bank_class != "no") &&
+      !is.null(metadata$.countries_internal_map))
   {
     metadata$hospitals <- metadata$hospitals |>
       dplyr::left_join(
-        metadata$countries |>
-          dplyr::select("country","country_key"),
+        metadata$.countries_internal_map |>
+          dplyr::select("country", "country_key"),
         dplyr::join_by("country")) |>
       dplyr::select(!"country")
   }
@@ -200,8 +227,7 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
           dplyr::select("hospital_key", "country_key"),
         dplyr::join_by("hospital_key"))
 
-    if (!is.null(metadata$countries) &&
-        "world_bank_class_key" %in% names(metadata$countries))
+    if ("world_bank_class_key" %in% names(metadata$countries))
       metadata$departments <- metadata$departments |>
         dplyr::left_join(
           metadata$countries |>
@@ -269,11 +295,10 @@ read_metadata <- function(metadata, dataset_options)
   world_bank_classes <- wb_result$public
   wb_country_map     <- wb_result$country_map
 
-  countries <- read_metadata_countries(
-    metadata,
-    dataset_options$include_country,
-    length(dataset_options$country_filter) > 0,
-    wb_country_map)
+  countries_result <- read_metadata_countries(
+    metadata, dataset_options, wb_country_map)
+  countries              <- countries_result$public
+  countries_internal_map <- countries_result$internal_map
 
   ret <- list(
     system = system,
@@ -310,8 +335,15 @@ read_metadata <- function(metadata, dataset_options)
   # shape is the signal: 0×0 under "no", 1-col under "pseudo", full schema
   # under "full". See `R/schema-orgunits.R::worldBankClasses_cols`.
   ret <- c(ret, list(worldBankClasses = world_bank_classes))
-  if(!is.null(countries))
-    ret <- c(ret, list(countries = countries))
+  # `countries` follows the same three-mode contract via
+  # `R/schema-orgunits.R::countries_cols`. The orchestrator-internal
+  # `countries_internal_map` (with raw DHIS2 `country` id + `code` used
+  # by post-read joins and `country_filter`) is threaded through via
+  # `.countries_internal_map` and stripped at the top of the multi-response
+  # orchestrator's post-processing.
+  ret <- c(ret, list(countries = countries))
+  if (!is.null(countries_internal_map))
+    ret <- c(ret, list(.countries_internal_map = countries_internal_map))
 
   ret
 }

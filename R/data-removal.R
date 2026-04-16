@@ -60,9 +60,14 @@ apply_data_removal <- function(x, dataset_options)
   if(dataset_options$include_hospital == "pseudo")
     x$metadata$hospitals <- NULL
 
+  # `include_country` — the tibble shape in `metadata$countries` is now
+  # reader-owned via `R/schema-orgunits.R::countries_cols`. The three
+  # mode shapes (0×0 / 1-col / full) are produced by
+  # `read_metadata_countries()` with a tail `assert_schema()`. The
+  # guardian keeps the FK-scrub cascade on fact and adjacent-metadata
+  # tables until those entities land in their own Phase B sub-tasks.
   if(dataset_options$include_country == "no")
   {
-    x$metadata$countries <- NULL
     if(!is.null(x$metadata$hospitals))
       x$metadata$hospitals <- x$metadata$hospitals |>
         dplyr::select(!tidyselect::any_of("country_key"))
@@ -76,8 +81,6 @@ apply_data_removal <- function(x, dataset_options)
     x$events <- x$events |>
       dplyr::select(!tidyselect::any_of("country_key"))
   }
-  if(dataset_options$include_country == "pseudo")
-    x$metadata$countries <- NULL
 
   # `include_world_bank_class` — downstream narrowing is now handled by the
   # reader via the schema contract. `x$metadata$worldBankClasses` follows

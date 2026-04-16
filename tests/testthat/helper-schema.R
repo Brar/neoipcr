@@ -33,7 +33,14 @@ expect_schema_matches <- function(x, expected)
         col,
         paste(class(expected[[col]]), collapse = "/"),
         paste(class(act$val[[col]]),  collapse = "/")))
+    # Factor-level comparison is skipped when `expected` has empty
+    # levels — this is how the schema engine represents a
+    # `levels_source = "data"` column (levels populated at read time by
+    # the reader, not declared in the schema). For fixed-level factors,
+    # the schema's compiled factor carries the declared levels and the
+    # comparison fires.
     if (is.factor(expected[[col]]) && is.factor(act$val[[col]]) &&
+        length(levels(expected[[col]])) > 0L &&
         !identical(levels(act$val[[col]]), levels(expected[[col]])))
       issues <- c(issues, sprintf(
         "column `%s` factor levels differ — expected: [%s]; actual: [%s]",
