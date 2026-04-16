@@ -303,22 +303,63 @@ make_test_events <- function(
   structure(d, class = c("neoipcr_evt", class(d)))
 }
 
-make_test_admission_data <- function(event_keys = 1L, ...) {
+# Internal helper: build a per-event-type data fixture from a schema.
+# `default_full` supplies concrete values for every base payload column
+# under the given event-type's default-full opts. Callers pass
+# overrides via `...` and opts-narrowing args.
+.make_event_data_fixture <- function(cols, schema, event_keys, default_full,
+                                     class_name) {
   n <- length(event_keys)
-  d <- list(
-    event_key = event_keys,
-    type      = factor(rep("1", n)),
-    dol       = rep(1L, n))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
-  structure(d, class = c("neoipcr_adm", class(d)))
+  if (ncol(schema) == 0L || n == 0L)
+    return(structure(schema, class = c(class_name, class(schema))))
+
+  full <- c(list(event_key = event_keys), default_full(n))
+
+  d <- tibble::as_tibble(full[names(schema)])
+  for (col in names(schema)) {
+    if (is.factor(schema[[col]]) && !is.factor(d[[col]]))
+      d[[col]] <- factor(d[[col]], levels = levels(schema[[col]]))
+  }
+  structure(d, class = c(class_name, class(d)))
 }
 
-make_test_surveillance_end_data <- function(event_keys = 1L, ...) {
-  n <- length(event_keys)
-  d <- list(
-    event_key          = event_keys,
-    reason             = factor(rep("1", n)),
+.default_event_data_opts <- function(include_event = "full") {
+  dhis2_dataset_options(
+    include_event            = include_event,
+    include_enrollment       = "full",
+    include_patient          = "full",
+    include_department       = "pseudo",
+    include_hospital         = "pseudo",
+    include_country          = "pseudo",
+    include_world_bank_class = "pseudo")
+}
+
+make_test_admission_data <- function(event_keys = 1L,
+                                     include_event = "full",
+                                     ...) {
+  opts <- .default_event_data_opts(include_event)
+  schema <- neoipcr:::compile_schema(neoipcr:::admissionData_cols, opts)
+  default <- function(n) list(
+    type = factor(rep("1", n), levels = c("1", "2", "3")),
+    dol  = rep(1L, n))
+  d <- .make_event_data_fixture(
+    neoipcr:::admissionData_cols, schema, event_keys, default, "neoipcr_adm")
+  if (length(list(...)) > 0L) {
+    overrides <- list(...)
+    for (nm in names(overrides))
+      d[[nm]] <- overrides[[nm]]
+  }
+  d
+}
+
+make_test_surveillance_end_data <- function(event_keys = 1L,
+                                             include_event = "full",
+                                             ...) {
+  opts <- .default_event_data_opts(include_event)
+  schema <- neoipcr:::compile_schema(
+    neoipcr:::surveillanceEndData_cols, opts)
+  default <- function(n) list(
+    reason             = factor(rep("1", n), levels = c("1", "2")),
     patient_days       = rep(10L, n),
     cvc_days           = rep(3L, n),
     pvc_days           = rep(2L, n),
@@ -329,78 +370,177 @@ make_test_surveillance_end_data <- function(event_keys = 1L, ...) {
     human_milk_days    = rep(8L, n),
     kangaroo_care_days = rep(4L, n),
     probiotic_days     = rep(6L, n))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
-  structure(d, class = c("neoipcr_end", class(d)))
+  d <- .make_event_data_fixture(
+    neoipcr:::surveillanceEndData_cols, schema, event_keys, default,
+    "neoipcr_end")
+  if (length(list(...)) > 0L) {
+    overrides <- list(...)
+    for (nm in names(overrides))
+      d[[nm]] <- overrides[[nm]]
+  }
+  d
 }
 
-make_test_sepsis_data <- function(event_keys = 1L, ...) {
-  n <- length(event_keys)
-  d <- list(
-    event_key = event_keys,
-    dev_ass   = factor(rep("1", n)),
-    los       = rep(5L, n),
-    dol       = rep(6L, n))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
-  structure(d, class = c("neoipcr_bsi", class(d)))
+make_test_sepsis_data <- function(event_keys = 1L,
+                                   include_event = "full",
+                                   ...) {
+  opts <- .default_event_data_opts(include_event)
+  schema <- neoipcr:::compile_schema(neoipcr:::sepsisData_cols, opts)
+  default <- function(n) c(
+    list(
+      dev_ass = factor(rep("1", n), levels = c("0", "1", "2")),
+      los     = rep(5L, n),
+      dol     = rep(6L, n)),
+    stats::setNames(
+      lapply(
+        c("acidosis", "ab_treatment", "apnoea", "bradycardia", "crp",
+          "feeding_intolerance", "hyperglycaemia", "it_ratio",
+          "interleukin", "irritability", "no_pos_culture", "perfusion",
+          "platelet_count", "procalcitonin", "temperature", "wbc"),
+        \(nm) rep(FALSE, n)),
+      c("acidosis", "ab_treatment", "apnoea", "bradycardia", "crp",
+        "feeding_intolerance", "hyperglycaemia", "it_ratio",
+        "interleukin", "irritability", "no_pos_culture", "perfusion",
+        "platelet_count", "procalcitonin", "temperature", "wbc")))
+  d <- .make_event_data_fixture(
+    neoipcr:::sepsisData_cols, schema, event_keys, default, "neoipcr_bsi")
+  if (length(list(...)) > 0L) {
+    overrides <- list(...)
+    for (nm in names(overrides))
+      d[[nm]] <- overrides[[nm]]
+  }
+  d
 }
 
-make_test_nec_data <- function(event_keys = 1L, ...) {
-  n <- length(event_keys)
-  d <- list(
-    event_key = event_keys,
-    los       = rep(5L, n),
-    dol       = rep(6L, n),
-    sec_bsi   = rep(FALSE, n))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
-  structure(d, class = c("neoipcr_nec", class(d)))
+make_test_nec_data <- function(event_keys = 1L,
+                               include_event = "full",
+                               ...) {
+  opts <- .default_event_data_opts(include_event)
+  schema <- neoipcr:::compile_schema(neoipcr:::necData_cols, opts)
+  bool_cols <- c("abdominal_skin_tone", "abdominal_distension",
+                 "bilious_aspirate", "bloody_stools", "bowel_necrosis",
+                 "fixed_loop", "gastric_residuals",
+                 "pneumatosis_intestinalis_img",
+                 "pneumatosis_intestinalis_surg", "pneumoperitoneum",
+                 "portal_venous_gas", "vomiting")
+  default <- function(n) c(
+    list(
+      los     = rep(5L, n),
+      dol     = rep(6L, n),
+      sec_bsi = factor(rep("0", n), levels = c("1", "0", "-1"))),
+    stats::setNames(
+      lapply(bool_cols, \(nm) rep(FALSE, n)),
+      bool_cols))
+  d <- .make_event_data_fixture(
+    neoipcr:::necData_cols, schema, event_keys, default, "neoipcr_nec")
+  if (length(list(...)) > 0L) {
+    overrides <- list(...)
+    for (nm in names(overrides))
+      d[[nm]] <- overrides[[nm]]
+  }
+  d
 }
 
-make_test_pneumonia_data <- function(event_keys = 1L, ...) {
-  n <- length(event_keys)
-  d <- list(
-    event_key = event_keys,
-    dev_ass   = factor(rep("1", n)),
-    los       = rep(5L, n),
-    dol       = rep(6L, n),
-    sec_bsi   = rep(FALSE, n))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
-  structure(d, class = c("neoipcr_hap", class(d)))
+make_test_pneumonia_data <- function(event_keys = 1L,
+                                     include_event = "full",
+                                     ...) {
+  opts <- .default_event_data_opts(include_event)
+  schema <- neoipcr:::compile_schema(neoipcr:::pneumoniaData_cols, opts)
+  bool_cols <- c("bradycardia", "fever", "imaging_findings",
+                 "increased_respiratory_secretion",
+                 "laboratory_findings", "purulent_tracheal_aspirate",
+                 "respiratory_distress", "respiratory_support",
+                 "tachypnoea")
+  default <- function(n) c(
+    list(
+      dev_ass                     = factor(rep("1", n),
+                                           levels = c("0", "1", "2")),
+      los                         = rep(5L, n),
+      dol                         = rep(6L, n),
+      sec_bsi                     = factor(rep("0", n),
+                                           levels = c("1", "0", "-1")),
+      microbiological_test_result = factor(rep("1", n),
+                                           levels = c("1", "0", "-1"))),
+    stats::setNames(
+      lapply(bool_cols, \(nm) rep(FALSE, n)),
+      bool_cols))
+  d <- .make_event_data_fixture(
+    neoipcr:::pneumoniaData_cols, schema, event_keys, default,
+    "neoipcr_hap")
+  if (length(list(...)) > 0L) {
+    overrides <- list(...)
+    for (nm in names(overrides))
+      d[[nm]] <- overrides[[nm]]
+  }
+  d
 }
 
-make_test_surgery_data <- function(event_keys = 1L, ...) {
-  n <- length(event_keys)
-  d <- list(
-    event_key             = event_keys,
-    los                   = rep(3L, n),
-    dol                   = rep(4L, n),
-    procedure_description = rep("Test procedure", n),
-    main_procedure_code   = rep("PZX.AA.JA", n),
-    side_procedure_code_1 = rep(NA_character_, n),
-    side_procedure_code_2 = rep(NA_character_, n),
-    asa_score             = rep(1L, n),
-    wound_class           = factor(rep("1", n)),
-    duration              = rep(60L, n),
-    emergency_procedure   = rep(FALSE, n))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
-  structure(d, class = c("neoipcr_pro", class(d)))
+make_test_surgery_data <- function(event_keys = 1L,
+                                   include_event = "full",
+                                   ...) {
+  opts <- .default_event_data_opts(include_event)
+  schema <- neoipcr:::compile_schema(neoipcr:::surgeryData_cols, opts)
+  bool_cols <- c("emergency_procedure", "endoscopic_procedure",
+                 "implant", "primary_closure", "revision_procedure")
+  default <- function(n) c(
+    list(
+      los                   = rep(3L, n),
+      dol                   = rep(4L, n),
+      procedure_description = rep("Test procedure", n),
+      main_procedure_code   = rep("PZX.AA.JA", n),
+      side_procedure_code_1 = rep(NA_character_, n),
+      side_procedure_code_2 = rep(NA_character_, n),
+      asa_score             = factor(rep("1", n),
+                                     levels = c("1", "2", "3", "4", "5")),
+      wound_class           = factor(rep("1", n),
+                                     levels = c("1", "2", "3", "4")),
+      duration              = rep(60L, n),
+      infection_signs       = rep(NA_character_, n)),
+    stats::setNames(
+      lapply(bool_cols, \(nm) rep(FALSE, n)),
+      bool_cols))
+  d <- .make_event_data_fixture(
+    neoipcr:::surgeryData_cols, schema, event_keys, default, "neoipcr_pro")
+  if (length(list(...)) > 0L) {
+    overrides <- list(...)
+    for (nm in names(overrides))
+      d[[nm]] <- overrides[[nm]]
+  }
+  d
 }
 
-make_test_ssi_data <- function(event_keys = 1L, ...) {
-  n <- length(event_keys)
-  d <- list(
-    event_key      = event_keys,
-    los            = rep(10L, n),
-    dol            = rep(11L, n),
-    infection_type = factor(rep("1", n)),
-    sec_bsi        = rep(FALSE, n))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
-  structure(d, class = c("neoipcr_ssi", class(d)))
+make_test_ssi_data <- function(event_keys = 1L,
+                               include_event = "full",
+                               ...) {
+  opts <- .default_event_data_opts(include_event)
+  schema <- neoipcr:::compile_schema(neoipcr:::ssiData_cols, opts)
+  bool_cols <- c("abscess_deep", "abscess_organ", "fever",
+                 "inc_dehisces_deep", "inc_opened_superf",
+                 "infection_present", "localized_erythema",
+                 "localized_heat", "localized_pain_deep",
+                 "localized_pain_superf", "localized_swelling",
+                 "physician_diag_superf", "purulent_drainage_deep",
+                 "purulent_drainage_drain", "purulent_drainage_superf")
+  default <- function(n) c(
+    list(
+      los              = rep(10L, n),
+      dol              = rep(11L, n),
+      infection_type   = factor(rep("1", n), levels = c("1", "2", "3")),
+      sec_bsi          = factor(rep("0", n), levels = c("1", "0", "-1")),
+      organisms_superf = factor(rep("1", n), levels = c("1", "0", "-1")),
+      organisms_deep   = factor(rep("1", n), levels = c("1", "0", "-1")),
+      organisms_organ  = factor(rep("1", n), levels = c("1", "0", "-1"))),
+    stats::setNames(
+      lapply(bool_cols, \(nm) rep(FALSE, n)),
+      bool_cols))
+  d <- .make_event_data_fixture(
+    neoipcr:::ssiData_cols, schema, event_keys, default, "neoipcr_ssi")
+  if (length(list(...)) > 0L) {
+    overrides <- list(...)
+    for (nm in names(overrides))
+      d[[nm]] <- overrides[[nm]]
+  }
+  d
 }
 
 make_test_substance_days <- function(event_keys = 1L, ...) {

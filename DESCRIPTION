@@ -71,6 +71,7 @@ Collate:
     'schema-patients.R'
     'schema-enrollments.R'
     'schema-events.R'
+    'schema-event-data.R'
     'types-check.R'
     'validation-rules-completeness.R'
     'validation-rules-dates.R'

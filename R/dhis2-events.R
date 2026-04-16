@@ -280,6 +280,27 @@ read_event_notes <- function(events, processed_events, metadata, dataset_options
 
 read_event_data <- function(events, processed_events, metadata, dataset_options, event_type_key)
 {
+  opts <- dataset_options
+  cols <- event_data_cols_for(event_type_key)
+
+  # Entity gate short-circuit: under `include_event = "no"` every
+  # per-event-type tibble is 0×0.
+  if (!entity_exists(cols, opts))
+    return(compile_schema(cols, opts))
+
+  # Derive the set of declared DE codes for the pivot's `code`-factor
+  # pinning. "Declared DE codes" = every schema atom minus the link /
+  # hierarchy / isTest / vs_days columns minus the per-DE companion
+  # columns (which the pivot generates from value + createdBy + ...).
+  # Under the schema contract this set is a pure function of opts.
+  all_names  <- names(compile_schema(cols, opts))
+  non_de     <- c(
+    "event_key", "enrollment_key", "patient_key",
+    "department_key", "hospital_key", "country_key",
+    "world_bank_class_key", "isTest", "vs_days")
+  companion  <- grepl("_(createdBy|createdAt|updatedAt)$", all_names)
+  de_codes   <- setdiff(all_names[!companion], non_de)
+
   events <- events |>
     dplyr::select("event", "dataValues") |>
     dplyr::inner_join(
@@ -290,29 +311,25 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
     tidyr::unnest_longer("dataValues") |>
     tidyr::unnest_wider("dataValues")
 
-  if(dataset_options$include_user != "no" &&
-     "createdBy" %in% names(events))
+  if (opts$include_user != "no" && "createdBy" %in% names(events))
     events <- events |>
       tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
       dplyr::left_join(
         metadata$.users_internal_map |>
           dplyr::select("username", "user_key"),
         dplyr::join_by("createdBy" == "username")) |>
-      dplyr::mutate(
-        createdBy = .data$user_key,
-        .keep = "unused")
+      dplyr::mutate(createdBy = .data$user_key, .keep = "unused")
 
-  if(dataset_options$include_timestamps &&
-     "createdAt" %in% names(events) &&
-     "updatedAt" %in% names(events))
+  if (opts$include_timestamps &&
+      "createdAt" %in% names(events) &&
+      "updatedAt" %in% names(events))
     events <- events |>
       dplyr::mutate(
         createdAt = readr::parse_datetime(.data$createdAt),
         updatedAt = readr::parse_datetime(.data$updatedAt),
         .keep = "unused")
 
-  if(nrow(events) > 0)
-  {
+  if (nrow(events) > 0) {
     events <- events |>
       dplyr::inner_join(
         metadata$dataElements |>
@@ -326,81 +343,76 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
         dplyr::join_by("optionSet" == "optionSet_code")) |>
       dplyr::mutate(
         value = convert_value(.data$value, .data$valueType, .data$levels),
-        code = stringr::str_extract(tolower(.data$code), "^neoipc_(admission|surveillance_end|bsi|nec|hap|ssi|surgery)_(.+)$", group = 2),
-        .keep = "unused"
-      ) |>
+        code = stringr::str_extract(
+          tolower(.data$code),
+          "^neoipc_(admission|surveillance_end|bsi|nec|hap|ssi|surgery)_(.+)$",
+          group = 2),
+        .keep = "unused") |>
       dplyr::select(!c("event","dataElement","optionSet"))
 
-    if(event_type_key == "adm")
+    # Apply pre-pivot renames for NEC / HAP so the schema's post-
+    # rename DE codes match the data. `device_association → dev_ass`
+    # on HAP; `secondary_bsi → sec_bsi` on NEC and HAP.
+    if (event_type_key == "nec")
       events <- events |>
-      dplyr::filter(.data$code != "los")
-    else if(event_type_key == "end")
+        dplyr::mutate(code = dplyr::if_else(
+          .data$code == "secondary_bsi", "sec_bsi", .data$code))
+    else if (event_type_key == "hap")
       events <- events |>
-      dplyr::filter(stringr::str_starts(.data$code, "ab_subst_", negate = TRUE))
-    else if(event_type_key == "bsi")
-      events <- events |>
-      dplyr::filter(stringr::str_starts(.data$code, "pathogen_\\d", negate = TRUE))
-    else if(event_type_key %in% c("nec","hap","ssi"))
-      events <- events |>
-      dplyr::filter(stringr::str_starts(.data$code, "(sec_bsi_)?pathogen_\\d", negate = TRUE))
+        dplyr::mutate(code = dplyr::case_match(
+          .data$code,
+          "device_association" ~ "dev_ass",
+          "secondary_bsi"      ~ "sec_bsi",
+          .default             = .data$code))
+
+    # Filter to the declared DE codes. Pathogen + AB_SUBST codes fall
+    # out here (they route to infectiousAgentFindings and substanceDays
+    # in their own sub-tasks). LOS falls out for admission (dropped
+    # per the protocol).
+    events <- events |>
+      dplyr::filter(.data$code %in% de_codes)
+
+    # Pin the `code` factor to the declared DE codes so that
+    # `pivot_wider(..., names_expand = TRUE)` guarantees one
+    # column-group per declared code regardless of whether any
+    # surviving event carried that DE. Closes the pivot-volatility
+    # hazard (the `vs_days` crash was the canonical instance).
+    events <- events |>
+      dplyr::mutate(code = factor(.data$code, levels = de_codes))
 
     events <- events |>
       tidyr::pivot_wider(
-        names_from = "code",
-        values_from = !c("code","event_key"),
-        names_glue = "{code}_{.value}",
-        names_vary = "slowest") |>
+        names_from  = "code",
+        values_from = !c("code", "event_key"),
+        names_glue  = "{code}_{.value}",
+        names_vary  = "slowest",
+        names_expand = TRUE) |>
       tidyr::unnest_longer(dplyr::ends_with("value"), keep_empty = TRUE) |>
       dplyr::relocate(dplyr::ends_with("value"), .after = "event_key") |>
-      dplyr::rename_with(~ stringr::str_extract(.x, "^(.+)_value$", 1),
-                         tidyselect::ends_with("_value"))
+      dplyr::rename_with(
+        ~ stringr::str_extract(.x, "^(.+)_value$", 1),
+        tidyselect::ends_with("_value"))
+  } else {
+    # No surviving events: synthesize the expected shape directly from
+    # the schema. Without this branch, the pivot path above can't run
+    # (no rows → no columns to expand), and finalize_to_schema would
+    # fail looking for declared columns that don't exist.
+    events <- compile_schema(cols, opts)
   }
 
-  if(event_type_key == "adm")
+  # Derived column: vs_days = inv_days + niv_days on surveillance-end.
+  # Under the schema contract both operands are guaranteed present
+  # (pre-pivot factor pinning + names_expand). The legacy reader's
+  # crash on missing columns is fixed by construction.
+  if (event_type_key == "end" && "vs_days" %in% all_names)
     events <- events |>
-    dplyr::select(
-      tidyselect::all_of(
-        c("event_key","type","dol", sort(tidyselect::peek_vars()))))
-  else if(event_type_key == "end")
-    events <- events |>
-    dplyr::mutate(vs_days = .data$inv_days + .data$niv_days) |>
-    dplyr::select(
-      tidyselect::all_of(
-        c("event_key","reason","patient_days","cvc_days","pvc_days","vs_days",
-          "inv_days","niv_days","ab_days","human_milk_days",
-          "kangaroo_care_days","probiotic_days", sort(tidyselect::peek_vars()))))
-  else if(event_type_key == "bsi")
-    events <- events |>
-    dplyr::select(
-      tidyselect::any_of(
-        c("event_key","dev_ass","los","dol", sort(tidyselect::peek_vars()))))
-  else if(event_type_key == "nec")
-    events <- events |>
-    dplyr::rename(tidyselect::any_of(c(sec_bsi = "secondary_bsi"))) |>
-    dplyr::select(
-      tidyselect::any_of(
-        c("event_key","los","dol","sec_bsi", sort(tidyselect::peek_vars()))))
-  else if(event_type_key == "hap")
-    events <- events |>
-    dplyr::rename(tidyselect::any_of(c(
-      dev_ass = "device_association",
-      sec_bsi = "secondary_bsi"))) |>
-    dplyr::select(
-      tidyselect::any_of(
-        c("event_key","dev_ass","los","dol","sec_bsi","microbiological_test_result", sort(tidyselect::peek_vars()))))
-  else if(event_type_key == "ssi")
-    events <- events |>
-    dplyr::select(
-      tidyselect::any_of(
-        c("event_key","los","dol","infection_type","sec_bsi","organisms_superf",
-          "organisms_organ", sort(tidyselect::peek_vars()))))
-  else if(event_type_key == "pro")
-    events <- events |>
-    dplyr::select(
-      tidyselect::any_of(
-        c("event_key","los","dol","procedure_description","main_procedure_code",
-          "side_procedure_code_1","side_procedure_code_2","asa_score",
-          "wound_class","duration","infection_signs", sort(tidyselect::peek_vars()))))
+      dplyr::mutate(vs_days = .data$inv_days + .data$niv_days)
+
+  # Tail loud-finalize + assertion. `finalize_to_schema` drops any
+  # column not declared on the schema; `assert_schema` verifies the
+  # final shape.
+  events <- finalize_to_schema(events, cols, opts)
+  assert_schema(events, cols, opts)
 
   events
 }

@@ -186,3 +186,36 @@ tea_attribute_cols <- function(base_col, base_when)
     )
   )
 }
+
+# Per-event-data-element companion columns. Used on the seven
+# per-event-type data tibbles (`admissionData`, `surveillanceEndData`,
+# `sepsisData`, `necData`, `pneumoniaData`, `surgeryData`, `ssiData`).
+#
+# DHIS2's `EventDataValue.java` carries `createdByUserInfo`,
+# `lastUpdatedByUserInfo`, `storedBy`, `created`, `lastUpdated` on every
+# data value. neoipcr's current readers only fetch `createdBy` (via the
+# API `createdBy[username]` selector) and the two timestamps; `storedBy`
+# and `updatedBy` are not fetched. This wrapper mirrors the current
+# reader output exactly — three companions per DE (`_createdBy`,
+# `_createdAt`, `_updatedAt`). If/when `storedBy` / `updatedBy` gain
+# reader coverage, extend here and this changes every entity that
+# uses the wrapper.
+event_data_attribute_cols <- function(base_col, base_when)
+{
+  name <- base_col$name
+  list(
+    base_col,
+    schema_col(
+      paste0(name, "_createdBy"), integer(),
+      \(opts) base_when(opts) && opts$include_user != "no"
+    ),
+    schema_col(
+      paste0(name, "_createdAt"), as.POSIXct(character()),
+      \(opts) base_when(opts) && isTRUE(opts$include_timestamps)
+    ),
+    schema_col(
+      paste0(name, "_updatedAt"), as.POSIXct(character()),
+      \(opts) base_when(opts) && isTRUE(opts$include_timestamps)
+    )
+  )
+}
