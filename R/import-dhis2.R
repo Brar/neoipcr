@@ -169,20 +169,19 @@ import_dhis2 <- function(
   ssiData <- read_event_data(events_raw, events, metadata, dataset_options, "ssi")
 
   infectiousAgentFindings <- read_infectious_agent_findings(events_raw, events, metadata, dataset_options)
-  # read_infectious_agent_findings_details
 
-  # Split the sparse free-text `name` column off into its own tibble so the
-  # main findings table doesn't carry a mostly-NA column. Only rows where the
-  # user manually typed a pathogen name (typically when pathogen_key == 0
-  # "unknown") end up in unknownPathogenNames.
-  unknownPathogenNames <- if ("name" %in% names(infectiousAgentFindings))
-      infectiousAgentFindings |>
-        dplyr::filter(!is.na(.data$name) & nzchar(.data$name)) |>
-        dplyr::select("agent_finding_key", "name")
-    else
-      tibble::tibble(agent_finding_key = integer(), name = character())
-  if ("name" %in% names(infectiousAgentFindings))
-    infectiousAgentFindings <- infectiousAgentFindings |> dplyr::select(!"name")
+  # Split the sparse free-text `name` column off `infectiousAgentFindings`
+  # into its own `unknownPathogenNames` tibble. Under the schema contract
+  # `name` is always declared on findings (possibly all-NA), so the
+  # split runs unconditionally — the legacy `"name" %in% names(...)`
+  # guard is gone. See `unknownPathogenNames_cols` in
+  # `R/schema-event-data.R` for the schema.
+  unknownPathogenNames <- read_unknown_pathogen_names(
+    infectiousAgentFindings, dataset_options)
+  # The findings tibble's own schema does NOT declare `name` — it was
+  # in the reader output only as scratch for the split, then stripped
+  # by `finalize_to_schema()`'s scratch list. No further drop needed
+  # here.
 
   substanceDays <- read_substance_days(events_raw, events, metadata, dataset_options)
   # read_substance_days_details

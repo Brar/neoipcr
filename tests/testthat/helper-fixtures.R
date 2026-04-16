@@ -543,35 +543,82 @@ make_test_ssi_data <- function(event_keys = 1L,
   d
 }
 
-make_test_substance_days <- function(event_keys = 1L, ...) {
+make_test_substance_days <- function(event_keys = 1L,
+                                      include_event = "full",
+                                      ...) {
+  opts <- .default_event_data_opts(include_event)
+  schema <- neoipcr:::compile_schema(
+    neoipcr:::substanceDays_cols, opts)
   n <- length(event_keys)
-  d <- list(
+  if (ncol(schema) == 0L || n == 0L)
+    return(structure(schema, class = c("neoipcr_sbd", class(schema))))
+
+  full <- list(
     event_key      = event_keys,
     index          = seq_len(n),
     substance_code = rep("J01CA04", n),
     days           = rep(3L, n))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
+  d <- tibble::as_tibble(full[names(schema)])
+  if (length(list(...)) > 0L) {
+    overrides <- list(...)
+    for (nm in names(overrides))
+      d[[nm]] <- overrides[[nm]]
+  }
   structure(d, class = c("neoipcr_sbd", class(d)))
 }
 
-make_test_iaf <- function(event_keys = 1L, ...) {
+make_test_iaf <- function(event_keys = 1L,
+                          include_event = "full",
+                          ...) {
+  opts <- .default_event_data_opts(include_event)
+  schema <- neoipcr:::compile_schema(neoipcr:::findings_cols, opts)
   n <- length(event_keys)
-  d <- list(
-    event_key     = event_keys,
-    secondary_bsi = rep(FALSE, n),
-    pathogen_key  = seq_len(n),
-    index         = rep(1L, n),
-    source        = factor(rep("B", n)),
-    multiple      = rep(FALSE, n),
-    `3gcr`        = factor(rep("no", n), levels = c("no", "yes", "not_tested")),
-    car           = factor(rep("no", n), levels = c("no", "yes", "not_tested")),
-    cor           = factor(rep("no", n), levels = c("no", "yes", "not_tested")),
-    mrsa          = factor(rep("no", n), levels = c("no", "yes", "not_tested")),
-    vre           = factor(rep("no", n), levels = c("no", "yes", "not_tested")))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
+  if (ncol(schema) == 0L || n == 0L)
+    return(structure(schema, class = c("neoipcr_iaf", class(schema))))
+
+  full <- list(
+    agent_finding_key = seq_len(n),
+    event_key         = event_keys,
+    secondary_bsi     = rep(FALSE, n),
+    pathogen_key      = seq_len(n),
+    index             = rep(1L, n),
+    source            = factor(
+      rep("B", n), levels = c("B", "C", "B+C", "U", "L", "U+L")),
+    multiple          = rep(FALSE, n),
+    `3gcr` = factor(rep("no", n), levels = c("no", "yes", "not_tested")),
+    car    = factor(rep("no", n), levels = c("no", "yes", "not_tested")),
+    cor    = factor(rep("no", n), levels = c("no", "yes", "not_tested")),
+    mrsa   = factor(rep("no", n), levels = c("no", "yes", "not_tested")),
+    vre    = factor(rep("no", n), levels = c("no", "yes", "not_tested")))
+  d <- tibble::as_tibble(full[names(schema)])
+  if (length(list(...)) > 0L) {
+    overrides <- list(...)
+    for (nm in names(overrides))
+      d[[nm]] <- overrides[[nm]]
+  }
   structure(d, class = c("neoipcr_iaf", class(d)))
+}
+
+make_test_unknown_pathogen_names <- function(agent_finding_keys = integer(0),
+                                             include_event = "full",
+                                             ...) {
+  opts <- .default_event_data_opts(include_event)
+  schema <- neoipcr:::compile_schema(
+    neoipcr:::unknownPathogenNames_cols, opts)
+  n <- length(agent_finding_keys)
+  if (ncol(schema) == 0L || n == 0L)
+    return(structure(schema, class = c("neoipcr_upn", class(schema))))
+
+  full <- list(
+    agent_finding_key = agent_finding_keys,
+    name              = rep("Unknown pathogen", n))
+  d <- tibble::as_tibble(full[names(schema)])
+  if (length(list(...)) > 0L) {
+    overrides <- list(...)
+    for (nm in names(overrides))
+      d[[nm]] <- overrides[[nm]]
+  }
+  structure(d, class = c("neoipcr_upn", class(d)))
 }
 
 make_test_event_details <- function(event_keys = 1L, ...) {

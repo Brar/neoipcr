@@ -419,6 +419,28 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
 
 read_infectious_agent_findings <- function(events_raw, processed_events, metadata, dataset_options)
 {
+  opts <- dataset_options
+
+  # Entity gate short-circuit.
+  if (!entity_exists(findings_cols, opts))
+    return(compile_schema(findings_cols, opts))
+
+  # Pre-pivot type levels: every DE-suffix this reader turns into a
+  # column. `names_expand = TRUE` + this factor guarantees every
+  # column exists regardless of data content — fixes failure pattern
+  # #6 (missing `source` / `multiple` / resistance-marker / `name`
+  # columns when no surviving pathogen carried the corresponding DE).
+  type_levels <- c(
+    "pathogen",           # base pathogen_key id
+    "pathogen_source",    # BSI / HAP source code
+    "pathogen_multiple",  # BSI multiple flag
+    "pathogen_name",      # free-text pathogen name
+    "pathogen_3gcr",
+    "pathogen_car",
+    "pathogen_cor",
+    "pathogen_mrsa",
+    "pathogen_vre")
+
   pathogen_data <- events_raw |>
     dplyr::select("event", "dataValues") |>
     dplyr::inner_join(
@@ -427,13 +449,11 @@ read_infectious_agent_findings <- function(events_raw, processed_events, metadat
         dplyr::select("event", "event_key", "event_type_key"),
       dplyr::join_by("event"))
 
-  empty_result <- tibble::tibble(
-    event_key = integer(), secondary_bsi = logical(),
-    pathogen_key = integer(), index = integer(),
-    source = factor(levels = c("B","C","B+C","U","L","U+L")))
-
-  if (nrow(pathogen_data) == 0)
-    return(empty_result)
+  if (nrow(pathogen_data) == 0) {
+    public <- compile_schema(findings_cols, opts)
+    assert_schema(public, findings_cols, opts)
+    return(public)
+  }
 
   pathogen_data <- pathogen_data |>
     tidyr::unnest_longer("dataValues") |>
@@ -444,69 +464,137 @@ read_infectious_agent_findings <- function(events_raw, processed_events, metadat
       dplyr::join_by("dataElement")) |>
     dplyr::filter(stringr::str_detect(.data$code, "PATHOGEN_\\d"))
 
-  if (nrow(pathogen_data) == 0)
-    return(empty_result)
+  if (nrow(pathogen_data) == 0) {
+    public <- compile_schema(findings_cols, opts)
+    assert_schema(public, findings_cols, opts)
+    return(public)
+  }
 
-  pathogen_data |>
+  public <- pathogen_data |>
     dplyr::mutate(
-      type = factor(tolower(stringr::str_replace(.data$code, "^.+(PATHOGEN)_\\d+(.*)$", "\\1\\2"))),
-      index = as.integer(stringr::str_replace(.data$code, "^.+PATHOGEN_(\\d+).*$", "\\1")),
+      type = factor(
+        tolower(stringr::str_replace(
+          .data$code, "^.+(PATHOGEN)_\\d+(.*)$", "\\1\\2")),
+        levels = type_levels),
+      index = as.integer(stringr::str_replace(
+        .data$code, "^.+PATHOGEN_(\\d+).*$", "\\1")),
       secondary_bsi = stringr::str_detect(.data$code, "_SEC_BSI_"),
-      .keep = "unused"
-    ) |>
-    dplyr::select("event_key","event_type_key","type","index","secondary_bsi",
-                  "value") |>
-    tidyr::pivot_wider(names_from = "type", values_from = "value", names_sort = TRUE) |>
-    dplyr::rename_with(~ stringr::str_extract(.x, "^pathogen_(.+)$", 1), .cols = tidyselect::starts_with("pathogen_")) |>
+      .keep = "unused") |>
+    dplyr::select("event_key", "event_type_key", "type", "index",
+                  "secondary_bsi", "value") |>
+    tidyr::pivot_wider(
+      names_from  = "type",
+      values_from = "value",
+      names_expand = TRUE) |>
+    dplyr::rename_with(
+      ~ stringr::str_extract(.x, "^pathogen_(.+)$", 1),
+      .cols = tidyselect::starts_with("pathogen_")) |>
     dplyr::mutate(
       dplyr::across(
-        tidyselect::any_of(
-          c("3gcr","car","cor","mrsa","vre")),
-        ~ factor(dplyr::case_match(as.integer(.x), 0 ~ "no", 1 ~ "yes", -1 ~ "not_tested"), levels = c("no","yes","not_tested"))),
-      dplyr::across(tidyselect::any_of(c("multiple")), as.logical),
+        tidyselect::all_of(c("3gcr", "car", "cor", "mrsa", "vre")),
+        ~ factor(
+          dplyr::case_match(as.integer(.x),
+                            0 ~ "no", 1 ~ "yes", -1 ~ "not_tested"),
+          levels = c("no", "yes", "not_tested"))),
+      multiple     = as.logical(.data$multiple),
       pathogen_key = as.integer(.data$pathogen),
-      source = factor(dplyr::case_when(
-        as.character(.data$event_type_key) == "bsi" &
-          as.integer(.data$source) == 1L ~ "B",
-        as.character(.data$event_type_key) == "bsi" &
-          as.integer(.data$source) == 2L ~ "C",
-        as.character(.data$event_type_key) == "bsi" &
-          as.integer(.data$source) == 3L ~ "B+C",
-        as.character(.data$event_type_key) == "hap" &
-          as.integer(.data$source) == 1L ~ "U",
-        as.character(.data$event_type_key) == "hap" &
-          as.integer(.data$source) == 2L ~ "L",
-        as.character(.data$event_type_key) == "hap" &
-          as.integer(.data$source) == 3L ~ "U+L"),
-        levels = c("B","C","B+C","U","L","U+L")),
+      source = factor(
+        dplyr::case_when(
+          as.character(.data$event_type_key) == "bsi" &
+            as.integer(.data$source) == 1L ~ "B",
+          as.character(.data$event_type_key) == "bsi" &
+            as.integer(.data$source) == 2L ~ "C",
+          as.character(.data$event_type_key) == "bsi" &
+            as.integer(.data$source) == 3L ~ "B+C",
+          as.character(.data$event_type_key) == "hap" &
+            as.integer(.data$source) == 1L ~ "U",
+          as.character(.data$event_type_key) == "hap" &
+            as.integer(.data$source) == 2L ~ "L",
+          as.character(.data$event_type_key) == "hap" &
+            as.integer(.data$source) == 3L ~ "U+L"),
+        levels = c("B", "C", "B+C", "U", "L", "U+L")),
       .keep = "unused") |>
-    dplyr::select(
-      tidyselect::any_of(
-        c("event_key","secondary_bsi","pathogen_key","index","source",
-          "multiple","3gcr","car","cor","mrsa","vre","name"))) |>
-    add_key_column("agent_finding_key")
+    add_key_column("agent_finding_key") |>
+    finalize_to_schema(
+      findings_cols, opts,
+      scratch = c("event_type_key", "name", "pathogen"))
+  assert_schema(public, findings_cols, opts)
+
+  public
+}
+
+# Split the `name` column off `infectiousAgentFindings` into its own
+# tibble. Called from the orchestrator after `read_infectious_agent_
+# findings()`. Under the schema contract `name` is always a declared
+# column on findings when `include_event == "full"`, so the split
+# runs unconditionally — no more `"name" %in% names(findings)` guard
+# at the call site.
+read_unknown_pathogen_names <- function(findings, dataset_options)
+{
+  opts <- dataset_options
+
+  if (!entity_exists(unknownPathogenNames_cols, opts))
+    return(compile_schema(unknownPathogenNames_cols, opts))
+
+  # Under pseudo events, `name` isn't declared on findings (payload
+  # atoms all require full). Emit the schema's 0-row shape directly.
+  if (!("name" %in% names(findings))) {
+    public <- compile_schema(unknownPathogenNames_cols, opts)
+    assert_schema(public, unknownPathogenNames_cols, opts)
+    return(public)
+  }
+
+  public <- findings |>
+    dplyr::filter(!is.na(.data$name) & nzchar(.data$name)) |>
+    dplyr::select("agent_finding_key", "name") |>
+    finalize_to_schema(unknownPathogenNames_cols, opts)
+  assert_schema(public, unknownPathogenNames_cols, opts)
+
+  public
 }
 
 read_substance_days <- function(events_raw, processed_events, metadata, dataset_options)
-  events_raw |>
-  dplyr::select("event", "dataValues") |>
-  dplyr::inner_join(
-    processed_events |>
-      dplyr::select("event", "event_key"),
-    dplyr::join_by("event")) |>
-  tidyr::unnest_longer("dataValues") |>
-  tidyr::unnest_wider("dataValues") |>
-  dplyr::inner_join(
-    metadata$dataElements |>
-      dplyr::select("dataElement", "code") |>
-      dplyr::filter(stringr::str_starts( .data$code, "NEOIPC_SURVEILLANCE_END_AB_SUBST_\\d\\d")),
-    dplyr::join_by("dataElement")) |>
-  dplyr::select(!"dataElement") |>
-  dplyr::mutate(
-    index = as.integer(
-      stringr::str_extract(.data$code,"^NEOIPC_SURVEILLANCE_END_AB_SUBST_\\d(\\d)(_DAYS)?$", 1)),
-    name = dplyr::if_else(stringr::str_ends(.data$code, "_DAYS"), "days", "substance_code"),
-    .keep = "unused") |>
-  tidyr::pivot_wider() |>
-  dplyr::mutate(days = as.integer(.data$days)) |>
-  dplyr::select("event_key","index","substance_code","days")
+{
+  opts <- dataset_options
+
+  if (!entity_exists(substanceDays_cols, opts))
+    return(compile_schema(substanceDays_cols, opts))
+
+  pathogen_data <- events_raw |>
+    dplyr::select("event", "dataValues") |>
+    dplyr::inner_join(
+      processed_events |>
+        dplyr::select("event", "event_key"),
+      dplyr::join_by("event"))
+
+  if (nrow(pathogen_data) == 0) {
+    public <- compile_schema(substanceDays_cols, opts)
+    assert_schema(public, substanceDays_cols, opts)
+    return(public)
+  }
+
+  public <- pathogen_data |>
+    tidyr::unnest_longer("dataValues") |>
+    tidyr::unnest_wider("dataValues") |>
+    dplyr::inner_join(
+      metadata$dataElements |>
+        dplyr::select("dataElement", "code") |>
+        dplyr::filter(stringr::str_starts(
+          .data$code, "NEOIPC_SURVEILLANCE_END_AB_SUBST_\\d\\d")),
+      dplyr::join_by("dataElement")) |>
+    dplyr::select(!"dataElement") |>
+    dplyr::mutate(
+      index = as.integer(stringr::str_extract(
+        .data$code,
+        "^NEOIPC_SURVEILLANCE_END_AB_SUBST_\\d(\\d)(_DAYS)?$", 1)),
+      name = dplyr::if_else(
+        stringr::str_ends(.data$code, "_DAYS"),
+        "days", "substance_code"),
+      .keep = "unused") |>
+    tidyr::pivot_wider() |>
+    dplyr::mutate(days = as.integer(.data$days)) |>
+    finalize_to_schema(substanceDays_cols, opts)
+  assert_schema(public, substanceDays_cols, opts)
+
+  public
+}

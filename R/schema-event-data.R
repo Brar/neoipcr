@@ -381,3 +381,203 @@ event_data_cols_for <- function(event_type_key)
       "Unknown event_type_key: %s", event_type_key))
   )
 }
+
+# ---- infectiousAgentFindings ---------------------------------------------
+#
+# Per-pathogen findings extracted from bsi / nec / hap / ssi events.
+# Failure pattern #6 (empty-data-resilience): the legacy reader's
+# `source` column was absent when no surviving pathogen had a
+# `_SOURCE` data element; same hazard on resistance markers + `name`
+# + `multiple`. The schema contract fixes this by construction —
+# every column is declared, and the reader's pre-pivot factor pinning
+# + `names_expand = TRUE` guarantees the shape regardless of which
+# DE suffixes are present on any row.
+#
+# `source` is a merged factor covering both the BSI option set
+# (`B3oP3uOI5Ef`, codes 1/2/3 → B/C/B+C) and the HAP option set
+# (`Y64Emj9405U`, codes 1/2/3 → U/L/U+L). SSI pathogens carry no
+# `_SOURCE` DE at all; NEC has no primary pathogens; those rows
+# therefore carry `NA` in `source`. The factor levels are fixed by
+# the protocol.
+#
+# Resistance markers (`3gcr`, `car`, `cor`, `mrsa`, `vre`) are
+# fixed-level factors `c("no", "yes", "not_tested")` remapped from
+# the DHIS2 option set `TnE2yuSrqEP` (codes 1/0/-1).
+#
+# `multiple` is BSI-only (TRUE_ONLY in DHIS2) — rows for other event
+# types carry NA.
+#
+# `name` is sparse free-text; the orchestrator splits it off into
+# `unknownPathogenNames` at [R/import-dhis2.R:174-181] unconditionally
+# under the schema contract (the legacy `if ("name" %in% names(...))`
+# guard becomes obsolete — the column is always declared).
+#
+# Link / hierarchy keys inherit strictly from `events_cols` (lean
+# children under fat-events, directly materialized under pseudo
+# events — same pattern as per-event-type data).
+
+findings_cols <- with_entity_gate(
+  list(
+    # PK — assigned by `add_key_column("agent_finding_key")` in the
+    # reader.
+    schema_col(
+      "agent_finding_key", integer(),
+      include_when = \(opts) opts$include_event != "no"),
+
+    # Link FK to events.
+    col_event_key,
+
+    # Inherited link FKs + hierarchy + isTest from events_cols (same
+    # pattern as per-event-type data: under fat-events these are
+    # absent; under pseudo events they materialize directly).
+    col_inherited_from("enrollment_key",       "include_enrollment",
+                       events_cols),
+    col_inherited_from("patient_key",          "include_patient",
+                       events_cols),
+    col_inherited_from("department_key",       "include_department",
+                       events_cols),
+    col_inherited_from("hospital_key",         "include_hospital",
+                       events_cols),
+    col_inherited_from("country_key",          "include_country",
+                       events_cols),
+    col_inherited_from("world_bank_class_key", "include_world_bank_class",
+                       events_cols),
+    schema_col(
+      "isTest", logical(),
+      include_when = \(opts)
+        isTRUE(opts$include_test_data) &&
+        !("isTest" %in% names(compile_schema(events_cols, opts)))),
+
+    # Finding-specific payload.
+    schema_col(
+      "secondary_bsi", logical(),
+      include_when = \(opts) opts$include_event == "full"),
+    schema_col(
+      "pathogen_key", integer(),
+      include_when = \(opts) opts$include_event == "full"),
+    schema_col(
+      "index", integer(),
+      include_when = \(opts) opts$include_event == "full"),
+
+    # Source — merged BSI + HAP levels. Always declared when the
+    # tibble is in full mode; NA on SSI / NEC rows.
+    schema_col(
+      "source", factor(),
+      factor_levels = c("B", "C", "B+C", "U", "L", "U+L"),
+      levels_source = "fixed",
+      include_when = \(opts) opts$include_event == "full"),
+
+    # Multiple — BSI only (TRUE_ONLY); NA elsewhere.
+    schema_col(
+      "multiple", logical(),
+      include_when = \(opts) opts$include_event == "full"),
+
+    # Resistance markers — fixed 3-level factors remapped from the
+    # DHIS2 1/0/-1 codes.
+    schema_col(
+      "3gcr", factor(),
+      factor_levels = c("no", "yes", "not_tested"),
+      levels_source = "fixed",
+      include_when = \(opts) opts$include_event == "full"),
+    schema_col(
+      "car", factor(),
+      factor_levels = c("no", "yes", "not_tested"),
+      levels_source = "fixed",
+      include_when = \(opts) opts$include_event == "full"),
+    schema_col(
+      "cor", factor(),
+      factor_levels = c("no", "yes", "not_tested"),
+      levels_source = "fixed",
+      include_when = \(opts) opts$include_event == "full"),
+    schema_col(
+      "mrsa", factor(),
+      factor_levels = c("no", "yes", "not_tested"),
+      levels_source = "fixed",
+      include_when = \(opts) opts$include_event == "full"),
+    schema_col(
+      "vre", factor(),
+      factor_levels = c("no", "yes", "not_tested"),
+      levels_source = "fixed",
+      include_when = \(opts) opts$include_event == "full")
+  ),
+  gate = \(opts) opts$include_event != "no"
+)
+
+# ---- substanceDays -------------------------------------------------------
+#
+# AB substance-days pivot from the surveillance-end DEs. Row per
+# (event_key × index), with index ∈ 1..9 extracted from
+# `NEOIPC_SURVEILLANCE_END_AB_SUBST_0<N>` and its paired `_DAYS`
+# companion.
+#
+# No separate PK — `(event_key, index)` is unique per row. Composite
+# key is also how downstream consumers join to events.
+#
+# Gate: `include_event != "no"`. Under pseudo events the tibble still
+# carries event_key + its payload (same semantic as per-event-type
+# data).
+
+substanceDays_cols <- with_entity_gate(
+  list(
+    col_event_key,
+
+    # Inherited link FKs + hierarchy + isTest from events_cols.
+    col_inherited_from("enrollment_key",       "include_enrollment",
+                       events_cols),
+    col_inherited_from("patient_key",          "include_patient",
+                       events_cols),
+    col_inherited_from("department_key",       "include_department",
+                       events_cols),
+    col_inherited_from("hospital_key",         "include_hospital",
+                       events_cols),
+    col_inherited_from("country_key",          "include_country",
+                       events_cols),
+    col_inherited_from("world_bank_class_key", "include_world_bank_class",
+                       events_cols),
+    schema_col(
+      "isTest", logical(),
+      include_when = \(opts)
+        isTRUE(opts$include_test_data) &&
+        !("isTest" %in% names(compile_schema(events_cols, opts)))),
+
+    schema_col(
+      "index", integer(),
+      include_when = \(opts) opts$include_event == "full"),
+    schema_col(
+      "substance_code", character(),
+      include_when = \(opts) opts$include_event == "full"),
+    schema_col(
+      "days", integer(),
+      include_when = \(opts) opts$include_event == "full")
+  ),
+  gate = \(opts) opts$include_event != "no"
+)
+
+# ---- unknownPathogenNames ------------------------------------------------
+#
+# Split off from `infectiousAgentFindings` at
+# [R/import-dhis2.R:174-181] so the main findings tibble doesn't carry
+# a mostly-NA free-text column. Rows where a user manually typed a
+# pathogen name (typically when `pathogen_key == 0` / "unknown") end
+# up here.
+#
+# Under the schema contract the split runs unconditionally —
+# `name` is always a declared column on findings (possibly all-NA),
+# so the `"name" %in% names(findings)` guard in the orchestrator
+# becomes unnecessary.
+#
+# Link is via `agent_finding_key` (findings PK), not `event_key`.
+# Gate is `include_event != "no"` so the tibble exists exactly when
+# findings does.
+
+unknownPathogenNames_cols <- with_entity_gate(
+  list(
+    schema_col(
+      "agent_finding_key", integer(),
+      include_when = \(opts) opts$include_event != "no"),
+    schema_col(
+      "name", character(),
+      include_when = \(opts) opts$include_event == "full")
+  ),
+  gate = \(opts) opts$include_event != "no"
+)

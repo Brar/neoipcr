@@ -253,3 +253,181 @@ test_that("event_data_cols_for dispatches every valid event_type_key", {
     neoipcr:::event_data_cols_for("unknown"),
     "Unknown event_type_key")
 })
+
+# ---- findings / substanceDays / unknownPathogenNames three-mode shape ---
+
+test_that("findings_cols / substanceDays_cols / unknownPathogenNames_cols are 0x0 under include_event = 'no'", {
+  opts <- dhis2_dataset_options(include_event = "no")
+  for (cols in list(neoipcr:::findings_cols,
+                    neoipcr:::substanceDays_cols,
+                    neoipcr:::unknownPathogenNames_cols)) {
+    schema <- neoipcr:::compile_schema(cols, opts)
+    expect_equal(ncol(schema), 0L)
+    expect_equal(nrow(schema), 0L)
+  }
+})
+
+test_that("findings_cols pseudo-mode keeps PK + event_key + inherited link/hierarchy only (payload absent)", {
+  opts <- dhis2_dataset_options(
+    include_event      = "pseudo",
+    include_enrollment = "full",
+    include_patient    = "full",
+    include_test_data  = TRUE)
+  schema <- neoipcr:::compile_schema(neoipcr:::findings_cols, opts)
+  # PK + event_key always
+  expect_true("agent_finding_key" %in% names(schema))
+  expect_true("event_key"         %in% names(schema))
+  # Inherited (events carries only event_key under pseudo → children
+  # materialize enrollment_key / patient_key + isTest directly).
+  expect_true("enrollment_key"    %in% names(schema))
+  expect_true("patient_key"       %in% names(schema))
+  expect_true("isTest"            %in% names(schema))
+  # Payload atoms absent under pseudo (they require include_event = "full").
+  for (col in c("secondary_bsi", "pathogen_key", "index", "source",
+                "multiple", "3gcr", "car", "cor", "mrsa", "vre")) {
+    expect_false(col %in% names(schema), info = col)
+  }
+})
+
+test_that("findings_cols full-mode: source + resistance markers + multiple always declared (fixes failure #6)", {
+  # Historical bug: when no surviving pathogen had a `_SOURCE` DE, the
+  # reader dropped the `source` column. Schema declares it unconditionally
+  # under full mode so the pre-pivot factor pinning + names_expand = TRUE
+  # guarantees it emerges regardless of raw data content.
+  opts <- dhis2_dataset_options(include_event = "full")
+  schema <- neoipcr:::compile_schema(neoipcr:::findings_cols, opts)
+
+  expect_true("source" %in% names(schema))
+  expect_true(is.factor(schema$source))
+  expect_identical(
+    levels(schema$source),
+    c("B", "C", "B+C", "U", "L", "U+L"))
+
+  expect_true("multiple" %in% names(schema))
+  expect_true(is.logical(schema$multiple))
+
+  for (col in c("3gcr", "car", "cor", "mrsa", "vre")) {
+    expect_true(col %in% names(schema), info = col)
+    expect_true(is.factor(schema[[col]]), info = col)
+    expect_identical(
+      levels(schema[[col]]),
+      c("no", "yes", "not_tested"),
+      info = col)
+  }
+})
+
+test_that("findings_cols full-mode: hierarchy keys absent via inheritance (events carries them)", {
+  opts <- dhis2_dataset_options(
+    include_event            = "full",
+    include_enrollment       = "full",
+    include_patient          = "full",
+    include_department       = "full",
+    include_hospital         = "full",
+    include_country          = "full",
+    include_world_bank_class = "full",
+    include_test_data        = TRUE)
+  schema <- neoipcr:::compile_schema(neoipcr:::findings_cols, opts)
+  # Events already materializes these; children inherit (absent directly).
+  expect_false("enrollment_key"       %in% names(schema))
+  expect_false("patient_key"          %in% names(schema))
+  expect_false("department_key"       %in% names(schema))
+  expect_false("hospital_key"         %in% names(schema))
+  expect_false("country_key"          %in% names(schema))
+  expect_false("world_bank_class_key" %in% names(schema))
+  expect_false("isTest"               %in% names(schema))
+  # Direct link + payload still present.
+  expect_true("event_key"             %in% names(schema))
+  expect_true("source"                %in% names(schema))
+})
+
+test_that("substanceDays_cols full-mode: index + substance_code + days declared", {
+  opts <- dhis2_dataset_options(include_event = "full")
+  schema <- neoipcr:::compile_schema(neoipcr:::substanceDays_cols, opts)
+  expect_true(all(c("event_key", "index", "substance_code", "days")
+                  %in% names(schema)))
+  expect_type(schema$index, "integer")
+  expect_type(schema$substance_code, "character")
+  expect_type(schema$days, "integer")
+})
+
+test_that("unknownPathogenNames_cols full-mode: agent_finding_key + name only", {
+  opts <- dhis2_dataset_options(include_event = "full")
+  schema <- neoipcr:::compile_schema(
+    neoipcr:::unknownPathogenNames_cols, opts)
+  expect_identical(names(schema), c("agent_finding_key", "name"))
+  expect_type(schema$agent_finding_key, "integer")
+  expect_type(schema$name, "character")
+})
+
+test_that("unknownPathogenNames_cols pseudo-mode: only agent_finding_key (name absent)", {
+  opts <- dhis2_dataset_options(include_event = "pseudo")
+  schema <- neoipcr:::compile_schema(
+    neoipcr:::unknownPathogenNames_cols, opts)
+  expect_identical(names(schema), "agent_finding_key")
+})
+
+# ---- Fixture round-trips (findings family) ------------------------------
+
+test_that("make_test_iaf output matches findings_cols schema", {
+  opts <- dhis2_dataset_options(include_event = "full")
+  schema <- neoipcr:::compile_schema(neoipcr:::findings_cols, opts)
+  fixture <- make_test_iaf(event_keys = 1:3)
+  expect_schema_matches(fixture, schema)
+})
+
+test_that("make_test_substance_days output matches substanceDays_cols schema", {
+  opts <- dhis2_dataset_options(include_event = "full")
+  schema <- neoipcr:::compile_schema(neoipcr:::substanceDays_cols, opts)
+  fixture <- make_test_substance_days(event_keys = 1:3)
+  expect_schema_matches(fixture, schema)
+})
+
+test_that("make_test_unknown_pathogen_names output matches unknownPathogenNames_cols schema", {
+  opts <- dhis2_dataset_options(include_event = "full")
+  schema <- neoipcr:::compile_schema(
+    neoipcr:::unknownPathogenNames_cols, opts)
+  fixture <- make_test_unknown_pathogen_names(agent_finding_keys = 1:2)
+  expect_schema_matches(fixture, schema)
+})
+
+# ---- read_unknown_pathogen_names split behaviour ------------------------
+
+test_that("read_unknown_pathogen_names: empty findings → schema-shaped 0-row tibble", {
+  opts <- dhis2_dataset_options(include_event = "full")
+  findings <- make_test_iaf(event_keys = integer(0))
+  result <- neoipcr:::read_unknown_pathogen_names(findings, opts)
+  schema <- neoipcr:::compile_schema(
+    neoipcr:::unknownPathogenNames_cols, opts)
+  expect_schema_matches(result, schema)
+  expect_equal(nrow(result), 0L)
+})
+
+test_that("read_unknown_pathogen_names: findings with `name` column split correctly", {
+  opts <- dhis2_dataset_options(include_event = "full")
+  # Inject `name` values into findings-fixture shape via a tibble
+  # mimicking what the reader emits pre-finalize. We bypass the
+  # fixture because it doesn't declare `name`; the split reader only
+  # reads `name` when it's present on findings.
+  findings_with_names <- tibble::tibble(
+    agent_finding_key = 1:4,
+    name              = c(NA_character_, "", "Custom pathogen A",
+                          "Custom pathogen B"))
+  result <- neoipcr:::read_unknown_pathogen_names(findings_with_names, opts)
+  # Only non-NA, non-empty names should survive.
+  expect_equal(nrow(result), 2L)
+  expect_equal(result$name, c("Custom pathogen A", "Custom pathogen B"))
+  expect_equal(result$agent_finding_key, c(3L, 4L))
+})
+
+test_that("read_unknown_pathogen_names: findings without `name` column → schema shape", {
+  # Under pseudo events, findings doesn't declare `name`. The split
+  # reader must gracefully return the schema's shape.
+  opts_pseudo <- dhis2_dataset_options(include_event = "pseudo")
+  findings <- tibble::tibble(
+    agent_finding_key = 1L,
+    event_key         = 1L)
+  result <- neoipcr:::read_unknown_pathogen_names(findings, opts_pseudo)
+  schema <- neoipcr:::compile_schema(
+    neoipcr:::unknownPathogenNames_cols, opts_pseudo)
+  expect_schema_matches(result, schema)
+})
