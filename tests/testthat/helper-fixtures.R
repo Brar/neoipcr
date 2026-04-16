@@ -483,20 +483,29 @@ make_test_metadata_wb_classes <- function(
 make_test_metadata_event_types <- function(
     n = 7,
     include_dhis2_ids = "event_types") {
-  all_levels <- c("adm", "pro", "bsi", "nec", "ssi", "hap", "end")
-  if (n < 0L || n > length(all_levels))
+  all_keys  <- c("adm", "pro", "bsi", "nec", "ssi", "hap", "end")
+  all_names <- c(
+    "Admission", "Surgical Procedure", "Primary Sepsis/BSI",
+    "Necrotizing enterocolitis", "Surgical Site Infection",
+    "Pneumonia", "Surveillance-End")
+  if (n < 0L || n > length(all_keys))
     rlang::abort(sprintf(
       "n must be between 0 and %d (the 7 protocol-fixed event types).",
-      length(all_levels)))
+      length(all_keys)))
 
   schema <- neoipcr:::compile_schema(
     neoipcr:::eventTypes_cols,
     dhis2_dataset_options(include_dhis2_ids = include_dhis2_ids))
 
-  keys <- all_levels[seq_len(n)]
+  keys   <- all_keys[seq_len(n)]
+  labels <- all_names[seq_len(n)]
   full <- tibble::tibble(
-    event_type_key = factor(keys, levels = all_levels),
-    programStage   = paste0("PS_", keys))
+    event_type_key     = factor(keys, levels = all_keys),
+    programStage       = paste0("PS_", keys),
+    name               = factor(labels, levels = all_names),
+    displayName        = factor(labels, levels = labels),
+    displayFormName    = factor(labels, levels = labels),
+    displayDescription = paste0(labels, " description"))
 
   full |>
     dplyr::select(tidyselect::all_of(names(schema)))

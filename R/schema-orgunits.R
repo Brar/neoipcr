@@ -366,21 +366,24 @@ get_users_schema <- function(opts)
 # the tibble is always present. `include_dhis2_ids == "event_types"`
 # controls only whether the DHIS2 `programStage` UID is exposed, same
 # two-axis pattern as hospitals' / departments' `orgUnit` and users'
-# `user`. Content columns (`name`, `displayName`, …) are intentionally
-# out of scope — report code looks up event-type labels through
-# protocol-driven dictionaries, not through `metadata$eventTypes`.
+# `user`.
 #
 # Fact readers (`read_events()` in particular) need `event_type_key +
 # programStage` regardless of the id-opt-in, because the reader
 # substitutes the raw `programStage` into `event_type_key` during
 # import. The two-column FK-resolution lookup travels on the
 # orchestrator-internal `.eventTypes_internal_map` — same pattern as
-# `.users_internal_map` — so pseudo-equivalent absence of `programStage`
-# from the public schema doesn't break the internal substitution.
+# `.users_internal_map` — so absence of `programStage` from the public
+# schema doesn't break the internal substitution.
 #
 # Shape:
-#   default                            — `event_type_key` only.
-#   `"event_types"` in include_dhis2_ids — adds `programStage`.
+#   default                              — `event_type_key`, `name`,
+#                                          `displayName`, `displayFormName`,
+#                                          `displayDescription`.
+#   `"event_types"` in include_dhis2_ids — same, plus `programStage`
+#                                          (between `event_type_key` and
+#                                          `name` per the reader's
+#                                          pre-schema relocate).
 
 eventTypes_cols <- list(
   schema_col(
@@ -391,6 +394,27 @@ eventTypes_cols <- list(
   schema_col(
     "programStage", character(),
     include_when = \(opts) "event_types" %in% opts$include_dhis2_ids
+  ),
+  schema_col(
+    "name", factor(),
+    factor_levels = c(
+      "Admission", "Surgical Procedure", "Primary Sepsis/BSI",
+      "Necrotizing enterocolitis", "Surgical Site Infection",
+      "Pneumonia", "Surveillance-End"),
+    levels_source = "fixed"
+  ),
+  schema_col(
+    "displayName", factor(),
+    factor_levels = character(),
+    levels_source = "data"
+  ),
+  schema_col(
+    "displayFormName", factor(),
+    factor_levels = character(),
+    levels_source = "data"
+  ),
+  schema_col(
+    "displayDescription", character()
   )
 )
 

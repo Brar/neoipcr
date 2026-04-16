@@ -97,14 +97,10 @@ test_that("read_metadata parses program id", {
 
 test_that("read_metadata parses event types from program stages", {
   metadata <- read_test_metadata()
-  # Public `metadata$eventTypes` schema (2 cols under default opts
-  # + include_dhis2_ids = "event_types"): `event_type_key` factor +
-  # `programStage` id. Human-readable names now come from protocol
-  # dictionaries, not from this tibble.
   expect_equal(nrow(metadata$eventTypes), 2L)
   expect_equal(
-    sort(as.character(metadata$eventTypes$event_type_key)),
-    c("adm", "pro"))
+    sort(as.character(metadata$eventTypes$name)),
+    c("Admission", "Surgical Procedure"))
 })
 
 test_that("read_metadata parses data elements with option set references", {

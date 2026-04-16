@@ -938,10 +938,13 @@ test_that("apply_data_removal succeeds when metadata tibbles carry no companion 
 # DHIS2 `programStage` UID — same two-axis pattern as users' `user` and
 # hospitals' / departments' `orgUnit`.
 
-test_that("eventTypes_cols always exposes event_type_key as a fixed-levels factor", {
+test_that("eventTypes_cols default shape exposes event_type_key + display cols", {
   opts_no_ids <- dhis2_dataset_options(include_dhis2_ids = character())
   schema <- neoipcr:::compile_schema(neoipcr:::eventTypes_cols, opts_no_ids)
-  expect_identical(names(schema), "event_type_key")
+  expect_identical(
+    names(schema),
+    c("event_type_key", "name", "displayName",
+      "displayFormName", "displayDescription"))
   expect_true(is.factor(schema$event_type_key))
   expect_identical(
     levels(schema$event_type_key),
@@ -951,7 +954,10 @@ test_that("eventTypes_cols always exposes event_type_key as a fixed-levels facto
 test_that("eventTypes_cols exposes programStage when event_types is in include_dhis2_ids", {
   opts_with_ids <- dhis2_dataset_options(include_dhis2_ids = "event_types")
   schema <- neoipcr:::compile_schema(neoipcr:::eventTypes_cols, opts_with_ids)
-  expect_identical(names(schema), c("event_type_key", "programStage"))
+  expect_identical(
+    names(schema),
+    c("event_type_key", "programStage", "name", "displayName",
+      "displayFormName", "displayDescription"))
   expect_type(schema$programStage, "character")
 })
 
@@ -969,7 +975,14 @@ test_that("assert_schema enforces factor levels on event_type_key", {
   # the reader that slices the factor to a subset (e.g. missing `end`
   # from the DHIS2 response) must fail loudly.
   wrong_levels <- tibble::tibble(
-    event_type_key = factor("adm", levels = c("adm", "bsi")))
+    event_type_key     = factor("adm", levels = c("adm", "bsi")),
+    name               = factor("Admission", levels = c(
+      "Admission", "Surgical Procedure", "Primary Sepsis/BSI",
+      "Necrotizing enterocolitis", "Surgical Site Infection",
+      "Pneumonia", "Surveillance-End")),
+    displayName        = factor("Aufnahme"),
+    displayFormName    = factor("Aufnahme"),
+    displayDescription = "desc")
   opts <- dhis2_dataset_options()
   expect_error(
     neoipcr:::assert_schema(wrong_levels, neoipcr:::eventTypes_cols, opts),
@@ -979,12 +992,18 @@ test_that("assert_schema enforces factor levels on event_type_key", {
 test_that("make_test_metadata_event_types honors n and include_dhis2_ids", {
   full <- make_test_metadata_event_types(
     n = 7, include_dhis2_ids = "event_types")
-  expect_identical(names(full), c("event_type_key", "programStage"))
+  expect_identical(
+    names(full),
+    c("event_type_key", "programStage", "name", "displayName",
+      "displayFormName", "displayDescription"))
   expect_equal(nrow(full), 7L)
 
   no_ids <- make_test_metadata_event_types(
     n = 3, include_dhis2_ids = character())
-  expect_identical(names(no_ids), "event_type_key")
+  expect_identical(
+    names(no_ids),
+    c("event_type_key", "name", "displayName",
+      "displayFormName", "displayDescription"))
   expect_equal(nrow(no_ids), 3L)
 
   zero <- make_test_metadata_event_types(

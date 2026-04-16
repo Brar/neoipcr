@@ -52,7 +52,13 @@ read_metadata_programStages <- function(metadata, dataset_options)
   raw <- programStages |>
     tibble::tibble() |>
     tidyr::unnest_wider(1) |>
+    dplyr::select(!tidyselect::any_of("programStageDataElements")) |>
     dplyr::mutate(
+      name = factor(
+        .data$name,
+        levels = c("Admission","Surgical Procedure","Primary Sepsis/BSI",
+                   "Necrotizing enterocolitis","Surgical Site Infection",
+                   "Pneumonia","Surveillance-End")),
       event_type_key = factor(
         dplyr::case_match(
           .data$name,
@@ -66,26 +72,26 @@ read_metadata_programStages <- function(metadata, dataset_options)
         ),
         levels = c("adm","pro","bsi","nec","ssi","hap","end"))
     ) |>
-    dplyr::arrange(.data$event_type_key) |>
+    dplyr::arrange(.data$name) |>
+    dplyr::mutate(
+      displayName = factor(
+        .data$displayName,
+        levels = unique(.data$displayName)),
+      displayFormName = factor(
+        .data$displayFormName,
+        levels = unique(.data$displayFormName))
+    ) |>
     dplyr::rename("programStage" = "id")
 
   internal_map <- raw |>
     dplyr::select(tidyselect::all_of(c("event_type_key", "programStage")))
 
-  # Narrow to the public schema. `name` / `displayName` /
-  # `displayFormName` / `displayDescription` / `programStageDataElements`
-  # live on the reader's working tibble but are deliberately not part
-  # of the public `eventTypes_cols` schema — report labelling uses
-  # protocol-driven dictionaries, and `programStageDataElements` is
-  # consumed by `read_metadata_dataElements()` via its own raw
-  # traversal. Listed as scratch so the new loud finalize recognises
-  # them as intentional drops.
+  # `raw` already has exactly the columns declared in `eventTypes_cols`
+  # (after the `programStageDataElements` select-out above). No scratch
+  # needed — finalize is a pure selection / relocation under the
+  # `include_dhis2_ids == "event_types"` gate.
   public <- raw |>
-    finalize_to_schema(
-      eventTypes_cols, opts,
-      scratch = c(
-        "name", "displayName", "displayFormName", "displayDescription",
-        "programStageDataElements"))
+    finalize_to_schema(eventTypes_cols, opts)
   assert_schema(public, eventTypes_cols, opts)
 
   list(public = public, internal_map = internal_map)
