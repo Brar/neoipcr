@@ -143,6 +143,7 @@ apply_postfilter <- function(x)
   events <- x$events
   eventDetails <- x$eventDetails
   eventNotes <- x$eventNotes
+  enrollment_notes <- x$enrollment_notes
   admissionData <- x$admissionData
   surveillanceEndData <- x$surveillanceEndData
   sepsisData <- x$sepsisData
@@ -224,9 +225,16 @@ apply_postfilter <- function(x)
     eventDetails <- eventDetails |>
     dplyr::semi_join(events, dplyr::join_by("event_key"))
 
-  if(!is.null(eventNotes))
+  # eventNotes + enrollment_notes are always tibbles under the schema
+  # contract — guard on column presence (0×0 under gate means no
+  # event_key / enrollment_key column to semi_join on).
+  if("event_key" %in% names(eventNotes))
     eventNotes <- eventNotes |>
     dplyr::semi_join(events, dplyr::join_by("event_key"))
+
+  if("enrollment_key" %in% names(enrollment_notes))
+    enrollment_notes <- enrollment_notes |>
+    dplyr::semi_join(enrollments, dplyr::join_by("enrollment_key"))
 
   admissionData <- admissionData |>
     dplyr::semi_join(events, dplyr::join_by("event_key"))
@@ -264,6 +272,7 @@ apply_postfilter <- function(x)
   x$events <- events
   x$eventDetails <- eventDetails
   x$eventNotes <- eventNotes
+  x$enrollment_notes <- enrollment_notes
   x$admissionData <- admissionData
   x$surveillanceEndData <- surveillanceEndData
   x$sepsisData <- sepsisData

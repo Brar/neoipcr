@@ -225,8 +225,13 @@ read_event_details <- function(events, processed_events, metadata, dataset_optio
 
 read_event_notes <- function(events, processed_events, metadata, dataset_options)
 {
-  if(!("events" %in% dataset_options$include_notes))
-    return(NULL)
+  opts <- dataset_options
+
+  # Entity gate short-circuit. Under the schema contract the reader
+  # ALWAYS returns a schema-shaped tibble (never NULL) — callers
+  # guard on column presence, not null-ness.
+  if (!entity_exists(event_notes_cols, opts))
+    return(compile_schema(event_notes_cols, opts))
 
   events <- events |>
     dplyr::inner_join(
@@ -236,8 +241,11 @@ read_event_notes <- function(events, processed_events, metadata, dataset_options
     dplyr::select("event_key", "notes") |>
     dplyr::filter(!is.na(.data$notes) & lengths(.data$notes) > 0)
 
-  if(nrow(events) == 0)
-    return(NULL)
+  if (nrow(events) == 0) {
+    public <- compile_schema(event_notes_cols, opts)
+    assert_schema(public, event_notes_cols, opts)
+    return(public)
+  }
 
   events <- events |>
     tidyr::unnest_longer("notes") |>
@@ -249,10 +257,19 @@ read_event_notes <- function(events, processed_events, metadata, dataset_options
       createdBy = "createdBy",
       .remove = TRUE)
 
-  if(nrow(events) == 0)
-    return(NULL)
+  if (nrow(events) == 0) {
+    public <- compile_schema(event_notes_cols, opts)
+    assert_schema(public, event_notes_cols, opts)
+    return(public)
+  }
 
-  if(dataset_options$include_user != "no") {
+  if (opts$include_user != "no") {
+    # Note: `createdBy` here is a DHIS2 user UID (Note.java emits the
+    # User object as `{id: <UID>, ...}`), so we join on the `user`
+    # column of the internal map — NOT `username` (the latter is how
+    # event / event-data createdBy joins work because those API
+    # endpoints request `createdBy[username]`). See phase-b-notes
+    # Divergences for the DHIS2-source-confirmed rationale.
     events <- events |>
       tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
       dplyr::left_join(
@@ -261,21 +278,24 @@ read_event_notes <- function(events, processed_events, metadata, dataset_options
         dplyr::join_by("createdBy" == "user")) |>
       dplyr::mutate(createdBy = .data$user_key, .keep = "unused")
 
-    if("storedBy" %in% names(events))
+    if ("storedBy" %in% names(events))
       events <- events |>
         dplyr::left_join(
           metadata$.users_internal_map |>
             dplyr::select("username", "user_key"),
           dplyr::join_by("storedBy" == "username")) |>
         dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
-
-    if("storedAt" %in% names(events))
-      events <- events |>
-        dplyr::mutate(storedAt = readr::parse_datetime(.data$storedAt))
   }
 
-  events |>
-    dplyr::select(!"note")
+  if (opts$include_timestamps && "storedAt" %in% names(events))
+    events <- events |>
+      dplyr::mutate(storedAt = readr::parse_datetime(.data$storedAt))
+
+  public <- events |>
+    finalize_to_schema(event_notes_cols, opts)
+  assert_schema(public, event_notes_cols, opts)
+
+  public
 }
 
 read_event_data <- function(events, processed_events, metadata, dataset_options, event_type_key)

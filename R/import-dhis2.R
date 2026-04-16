@@ -157,8 +157,9 @@ import_dhis2 <- function(
 
   metadata$dataset_options <- dataset_options
 
-  # read_enrollment_details
-  # read_enrollment_notes
+  # read_enrollment_details — not yet implemented
+  enrollment_notes <- read_enrollment_notes(
+    enrollments_raw, enrollments, metadata, dataset_options)
   eventDetails <- read_event_details(events_raw, events, metadata, dataset_options)
   eventNotes <- read_event_notes(events_raw, events, metadata, dataset_options)
   surveillanceEndData <- read_event_data(events_raw, events, metadata, dataset_options, "end")
@@ -190,8 +191,11 @@ import_dhis2 <- function(
   class(enrollments) <- c("neoipcr_enr", class(enrollments))
   class(events) <- c("neoipcr_evt", class(events))
   class(eventDetails) <- c("neoipcr_evd", class(eventDetails))
-  if(!is.null(eventNotes))
-    class(eventNotes) <- c("neoipcr_evn", class(eventNotes))
+  # eventNotes / enrollment_notes are always tibbles under the schema
+  # contract (never NULL — gate → 0×0 instead). Slug `_eln` aligned
+  # with the `_evn` precedent pending the class-slug-rename task.
+  class(eventNotes) <- c("neoipcr_evn", class(eventNotes))
+  class(enrollment_notes) <- c("neoipcr_eln", class(enrollment_notes))
   class(admissionData) <- c("neoipcr_adm", class(admissionData))
   class(surveillanceEndData) <- c("neoipcr_end", class(surveillanceEndData))
   class(surgeryData) <- c("neoipcr_pro", class(surgeryData))
@@ -216,6 +220,7 @@ import_dhis2 <- function(
     list(
       patients = patients,
       enrollments = enrollments,
+      enrollment_notes = enrollment_notes,
       events = events,
       eventDetails = eventDetails,
       eventNotes = eventNotes,

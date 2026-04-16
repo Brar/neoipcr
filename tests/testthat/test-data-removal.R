@@ -57,11 +57,10 @@ test_that("apply_data_removal removes event ID on eventDetails when events not i
   expect_false("event" %in% names(result$eventDetails))
 })
 
-test_that("apply_data_removal removes note ID when notes not in include_dhis2_ids", {
-  result <- remove_with(include_dhis2_ids = c("patients", "enrollments",
-    "departments", "events", "event_types", "users"))
-  expect_false("note" %in% names(result$eventNotes))
-})
+# `note` column on eventNotes / enrollment_notes is now reader-owned
+# via `R/schema-notes.R::event_notes_cols` + `enrollment_notes_cols`
+# — gated on `"notes" %in% include_dhis2_ids` at the schema level.
+# Legacy scrub removed. See `test-schema-notes.R` for the invariant.
 
 # `event_types` — tibble shape is now reader-owned via
 # `R/schema-orgunits.R::eventTypes_cols`. The `programStage` column is
@@ -286,11 +285,7 @@ test_that("all include flags at most restrictive removes all optional data", {
   expect_false("world_bank_class_key" %in% names(result$events))
 })
 
-# --- Null-safe: eventNotes can be NULL ---
-
-test_that("apply_data_removal handles NULL eventNotes gracefully", {
-  ds <- base_ds
-  ds$eventNotes <- NULL
-  result <- remove_with(ds, include_dhis2_ids = character())
-  expect_null(result$eventNotes)
-})
+# eventNotes is now always a tibble under the schema contract (never
+# NULL) — the entity gate turns it into 0x0 when disabled. Coverage of
+# the schema shape lives in test-schema-notes.R; the legacy "NULL-safe"
+# test is obsolete and removed.

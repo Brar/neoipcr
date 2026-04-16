@@ -167,8 +167,85 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
 
   # Narrow to the public schema + loud-assert.
   enrollments <- enrollments |>
-    finalize_to_schema(enrollments_cols, opts)
+    finalize_to_schema(enrollments_cols, opts,
+                       scratch = c("trackedEntity", "notes"))
   assert_schema(enrollments, enrollments_cols, opts)
 
   enrollments
+}
+
+# Enrollment-notes reader, mirroring `read_event_notes()`. The raw
+# enrollments response carries a `notes` nested field per enrollment;
+# the enrollment reader drops it via finalize_to_schema's scratch
+# list so this reader needs the raw response as its first argument.
+#
+# Same user-lookup asymmetry as event notes (see
+# `dhis2-events.R::read_event_notes` for the rationale): `createdBy`
+# is a DHIS2 UID, so we join on the internal map's `user` column;
+# `storedBy` is a username, so we join on `username`.
+read_enrollment_notes <- function(enrollments_raw, processed_enrollments,
+                                  metadata, dataset_options)
+{
+  opts <- dataset_options
+
+  if (!entity_exists(enrollment_notes_cols, opts))
+    return(compile_schema(enrollment_notes_cols, opts))
+
+  notes <- enrollments_raw |>
+    dplyr::inner_join(
+      processed_enrollments |>
+        dplyr::select("enrollment_key", "enrollment"),
+      dplyr::join_by("enrollment")) |>
+    dplyr::select("enrollment_key", "notes") |>
+    dplyr::filter(!is.na(.data$notes) & lengths(.data$notes) > 0)
+
+  if (nrow(notes) == 0) {
+    public <- compile_schema(enrollment_notes_cols, opts)
+    assert_schema(public, enrollment_notes_cols, opts)
+    return(public)
+  }
+
+  notes <- notes |>
+    tidyr::unnest_longer("notes") |>
+    tidyr::hoist("notes",
+      note = "note",
+      value = "value",
+      storedBy = "storedBy",
+      storedAt = "storedAt",
+      createdBy = "createdBy",
+      .remove = TRUE)
+
+  if (nrow(notes) == 0) {
+    public <- compile_schema(enrollment_notes_cols, opts)
+    assert_schema(public, enrollment_notes_cols, opts)
+    return(public)
+  }
+
+  if (opts$include_user != "no") {
+    notes <- notes |>
+      tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
+      dplyr::left_join(
+        metadata$.users_internal_map |>
+          dplyr::select("user", "user_key"),
+        dplyr::join_by("createdBy" == "user")) |>
+      dplyr::mutate(createdBy = .data$user_key, .keep = "unused")
+
+    if ("storedBy" %in% names(notes))
+      notes <- notes |>
+        dplyr::left_join(
+          metadata$.users_internal_map |>
+            dplyr::select("username", "user_key"),
+          dplyr::join_by("storedBy" == "username")) |>
+        dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
+  }
+
+  if (opts$include_timestamps && "storedAt" %in% names(notes))
+    notes <- notes |>
+      dplyr::mutate(storedAt = readr::parse_datetime(.data$storedAt))
+
+  public <- notes |>
+    finalize_to_schema(enrollment_notes_cols, opts)
+  assert_schema(public, enrollment_notes_cols, opts)
+
+  public
 }

@@ -232,11 +232,16 @@ test_that("apply_postfilter preserves enrollments with NA country_key", {
   expect_true(any(is.na(result$enrollments$country_key)))
 })
 
-test_that("apply_postfilter handles NULL eventNotes", {
+test_that("apply_postfilter handles 0x0 eventNotes (was NULL pre-schema)", {
+  # Under the schema contract eventNotes is always a tibble (never
+  # NULL) — the entity gate produces 0x0 when the user opts out.
+  # apply_postfilter() uses a column-presence guard for the
+  # event_key semi-join.
   ds <- make_populated_test_ds()
-  ds$eventNotes <- NULL
+  ds$eventNotes <- tibble::tibble()
   result <- neoipcr:::apply_postfilter(ds)
-  expect_null(result$eventNotes)
+  expect_s3_class(result$eventNotes, "tbl_df")
+  expect_equal(ncol(result$eventNotes), 0L)
 })
 
 test_that("apply_postfilter handles NULL eventDetails", {

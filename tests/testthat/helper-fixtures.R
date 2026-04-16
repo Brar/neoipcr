@@ -631,15 +631,59 @@ make_test_event_details <- function(event_keys = 1L, ...) {
   structure(d, class = c("neoipcr_evd", class(d)))
 }
 
-make_test_event_notes <- function(event_keys = 1L, ...) {
+make_test_event_notes <- function(event_keys = 1L,
+                                   include_event      = "full",
+                                   include_notes      = "events",
+                                   include_dhis2_ids  = "notes",
+                                   ...) {
+  opts <- dhis2_dataset_options(
+    include_event     = include_event,
+    include_notes     = include_notes,
+    include_dhis2_ids = include_dhis2_ids)
+  schema <- neoipcr:::compile_schema(neoipcr:::event_notes_cols, opts)
   n <- length(event_keys)
-  d <- list(
+  if (ncol(schema) == 0L || n == 0L)
+    return(structure(schema, class = c("neoipcr_evn", class(schema))))
+
+  full <- list(
     event_key = event_keys,
     note      = paste0("NOTE_", event_keys),
     value     = rep("test note", n))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
+  d <- tibble::as_tibble(full[names(schema)])
+  if (length(list(...)) > 0L) {
+    overrides <- list(...)
+    for (nm in names(overrides))
+      d[[nm]] <- overrides[[nm]]
+  }
   structure(d, class = c("neoipcr_evn", class(d)))
+}
+
+make_test_enrollment_notes <- function(enrollment_keys = integer(0),
+                                       include_enrollment = "full",
+                                       include_notes      = "enrollments",
+                                       include_dhis2_ids  = "notes",
+                                       ...) {
+  opts <- dhis2_dataset_options(
+    include_enrollment = include_enrollment,
+    include_notes      = include_notes,
+    include_dhis2_ids  = include_dhis2_ids)
+  schema <- neoipcr:::compile_schema(
+    neoipcr:::enrollment_notes_cols, opts)
+  n <- length(enrollment_keys)
+  if (ncol(schema) == 0L || n == 0L)
+    return(structure(schema, class = c("neoipcr_eln", class(schema))))
+
+  full <- list(
+    enrollment_key = enrollment_keys,
+    note           = paste0("ENR_NOTE_", enrollment_keys),
+    value          = rep("test enrollment note", n))
+  d <- tibble::as_tibble(full[names(schema)])
+  if (length(list(...)) > 0L) {
+    overrides <- list(...)
+    for (nm in names(overrides))
+      d[[nm]] <- overrides[[nm]]
+  }
+  structure(d, class = c("neoipcr_eln", class(d)))
 }
 
 # ---------------------------------------------------------------------------
@@ -1011,7 +1055,8 @@ make_test_ds <- function(
     enrollments             = structure(enrollments, class = c("neoipcr_enr", class(enrollments))),
     events                  = structure(events, class = c("neoipcr_evt", class(events))),
     eventDetails            = make_test_event_details(integer(0)),
-    eventNotes              = NULL,
+    eventNotes              = make_test_event_notes(integer(0)),
+    enrollment_notes        = make_test_enrollment_notes(integer(0)),
     admissionData           = make_test_admission_data(integer(0)),
     surveillanceEndData     = make_test_surveillance_end_data(integer(0)),
     sepsisData              = make_test_sepsis_data(integer(0)),

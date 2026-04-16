@@ -114,12 +114,10 @@ apply_data_removal <- function(x, dataset_options)
         dplyr::select(!tidyselect::any_of("event"))
   }
 
-  if(!("notes" %in% dataset_options$include_dhis2_ids))
-  {
-    if(!is.null(x$eventNotes))
-      x$eventNotes <- x$eventNotes |>
-        dplyr::select(!tidyselect::any_of("note"))
-  }
+  # `"notes" %in% include_dhis2_ids` — `note` column on eventNotes /
+  # enrollment_notes is reader-owned via
+  # `R/schema-notes.R::event_notes_cols` + `enrollment_notes_cols`,
+  # gated at the schema level. Legacy scrub removed.
 
   # `"event_types" %in% include_dhis2_ids` — tibble shape is now
   # reader-owned via `R/schema-orgunits.R::eventTypes_cols`. The
