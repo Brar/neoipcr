@@ -255,6 +255,7 @@ make_test_events <- function(
     include_patient          = "full",
     include_dhis2_ids        = "events",
     include_incomplete       = "events",
+    include_test_data        = FALSE,
     include_department       = "pseudo",
     include_hospital         = "pseudo",
     include_country          = "pseudo",
@@ -266,6 +267,7 @@ make_test_events <- function(
     include_patient          = include_patient,
     include_dhis2_ids        = include_dhis2_ids,
     include_incomplete       = include_incomplete,
+    include_test_data        = include_test_data,
     include_department       = include_department,
     include_hospital         = include_hospital,
     include_country          = include_country,
@@ -290,7 +292,8 @@ make_test_events <- function(
     department_key       = rep(1L, n),
     hospital_key         = rep(1L, n),
     country_key          = rep(1L, n),
-    world_bank_class_key = rep(1L, n))
+    world_bank_class_key = rep(1L, n),
+    isTest               = rep(FALSE, n))
   full <- utils::modifyList(full, list(...))
   d <- tibble::as_tibble(full[names(schema)])
   for (col in names(schema)) {

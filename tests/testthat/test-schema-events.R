@@ -155,18 +155,31 @@ test_that("direct materialization: hierarchy absent when its own option is 'no'"
   expect_false("hospital_key" %in% names(schema))
 })
 
-# ---- isTest is NOT on events (matches legacy reader output) -------------
+# ---- isTest (direct materialization) ------------------------------------
 #
-# Unlike departments / enrollments, the legacy `read_events()` fetched
-# `isTest` via the departments fat-lookup but dropped it in the final
-# `select()`. Schematization preserves that output: `isTest` is not
-# declared on `events_cols`, and the reader's fat-lookup scratch does
-# not get promoted into the public tibble. Consumers reach `isTest`
-# via `metadata$departments$isTest` under `include_test_data = TRUE`.
+# Events carries `isTest` under `include_test_data = TRUE` via direct
+# materialization from the departments fat-lookup — same pattern as
+# enrollments. The legacy reader actively fetched `isTest` into the
+# pipeline; dropping it in the final `select()` was an accidental
+# omission. Schematizing with the atom declared fixes that bug.
 
-test_that("events_cols: isTest is NOT present even under include_test_data = TRUE", {
-  opts <- dhis2_dataset_options(
+test_that("isTest on events gated on include_test_data", {
+  opts_on <- dhis2_dataset_options(
     include_event     = "full",
+    include_test_data = TRUE)
+  expect_true("isTest" %in% names(
+    neoipcr:::compile_schema(neoipcr:::events_cols, opts_on)))
+
+  opts_off <- dhis2_dataset_options(
+    include_event     = "full",
+    include_test_data = FALSE)
+  expect_false("isTest" %in% names(
+    neoipcr:::compile_schema(neoipcr:::events_cols, opts_off)))
+})
+
+test_that("isTest absent under pseudo-event even with include_test_data = TRUE", {
+  opts <- dhis2_dataset_options(
+    include_event     = "pseudo",
     include_test_data = TRUE)
   schema <- neoipcr:::compile_schema(neoipcr:::events_cols, opts)
   expect_false("isTest" %in% names(schema))

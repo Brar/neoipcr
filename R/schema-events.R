@@ -25,11 +25,15 @@ NULL
 # per-DE companion columns at this level; those appear on per-event-
 # type data tibbles (also phase-b-event-type-data).
 #
-# The legacy `read_events()` also fetched `isTest` via the departments
-# fat-lookup but dropped it in the final select. We match current
-# reader output and do NOT declare `isTest` on events — consumers reach
-# it via `departments$isTest` under `include_test_data = TRUE`, same
-# as today.
+# `isTest` is declared on events (matches enrollments). The legacy
+# reader's `read_events()` actively fetches `isTest` via the
+# departments fat-lookup under `include_test_data = TRUE` — dropping
+# it in the final `select()` was an accidental omission (the cols
+# list includes "isTest", the semi_join / left_join carry it through,
+# but the tail select filters it out). The schema treats that as a
+# bug and declares `isTest` directly, so downstream consumers that
+# need the flag on events (same pattern as on enrollments) don't have
+# to detour through `metadata$departments`.
 #
 # Every non-PK atom predicate ANDs against `include_event == "full"`
 # so pseudo mode narrows strictly to `event_key`. The entity gate
@@ -122,7 +126,16 @@ events_cols <- with_entity_gate(
     event_hierarchy_col("hospital_key",         "include_hospital"),
     event_hierarchy_col("country_key",          "include_country"),
     event_hierarchy_col("world_bank_class_key",
-                        "include_world_bank_class")
+                        "include_world_bank_class"),
+
+    # `isTest` — populated by the reader via the departments fat-lookup
+    # under `include_test_data = TRUE`, same pattern as enrollments.
+    # Direct materialization on the same fat-lookup rationale.
+    schema_col(
+      "isTest", logical(),
+      include_when = \(opts) opts$include_event == "full" &&
+                             isTRUE(opts$include_test_data)
+    )
   ),
   gate = \(opts) opts$include_event != "no"
 )

@@ -157,19 +157,23 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
     events <- events |>
       dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
 
-  # `orgUnit`, `programStage`, `trackedEntity`, `enrollment`, `isTest`
-  # are reader-internal scratch — fetched for the joins / filter above
-  # and either substituted (programStage → event_type_key, trackedEntity
+  # `orgUnit`, `programStage`, `trackedEntity`, `enrollment` are
+  # reader-internal scratch — fetched for the joins / filter above and
+  # either substituted (programStage → event_type_key, trackedEntity
   # → patient_key, enrollment → enrollment_key) or used only for the
-  # departments lookup (orgUnit) / not declared on events (isTest).
-  # `event` stays if the id opt-in is set; the schema gates it.
+  # departments lookup (orgUnit). `isTest` is declared on events_cols
+  # and survives the finalize. `event` stays if the id opt-in is set;
+  # the schema gates it. Remaining scratch columns are raw DHIS2 fields
+  # consumed downstream by read_event_details / read_event_notes /
+  # read_event_data — they live on the raw response but not on the
+  # public events tibble.
   events <- events |>
     add_key_column("event_key") |>
     finalize_to_schema(
       events_cols, opts,
       scratch = c(
         "orgUnit", "programStage", "trackedEntity", "enrollment",
-        "isTest", "dataValues", "followup", "scheduledAt", "completedAt",
+        "dataValues", "followup", "scheduledAt", "completedAt",
         "createdAt", "createdAtClient", "updatedAt", "updatedAtClient",
         "createdBy", "updatedBy", "storedBy", "deleted", "notes"))
 
