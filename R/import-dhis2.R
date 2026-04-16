@@ -203,10 +203,12 @@ import_dhis2 <- function(
   class(substanceDays) <- c("neoipcr_sbd", class(substanceDays))
   class(infectiousAgentFindings) <- c("neoipcr_iaf", class(infectiousAgentFindings))
 
-  # Strip the orchestrator-internal countries lookup before stamping
-  # the final S3 class — it is not part of the public `neoipcr_metadata`
-  # shape. See `read_metadata_reponses()` for where it is set.
+  # Strip orchestrator-internal lookups before stamping the final S3
+  # class — they are not part of the public `neoipcr_metadata` shape.
+  # See `read_metadata_reponses()` for where each is set.
   metadata$.countries_internal_map <- NULL
+  metadata$.hospitals_internal_map <- NULL
+  metadata$.wb_country_map         <- NULL
   class(metadata) <- c("neoipcr_metadata", class(metadata))
 
   r <- structure(

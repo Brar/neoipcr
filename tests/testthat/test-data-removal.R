@@ -121,10 +121,16 @@ test_that("include_department = pseudo without dhis2 IDs removes departments tab
 })
 
 # --- include_hospital ---
+#
+# Like WB classes and countries, the `metadata$hospitals` tibble shape
+# is reader-owned under the three-mode schema contract (`hospitals_cols`
+# in R/schema-orgunits.R, verified in test-dhis2-metadata.R). Tests here
+# cover `apply_data_removal()`'s remaining responsibility: scrubbing the
+# `hospital_key` foreign key from fact and adjacent-metadata tables when
+# the user opted out of hospitals entirely.
 
-test_that("include_hospital = no removes hospitals table and hospital_key columns", {
+test_that("include_hospital = no removes hospital_key from every fact and metadata table", {
   result <- remove_with(include_hospital = "no")
-  expect_null(result$metadata$hospitals)
   expect_false("hospital_key" %in% names(result$patients))
   expect_false("hospital_key" %in% names(result$enrollments))
   expect_false("hospital_key" %in% names(result$events))
@@ -132,10 +138,18 @@ test_that("include_hospital = no removes hospitals table and hospital_key column
   expect_false("hospital_key" %in% names(result$metadata$departments))
 })
 
-test_that("include_hospital = pseudo removes hospitals table but keeps hospital_key", {
+test_that("include_hospital = pseudo keeps hospital_key in fact tables", {
   result <- remove_with(include_hospital = "pseudo")
-  expect_null(result$metadata$hospitals)
   expect_true("hospital_key" %in% names(result$patients))
+  expect_true("hospital_key" %in% names(result$enrollments))
+  expect_true("hospital_key" %in% names(result$events))
+})
+
+test_that("include_hospital = full keeps hospital_key in fact tables", {
+  result <- remove_with(include_hospital = "full")
+  expect_true("hospital_key" %in% names(result$patients))
+  expect_true("hospital_key" %in% names(result$enrollments))
+  expect_true("hospital_key" %in% names(result$events))
 })
 
 # --- include_country ---
@@ -218,9 +232,10 @@ test_that("removing country with hospital = no does not error on missing hospita
   result <- remove_with(
     include_hospital = "no",
     include_country  = "no")
-  expect_null(result$metadata$hospitals)
-  # `countries` shape is reader-owned — verified in test-dhis2-metadata.R.
-  # Here we just confirm the FK-scrub cascade fires on patients.
+  # `hospitals` + `countries` shapes are reader-owned — verified in
+  # test-dhis2-metadata.R. Here we just confirm the FK-scrub cascade
+  # fires on patients for both keys.
+  expect_false("hospital_key" %in% names(result$patients))
   expect_false("country_key" %in% names(result$patients))
 })
 
@@ -254,10 +269,13 @@ test_that("all include flags at most restrictive removes all optional data", {
   expect_false("patient_id" %in% names(result$patients))
   expect_false("trackedEntity" %in% names(result$patients))
   expect_null(result$metadata$departments)
-  expect_null(result$metadata$hospitals)
-  # `countries` + `worldBankClasses` shapes are reader-owned under the
-  # three-mode schema contract and asserted in test-dhis2-metadata.R.
-  # Here we just confirm the FK-column scrub cascaded.
+  # `hospitals` + `countries` + `worldBankClasses` shapes are
+  # reader-owned under the three-mode schema contract and asserted in
+  # test-dhis2-metadata.R. Here we just confirm the FK-column scrubs
+  # cascaded.
+  expect_false("hospital_key" %in% names(result$patients))
+  expect_false("hospital_key" %in% names(result$enrollments))
+  expect_false("hospital_key" %in% names(result$events))
   expect_false("country_key" %in% names(result$patients))
   expect_false("country_key" %in% names(result$enrollments))
   expect_false("country_key" %in% names(result$events))

@@ -112,3 +112,78 @@ countries_cols <- with_entity_gate(
 
 get_countries_schema <- function(opts)
   compile_schema(countries_cols, opts)
+
+# ---- Hospitals ------------------------------------------------------------
+#
+# Third tier of the org-unit hierarchy. Each hospital belongs to exactly
+# one country (via the DHIS2 parent-org-unit link). Inherits
+# `world_bank_class_key` from countries per the hierarchy-key
+# inheritance rule: hospitals carries it directly only when the
+# immediate parent (countries) doesn't. Under `include_country != "no"`,
+# countries carries `world_bank_class_key` (either directly or via its
+# own inheritance), so hospitals does not duplicate it — downstream
+# analyses reach WB class via `hospital.country_key → country.world_bank_class_key`.
+# Under `include_country = "no"`, countries is 0×0, and hospitals
+# materializes `world_bank_class_key` directly to preserve
+# classifiability; the orchestrator populates it using the raw
+# WB-class→country membership map.
+#
+# Display / geometry columns are character and numeric (not factors),
+# matching the current reader's passthrough (it does not ordered-cast
+# display strings for hospitals).
+#
+# Three-mode shape:
+#   "no"     — 0×0 tibble (via the entity gate).
+#   "pseudo" — `hospital_key`, `orgUnit` (iff `"hospitals" %in% include_dhis2_ids`),
+#              `country_key` (iff include_country != "no"), and `world_bank_class_key`
+#              (by inheritance when countries doesn't carry it).
+#   "full"   — adds `code`, `displayName`, `displayShortName`,
+#              `displayDescription`, `comment`, `longitude`, `latitude`.
+
+hospitals_cols <- with_entity_gate(
+  list(
+    col_hospital_key,
+    schema_col(
+      "orgUnit", character(),
+      include_when = \(opts) "hospitals" %in% opts$include_dhis2_ids
+    ),
+    schema_col(
+      "code", character(),
+      include_when = \(opts) opts$include_hospital == "full"
+    ),
+    schema_col(
+      "displayName", character(),
+      include_when = \(opts) opts$include_hospital == "full"
+    ),
+    schema_col(
+      "displayShortName", character(),
+      include_when = \(opts) opts$include_hospital == "full"
+    ),
+    schema_col(
+      "displayDescription", character(),
+      include_when = \(opts) opts$include_hospital == "full"
+    ),
+    schema_col(
+      "comment", character(),
+      include_when = \(opts) opts$include_hospital == "full"
+    ),
+    schema_col(
+      "longitude", double(),
+      include_when = \(opts) opts$include_hospital == "full"
+    ),
+    schema_col(
+      "latitude", double(),
+      include_when = \(opts) opts$include_hospital == "full"
+    ),
+    col_country_key,
+    col_inherited_from(
+      "world_bank_class_key",
+      "include_world_bank_class",
+      countries_cols
+    )
+  ),
+  gate = \(opts) opts$include_hospital != "no"
+)
+
+get_hospitals_schema <- function(opts)
+  compile_schema(hospitals_cols, opts)

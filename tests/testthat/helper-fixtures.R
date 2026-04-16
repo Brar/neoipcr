@@ -325,13 +325,54 @@ make_test_metadata_departments <- function(n = 2) {
     world_bank_class_key = seq_len(n))
 }
 
-make_test_metadata_hospitals <- function(n = 2) {
-  tibble::tibble(
-    hospital_key         = seq_len(n),
-    code                 = paste0("HOSP_", seq_len(n)),
-    displayName          = paste0("Hospital ", seq_len(n)),
-    country_key          = seq_len(n),
-    world_bank_class_key = seq_len(n))
+# Shape matches `hospitals_cols` in R/schema-orgunits.R. `world_bank_class_key`
+# under the inheritance rule appears only when countries doesn't carry
+# it in its own compiled schema — i.e. under `include_country = "no"` +
+# `include_world_bank_class != "no"`. Default mode is "full"/"full"/"full"
+# so existing callers keep producing fully-populated tibbles; pass
+# narrower modes to test other shapes.
+make_test_metadata_hospitals <- function(
+    n = 2,
+    include_hospital         = "full",
+    include_dhis2_ids        = "hospitals",
+    include_country          = "full",
+    include_world_bank_class = "full")
+{
+  h_mode  <- rlang::arg_match(
+    include_hospital, c("no", "pseudo", "full"))
+  c_mode  <- rlang::arg_match(
+    include_country, c("no", "pseudo", "full"))
+  wb_mode <- rlang::arg_match(
+    include_world_bank_class, c("no", "pseudo", "full"))
+
+  if (h_mode == "no")
+    return(tibble::tibble())
+
+  out <- tibble::tibble(hospital_key = seq_len(n))
+
+  if ("hospitals" %in% include_dhis2_ids)
+    out$orgUnit <- paste0("OU_HOSP_", seq_len(n))
+
+  if (h_mode == "full") {
+    out$code               <- paste0("HOSP_", seq_len(n))
+    out$displayName        <- paste0("Hospital ", seq_len(n))
+    out$displayShortName   <- paste0("Hosp ", seq_len(n))
+    out$displayDescription <- paste0("Hospital description ", seq_len(n))
+    out$comment            <- paste0("Hospital comment ", seq_len(n))
+    out$longitude          <- 7.5 + seq_len(n)
+    out$latitude           <- 47.5 + seq_len(n)
+  }
+
+  if (c_mode != "no")
+    out$country_key <- seq_len(n)
+
+  # Inherited from countries: hospitals carries `world_bank_class_key`
+  # only when countries' compiled schema doesn't (which happens when
+  # `include_country = "no"`).
+  if (wb_mode != "no" && c_mode == "no")
+    out$world_bank_class_key <- seq_len(n)
+
+  out
 }
 
 # Shape matches `countries_cols` in R/schema-orgunits.R. Default mode is

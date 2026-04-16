@@ -201,11 +201,14 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
   # Join country_key into hospitals via the raw `country` id held by the
   # orchestrator-internal map. The public countries tibble no longer
   # carries `country` under the schema contract, so the join has to
-  # consume the map.
+  # consume the map. `metadata$hospitals` is still the reader's
+  # `processed` tibble at this point (narrowed to the public schema
+  # below, after all joins run).
   if ((dataset_options$include_country != "no" ||
        length(dataset_options$country_filter) > 0 ||
        dataset_options$include_world_bank_class != "no") &&
-      !is.null(metadata$.countries_internal_map))
+      !is.null(metadata$.countries_internal_map) &&
+      "country" %in% names(metadata$hospitals))
   {
     metadata$hospitals <- metadata$hospitals |>
       dplyr::left_join(
@@ -215,11 +218,46 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
       dplyr::select(!"country")
   }
 
+  # Hospitals WB-class inheritance: under `include_country = "no"` +
+  # `include_world_bank_class != "no"`, countries is 0×0 so it can't
+  # relay `world_bank_class_key`. The inheritance rule makes hospitals
+  # carry the key directly; populate it from the raw WB-class →
+  # country-id membership map held in `.wb_country_map`, joined through
+  # the hospitals internal map's `country` column.
+  if (dataset_options$include_world_bank_class != "no" &&
+      dataset_options$include_country == "no" &&
+      !is.null(metadata$.wb_country_map) &&
+      !is.null(metadata$.hospitals_internal_map) &&
+      "country" %in% names(metadata$.hospitals_internal_map))
+  {
+    wb_country_lookup <- metadata$.wb_country_map |>
+      tidyr::unnest_longer("organisationUnits") |>
+      tidyr::hoist("organisationUnits", country = list(1L)) |>
+      dplyr::select("country", "world_bank_class_key")
+
+    wb_hospital_lookup <- metadata$.hospitals_internal_map |>
+      dplyr::left_join(wb_country_lookup, dplyr::join_by("country")) |>
+      dplyr::select("hospital_key", "world_bank_class_key")
+
+    metadata$hospitals <- metadata$hospitals |>
+      dplyr::left_join(wb_hospital_lookup, dplyr::join_by("hospital_key"))
+  }
+
+  # Narrow `metadata$hospitals` from the reader's `processed` tibble to
+  # the public three-mode shape declared by `hospitals_cols`. The
+  # containing-entity gate on `hospitals_cols` short-circuits to 0×0
+  # under `include_hospital = "no"`, dropping every internal-only
+  # column in one step. Tail `assert_schema()` confirms the result.
+  metadata$hospitals <- metadata$hospitals |>
+    finalize_to_schema(hospitals_cols, dataset_options)
+  assert_schema(metadata$hospitals, hospitals_cols, dataset_options)
+
   # Pre-join hierarchy into departments so that read_patients/enrollments/events
-  # can use a single flat left_join instead of cascading joins
+  # can use a single flat left_join instead of cascading joins.
+  # Gate on column presence — under `include_hospital = "no"` hospitals
+  # is 0×0 and the join is skipped.
   if ("hospital_key" %in% names(metadata$departments) &&
-      !is.null(metadata$hospitals) &&
-      "country_key" %in% names(metadata$hospitals))
+      all(c("hospital_key", "country_key") %in% names(metadata$hospitals)))
   {
     metadata$departments <- metadata$departments |>
       dplyr::left_join(
@@ -344,6 +382,14 @@ read_metadata <- function(metadata, dataset_options)
   ret <- c(ret, list(countries = countries))
   if (!is.null(countries_internal_map))
     ret <- c(ret, list(.countries_internal_map = countries_internal_map))
+  # `.wb_country_map` is the raw WB-class → country-id membership
+  # lookup. Threaded through so `read_metadata_reponses()` can populate
+  # `world_bank_class_key` on hospitals under the inheritance case
+  # (`include_country = "no"` + `include_world_bank_class != "no"`)
+  # where the countries tibble is empty and can't serve as a join
+  # relay. Stripped at `import_dhis2()` exit.
+  if (!is.null(wb_country_map))
+    ret <- c(ret, list(.wb_country_map = wb_country_map))
 
   ret
 }

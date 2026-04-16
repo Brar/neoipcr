@@ -333,3 +333,202 @@ test_that("make_test_metadata_countries matches schema across all (country, wb) 
     }
   }
 })
+
+# ---- hospitals_cols — per-column include_when predicates ---
+
+test_that("col_hospital_key appears iff include_hospital != 'no'", {
+  key_col <- neoipcr:::col_hospital_key
+  expect_false(key_col$include_when(dhis2_dataset_options(
+    include_hospital = "no")))
+  expect_true(key_col$include_when(dhis2_dataset_options(
+    include_hospital = "pseudo")))
+  expect_true(key_col$include_when(dhis2_dataset_options(
+    include_hospital = "full")))
+})
+
+test_that("hospitals orgUnit appears iff 'hospitals' in include_dhis2_ids", {
+  col <- purrr::detect(
+    neoipcr:::hospitals_cols, \(c) c$name == "orgUnit")
+  expect_false(is.null(col))
+  expect_false(col$include_when(dhis2_dataset_options(
+    include_dhis2_ids = character())))
+  expect_true(col$include_when(dhis2_dataset_options(
+    include_dhis2_ids = "hospitals")))
+})
+
+test_that("hospitals display columns appear only under include_hospital = 'full'", {
+  for (name in c("code", "displayName", "displayShortName",
+                 "displayDescription", "comment",
+                 "longitude", "latitude")) {
+    col <- purrr::detect(
+      neoipcr:::hospitals_cols, \(c) c$name == name)
+    expect_false(is.null(col), info = name)
+    expect_false(col$include_when(dhis2_dataset_options(
+      include_hospital = "pseudo")),
+      info = name)
+    expect_true(col$include_when(dhis2_dataset_options(
+      include_hospital = "full")),
+      info = name)
+  }
+})
+
+test_that("hospitals country_key (direct link-FK) appears iff BOTH include_hospital and include_country are non-'no'", {
+  # `col_country_key`'s single-option predicate is `include_country != "no"`;
+  # the hospitals entity-gate supplies the `include_hospital != "no"` half.
+  # Result: the column only appears at the schema level when both halves pass.
+  for (hmode in c("no", "pseudo", "full")) {
+    for (cmode in c("no", "pseudo", "full")) {
+      schema <- neoipcr:::get_hospitals_schema(dhis2_dataset_options(
+        include_hospital = hmode, include_country = cmode))
+      expected <- hmode != "no" && cmode != "no"
+      expect_equal(
+        "country_key" %in% names(schema),
+        expected,
+        info = sprintf("h=%s, c=%s", hmode, cmode))
+    }
+  }
+})
+
+test_that("hospitals world_bank_class_key follows the inheritance rule", {
+  # The key appears on hospitals only when:
+  #   - include_hospital != "no" (entity exists), AND
+  #   - include_world_bank_class != "no" (key is meaningful), AND
+  #   - countries' compiled schema doesn't already carry it
+  #     (countries has it when include_country != "no", so inheritance
+  #     only fires under include_country == "no").
+  for (hmode in c("no", "pseudo", "full")) {
+    for (cmode in c("no", "pseudo", "full")) {
+      for (wbmode in c("no", "pseudo", "full")) {
+        schema <- neoipcr:::get_hospitals_schema(dhis2_dataset_options(
+          include_hospital         = hmode,
+          include_country          = cmode,
+          include_world_bank_class = wbmode))
+        expected <-
+          hmode != "no" &&
+          wbmode != "no" &&
+          cmode == "no"
+        expect_equal(
+          "world_bank_class_key" %in% names(schema),
+          expected,
+          info = sprintf("h=%s, c=%s, wb=%s", hmode, cmode, wbmode))
+      }
+    }
+  }
+})
+
+# --- get_hospitals_schema — three-mode shape contract ---
+
+test_that("get_hospitals_schema is 0x0 under include_hospital = 'no' regardless of country/WB mode", {
+  for (cmode in c("no", "pseudo", "full")) {
+    for (wbmode in c("no", "pseudo", "full")) {
+      opts <- dhis2_dataset_options(
+        include_hospital         = "no",
+        include_country          = cmode,
+        include_world_bank_class = wbmode)
+      schema <- neoipcr:::get_hospitals_schema(opts)
+      expect_equal(ncol(schema), 0L,
+        info = sprintf("c=%s, wb=%s", cmode, wbmode))
+      expect_equal(nrow(schema), 0L,
+        info = sprintf("c=%s, wb=%s", cmode, wbmode))
+    }
+  }
+})
+
+test_that("get_hospitals_schema is 1 column under pseudo + country='no' + wb='no'", {
+  schema <- neoipcr:::get_hospitals_schema(dhis2_dataset_options(
+    include_hospital         = "pseudo",
+    include_country          = "no",
+    include_world_bank_class = "no",
+    include_dhis2_ids        = character()))
+  expect_equal(ncol(schema), 1L)
+  expect_identical(names(schema), "hospital_key")
+})
+
+test_that("get_hospitals_schema under pseudo + country='no' + wb!='no' has 2 cols (inherited WB)", {
+  for (wbmode in c("pseudo", "full")) {
+    schema <- neoipcr:::get_hospitals_schema(dhis2_dataset_options(
+      include_hospital         = "pseudo",
+      include_country          = "no",
+      include_world_bank_class = wbmode,
+      include_dhis2_ids        = character()))
+    expect_equal(ncol(schema), 2L, info = sprintf("wb=%s", wbmode))
+    expect_identical(
+      names(schema),
+      c("hospital_key", "world_bank_class_key"),
+      info = sprintf("wb=%s", wbmode))
+  }
+})
+
+test_that("get_hospitals_schema under pseudo + country!='no' has 2 cols (country_key, no inherited WB)", {
+  # Inheritance rule: countries carries wb_class_key here, so hospitals
+  # does NOT — reach it via one-hop join through country_key.
+  for (cmode in c("pseudo", "full")) {
+    for (wbmode in c("pseudo", "full")) {
+      schema <- neoipcr:::get_hospitals_schema(dhis2_dataset_options(
+        include_hospital         = "pseudo",
+        include_country          = cmode,
+        include_world_bank_class = wbmode,
+        include_dhis2_ids        = character()))
+      expect_equal(ncol(schema), 2L,
+        info = sprintf("c=%s, wb=%s", cmode, wbmode))
+      expect_identical(
+        names(schema),
+        c("hospital_key", "country_key"),
+        info = sprintf("c=%s, wb=%s", cmode, wbmode))
+    }
+  }
+})
+
+test_that("get_hospitals_schema under full + full country + full WB has the expected 10 columns", {
+  schema <- neoipcr:::get_hospitals_schema(dhis2_dataset_options(
+    include_hospital         = "full",
+    include_country          = "full",
+    include_world_bank_class = "full",
+    include_dhis2_ids        = "hospitals"))
+  expect_identical(
+    names(schema),
+    c("hospital_key", "orgUnit", "code", "displayName", "displayShortName",
+      "displayDescription", "comment", "longitude", "latitude",
+      "country_key"))
+  # No `world_bank_class_key` — inheritance says countries carries it.
+  expect_false("world_bank_class_key" %in% names(schema))
+})
+
+test_that("get_hospitals_schema under full + country='no' + full WB materializes inherited WB key", {
+  schema <- neoipcr:::get_hospitals_schema(dhis2_dataset_options(
+    include_hospital         = "full",
+    include_country          = "no",
+    include_world_bank_class = "full",
+    include_dhis2_ids        = "hospitals"))
+  # `country_key` absent (countries gate = "no"); `world_bank_class_key`
+  # inherited directly because countries can't relay.
+  expect_false("country_key" %in% names(schema))
+  expect_true("world_bank_class_key" %in% names(schema))
+})
+
+test_that("make_test_metadata_hospitals matches schema across key (h, c, wb) combinations", {
+  # Full 27-combo cross-product of (hospital × country × WB modes) on
+  # both include_dhis2_ids configurations (hospitals present or not).
+  for (hmode in c("no", "pseudo", "full")) {
+    for (cmode in c("no", "pseudo", "full")) {
+      for (wbmode in c("no", "pseudo", "full")) {
+        for (ids in list(character(), "hospitals")) {
+          opts <- dhis2_dataset_options(
+            include_hospital         = hmode,
+            include_country          = cmode,
+            include_world_bank_class = wbmode,
+            include_dhis2_ids        = ids)
+          schema  <- neoipcr:::get_hospitals_schema(opts)
+          fixture <- make_test_metadata_hospitals(
+            n = 2,
+            include_hospital         = hmode,
+            include_country          = cmode,
+            include_world_bank_class = wbmode,
+            include_dhis2_ids        = ids)
+
+          expect_schema_matches(fixture, schema)
+        }
+      }
+    }
+  }
+})

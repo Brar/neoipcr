@@ -191,7 +191,10 @@ apply_postfilter <- function(x)
   if(!is.null(departments) && "department_key" %in% names(enrollments))
     departments <- departments |>
     dplyr::semi_join(enrollments, dplyr::join_by("department_key"))
-  if(!is.null(hospitals) && "hospital_key" %in% names(enrollments))
+  # `hospitals` is always a tibble (never NULL) under the three-mode
+  # schema contract — guard on column presence, not null-ness.
+  if("hospital_key" %in% names(hospitals) &&
+     "hospital_key" %in% names(enrollments))
     hospitals <- hospitals |>
     dplyr::semi_join(enrollments, dplyr::join_by("hospital_key"))
   if("country_key" %in% names(countries) &&

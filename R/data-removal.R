@@ -44,9 +44,12 @@ apply_data_removal <- function(x, dataset_options)
       x$metadata$departments <- NULL
   }
 
+  # `include_hospital` — tibble shape is reader-owned via
+  # `R/schema-orgunits.R::hospitals_cols`. The guardian keeps the
+  # FK-scrub cascade on fact / adjacent-metadata tables until those
+  # entities schematize.
   if(dataset_options$include_hospital == "no")
   {
-    x$metadata$hospitals <- NULL
     if(!is.null(x$metadata$departments))
       x$metadata$departments <- x$metadata$departments |>
         dplyr::select(!tidyselect::any_of("hospital_key"))
@@ -57,8 +60,6 @@ apply_data_removal <- function(x, dataset_options)
     x$events <- x$events |>
       dplyr::select(!tidyselect::any_of("hospital_key"))
   }
-  if(dataset_options$include_hospital == "pseudo")
-    x$metadata$hospitals <- NULL
 
   # `include_country` — the tibble shape in `metadata$countries` is now
   # reader-owned via `R/schema-orgunits.R::countries_cols`. The three
