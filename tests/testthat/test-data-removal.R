@@ -158,29 +158,41 @@ test_that("include_country = pseudo removes countries table but keeps country_ke
 })
 
 # --- include_world_bank_class ---
+#
+# The shape of `metadata$worldBankClasses` itself is produced by the
+# reader (`read_metadata_wb_classes` in R/dhis2-metadata-reference.R)
+# under the three-mode `worldBankClasses_cols` contract and verified in
+# `test-dhis2-metadata.R`. The tests here cover `apply_data_removal()`'s
+# remaining responsibility: scrubbing the `world_bank_class_key` foreign
+# key from fact and other-metadata tables when the user opted out of WB
+# classes entirely.
 
-test_that("include_world_bank_class = no removes WB table and world_bank_class_key everywhere", {
+test_that("include_world_bank_class = no removes world_bank_class_key from every fact and metadata table", {
   result <- remove_with(include_world_bank_class = "no")
-  expect_null(result$metadata$worldBankClasses)
   expect_false("world_bank_class_key" %in% names(result$patients))
   expect_false("world_bank_class_key" %in% names(result$enrollments))
   expect_false("world_bank_class_key" %in% names(result$events))
-  # Cascades through metadata
+  # Cascades through adjacent metadata
   expect_false("world_bank_class_key" %in% names(result$metadata$countries))
   expect_false("world_bank_class_key" %in% names(result$metadata$hospitals))
   expect_false("world_bank_class_key" %in% names(result$metadata$departments))
 })
 
-test_that("include_world_bank_class = pseudo removes WB table but keeps key", {
+test_that("include_world_bank_class = pseudo keeps world_bank_class_key in fact tables", {
+  # The fact-table FK is retained so pseudo keys can still group joins
+  # across fact tables. The table-shape contract is enforced by the
+  # reader and tested in `test-dhis2-metadata.R`.
   result <- remove_with(include_world_bank_class = "pseudo")
-  expect_null(result$metadata$worldBankClasses)
   expect_true("world_bank_class_key" %in% names(result$patients))
+  expect_true("world_bank_class_key" %in% names(result$enrollments))
+  expect_true("world_bank_class_key" %in% names(result$events))
 })
 
-test_that("include_world_bank_class = fullkeeps everything", {
+test_that("include_world_bank_class = full keeps world_bank_class_key in fact tables", {
   result <- remove_with(include_world_bank_class = "full")
-  expect_false(is.null(result$metadata$worldBankClasses))
   expect_true("world_bank_class_key" %in% names(result$patients))
+  expect_true("world_bank_class_key" %in% names(result$enrollments))
+  expect_true("world_bank_class_key" %in% names(result$events))
 })
 
 # --- Cascading removal ---
@@ -198,7 +210,11 @@ test_that("removing world_bank_class with country = no does not error on missing
     include_country          = "no",
     include_world_bank_class = "no")
   expect_null(result$metadata$countries)
-  expect_null(result$metadata$worldBankClasses)
+  # `worldBankClasses` shape itself is reader-owned — verified in
+  # test-dhis2-metadata.R; here we just confirm the cascade doesn't crash
+  # when both options are "no" simultaneously and that the FK column is
+  # scrubbed from patients as a consequence.
+  expect_false("world_bank_class_key" %in% names(result$patients))
 })
 
 # --- Full removal (most restrictive) ---
@@ -221,7 +237,12 @@ test_that("all include flags at most restrictive removes all optional data", {
   expect_null(result$metadata$departments)
   expect_null(result$metadata$hospitals)
   expect_null(result$metadata$countries)
-  expect_null(result$metadata$worldBankClasses)
+  # `worldBankClasses` table shape is reader-owned under the three-mode
+  # schema contract and asserted in test-dhis2-metadata.R. Here we just
+  # confirm the `world_bank_class_key` fact-table scrub cascaded.
+  expect_false("world_bank_class_key" %in% names(result$patients))
+  expect_false("world_bank_class_key" %in% names(result$enrollments))
+  expect_false("world_bank_class_key" %in% names(result$events))
 })
 
 # --- Null-safe: eventNotes can be NULL ---

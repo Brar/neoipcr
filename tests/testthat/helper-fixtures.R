@@ -343,11 +343,31 @@ make_test_metadata_countries <- function(n = 2) {
     world_bank_class_key = seq_len(n))
 }
 
-make_test_metadata_wb_classes <- function(n = 2) {
-  tibble::tibble(
-    world_bank_class_key = seq_len(n),
-    class                = paste0("WB_", seq_len(n)),
-    displayName          = paste0("WB Class ", seq_len(n)))
+# Shape matches `worldBankClasses_cols` in R/schema-orgunits.R under the
+# default `dhis2_dataset_options()` which sets `include_world_bank_class`
+# to "no". Pass `include_world_bank_class = "full"` to receive the full
+# three-column shape; "pseudo" returns only the `world_bank_class_key`
+# column; "no" returns a 0×0 tibble.
+make_test_metadata_wb_classes <- function(
+    n = 2,
+    include_world_bank_class = "full")
+{
+  mode <- rlang::arg_match(
+    include_world_bank_class, c("no", "pseudo", "full"))
+
+  if (mode == "no")
+    return(tibble::tibble())
+
+  out <- tibble::tibble(world_bank_class_key = seq_len(n))
+
+  if (mode == "pseudo")
+    return(out)
+
+  out$class       <- factor(
+    rep(c("L", "LM", "UM", "H"), length.out = n),
+    levels = c("L", "LM", "UM", "H"))
+  out$fiscal_year <- rep(2025L, n)
+  out
 }
 
 make_test_metadata_event_types <- function() {

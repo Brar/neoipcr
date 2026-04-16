@@ -79,9 +79,16 @@ apply_data_removal <- function(x, dataset_options)
   if(dataset_options$include_country == "pseudo")
     x$metadata$countries <- NULL
 
+  # `include_world_bank_class` — downstream narrowing is now handled by the
+  # reader via the schema contract. `x$metadata$worldBankClasses` follows
+  # the three-mode shape (0×0 / 1-col / full) produced by
+  # `read_metadata_wb_classes()`; the remaining per-fact-table scrubbing of
+  # `world_bank_class_key` will move into the fact-table schemas as those
+  # entities land in Phase B. Until then, keep the fact-table columns
+  # scrubbed here so the guardian still catches leaks via
+  # `include_world_bank_class` on entities that haven't been schematized.
   if(dataset_options$include_world_bank_class == "no")
   {
-    x$metadata$worldBankClasses <- NULL
     if(!is.null(x$metadata$countries))
       x$metadata$countries <- x$metadata$countries |>
         dplyr::select(!tidyselect::any_of("world_bank_class_key"))
@@ -98,8 +105,6 @@ apply_data_removal <- function(x, dataset_options)
     x$events <- x$events |>
       dplyr::select(!tidyselect::any_of("world_bank_class_key"))
   }
-  else if(dataset_options$include_world_bank_class == "pseudo")
-    x$metadata$worldBankClasses <- NULL
 
   if(!("events" %in% dataset_options$include_dhis2_ids))
   {

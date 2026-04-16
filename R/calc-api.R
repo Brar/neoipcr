@@ -892,8 +892,12 @@ get_countries_with_wb_class <- function(x) {
         dplyr::select(name = "displayName", tidyselect::any_of("world_bank_class_key")) |>
         dplyr::distinct()
 
-    # Join with worldBankClasses to get stable class and displayName
-    if (!is.null(x$metadata$worldBankClasses) && "world_bank_class_key" %in% names(countries_data)) {
+    # Join with worldBankClasses to get stable `class` label. Gate on
+    # column presence rather than null-ness: under the three-mode schema
+    # contract `worldBankClasses` is always a tibble, but `class` only
+    # appears under `include_world_bank_class == "full"`.
+    if ("class" %in% names(x$metadata$worldBankClasses) &&
+        "world_bank_class_key" %in% names(countries_data)) {
       countries_data |>
         dplyr::left_join(
           x$metadata$worldBankClasses |>

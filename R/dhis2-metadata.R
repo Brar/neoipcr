@@ -265,15 +265,15 @@ read_metadata <- function(metadata, dataset_options)
     metadata,
     dataset_options$trial_keys)
 
-  world_bank_classes <- read_metadata_wb_classes(
-    metadata,
-    dataset_options$include_world_bank_class)
+  wb_result <- read_metadata_wb_classes(metadata, dataset_options)
+  world_bank_classes <- wb_result$public
+  wb_country_map     <- wb_result$country_map
 
   countries <- read_metadata_countries(
     metadata,
     dataset_options$include_country,
     length(dataset_options$country_filter) > 0,
-    world_bank_classes)
+    wb_country_map)
 
   ret <- list(
     system = system,
@@ -306,8 +306,10 @@ read_metadata <- function(metadata, dataset_options)
     ret <- c(ret, list(users = users))
   if(!is.null(trials))
     ret <- c(ret, list(trials = trials))
-  if(!is.null(world_bank_classes))
-    ret <- c(ret, list(worldBankClasses = world_bank_classes))
+  # `world_bank_classes` is always a tibble (never NULL) — the three-mode
+  # shape is the signal: 0×0 under "no", 1-col under "pseudo", full schema
+  # under "full". See `R/schema-orgunits.R::worldBankClasses_cols`.
+  ret <- c(ret, list(worldBankClasses = world_bank_classes))
   if(!is.null(countries))
     ret <- c(ret, list(countries = countries))
 

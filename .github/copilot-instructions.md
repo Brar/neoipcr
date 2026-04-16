@@ -80,6 +80,7 @@ The `R/` directory follows a deliberate structure established by the neoipcr fil
 | **Schema engine** | |
 | `R/schema-tools.R` | `schema_col()`, `compile_schema()`, `schema_codes()`, `assert_schema()`, `finalize_to_schema()` — column-as-declaration engine. Internal, no `@export`. |
 | `R/schema-cols-shared.R` | Cross-entity column declarations: `col_patient_key`, `col_enrollment_key`, `col_event_key`, `col_department_key`, `col_hospital_key`, `col_country_key`, `col_wb_class_key`, `col_isTest`, plus `col_inherited_from()` (hierarchy-inheritance helper) and `attribute_cols()` / `tea_attribute_cols()` (companion-column helpers for partner-site-entered attributes). Loads before every `schema-<domain>.R` via `@include`. |
+| `R/schema-orgunits.R` | Column declarations + `get_<entity>_schema(opts)` wrappers for the org-unit hierarchy. Today carries `worldBankClasses_cols`; countries / hospitals / departments land in subsequent Phase B sub-tasks. Loads after `schema-cols-shared.R`. Internal. |
 | **Data protection** | |
 | `R/data-removal.R` | `apply_data_removal()` — the authoritative data-protection guardian |
 | `R/filter.R` | `filter_*` family + `apply_postfilter` |
@@ -200,6 +201,7 @@ Test files mirror source files: `R/foo.R` -> `tests/testthat/test-foo.R`.
 | `tests/testthat/test-test-units.R` | Test org unit tolerance — NA hierarchy keys through calc pipeline |
 | `tests/testthat/test-schema-tools.R` | `schema_col()`, `compile_schema()`, `schema_codes()`, `assert_schema()`, `finalize_to_schema()` |
 | `tests/testthat/test-schema-cols-shared.R` | Shared column declarations, `col_inherited_from()`, `attribute_cols()` / `tea_attribute_cols()`, plus `expect_schema_matches()` / `iter_dataset_options()` helpers |
+| `tests/testthat/test-schema-orgunits.R` | Per-domain schema assembly for org-unit entities. Today covers `worldBankClasses_cols` and its three-mode contract; extended per Phase B entity as they land. |
 | `tests/testthat/helper-fixtures.R` | `read_test_metadata()`, `make_test_ds()`, `make_populated_test_ds()`, `make_calc_test_ds()`, per-table builders |
 | `tests/testthat/helper-schema.R` | `expect_schema_matches(x, expected)`, `iter_dataset_options(fields)` |
 

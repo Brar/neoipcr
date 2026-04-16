@@ -200,76 +200,105 @@ read_metadata_trials <- function(metadata, trial_keys)
                        ignore_case = TRUE)))
 }
 
-read_metadata_wb_classes <- function(metadata, include_world_bank_class)
+#' @include schema-orgunits.R
+NULL
+
+# Read the World Bank income classes from the DHIS2 metadata.
+#
+# Returns a named list with two components:
+#   * `public`      — schema-conformant tibble matching
+#                     `compile_schema(worldBankClasses_cols, dataset_options)`.
+#                     Always returned (never NULL); shape follows the
+#                     three-mode contract on `include_world_bank_class`.
+#   * `country_map` — internal lookup tibble with columns
+#                     `world_bank_class_key` + `organisationUnits` (the
+#                     nested list of country group members). Consumed by
+#                     `read_metadata_countries()` to enrich each country
+#                     with its WB-class membership. NULL when there is no
+#                     WB-class metadata to map against (e.g.
+#                     `include_world_bank_class == "no"`, or the WB-classes
+#                     group set is absent from the response).
+read_metadata_wb_classes <- function(metadata, dataset_options)
 {
-  if(include_world_bank_class == "no")
-    return(NULL)
+  opts <- dataset_options
+  empty_result <- list(
+    public      = compile_schema(worldBankClasses_cols, opts),
+    country_map = NULL
+  )
 
-  for (i in 1:2) {
-    if ('WORLD_BANK_CLASSES' ==
-        (purrr::pluck(metadata, "organisationUnitGroupSets", i, "code"))) break
-  }
-  organisationUnitGroups <- metadata |>
-    purrr::pluck("organisationUnitGroupSets", i, "organisationUnitGroups")
+  if (opts$include_world_bank_class == "no")
+    return(empty_result)
 
-  if(rlang::is_null(organisationUnitGroups))
-    return(NULL)
+  group_sets <- purrr::pluck(metadata, "organisationUnitGroupSets")
+  if (rlang::is_null(group_sets) || length(group_sets) < 1L)
+    return(empty_result)
 
-  pseudonymise <- include_world_bank_class != "full"
+  wb_set <- purrr::detect(
+    group_sets,
+    \(gs) identical(purrr::pluck(gs, "code"), "WORLD_BANK_CLASSES"))
+  if (rlang::is_null(wb_set))
+    return(empty_result)
+
+  organisationUnitGroups <- purrr::pluck(wb_set, "organisationUnitGroups")
+  if (rlang::is_null(organisationUnitGroups) ||
+      length(organisationUnitGroups) < 1L)
+    return(empty_result)
 
   organisationUnitGroups <- organisationUnitGroups |>
     tibble::tibble() |>
-    tidyr::unnest_wider(1)
-
-  if(pseudonymise)
-    organisationUnitGroups <- organisationUnitGroups |>
-    dplyr::mutate(
-      fiscal_year = as.integer(
-        stringr::str_extract(
-          .data$code, "^WORLD_BANK_CLASS_(H|L|LM|UM)_FY_(\\d{4})$", group = 2)),
-      .keep = "unused",
-      .before = 1) |>
-    dplyr::arrange(dplyr::desc(.data$fiscal_year))
-  else
-    organisationUnitGroups <- organisationUnitGroups |>
+    tidyr::unnest_wider(1) |>
     dplyr::mutate(
       class = factor(
         stringr::str_extract(
           .data$code,
           "^WORLD_BANK_CLASS_(H|L|LM|UM)_FY_(\\d{4})$",
           group = 1),
-        levels = c('L','LM','UM','H')),
+        levels = c("L", "LM", "UM", "H")),
       fiscal_year = as.integer(
         stringr::str_extract(
           .data$code,
           "^WORLD_BANK_CLASS_(H|L|LM|UM)_FY_(\\d{4})$",
           group = 2)),
-      .keep = "unused",
+      .keep  = "unused",
       .before = 1) |>
     dplyr::arrange(dplyr::desc(.data$fiscal_year), .data$class)
 
-  for (i in (as.POSIXlt(Sys.Date())$year + 1900):2025) {
-    filtered <- organisationUnitGroups |>
-      dplyr::filter(.data$fiscal_year == i)
+  # Narrow to the most recent fiscal year that has WB-class rows. Current
+  # year downward, stop at first non-empty year. If no row remains (e.g.
+  # a metadata snapshot predating any fiscal year we know about), fall
+  # back to the empty shape.
+  current_year <- as.POSIXlt(Sys.Date())$year + 1900L
+  filtered <- NULL
+  for (year in current_year:2025L) {
+    candidate <- organisationUnitGroups |>
+      dplyr::filter(.data$fiscal_year == year)
 
-    if (nrow(filtered) > 0) {
+    if (nrow(candidate) > 0L) {
+      filtered <- candidate
       break
     }
   }
+  if (is.null(filtered))
+    return(empty_result)
 
   filtered <- filtered |>
-    add_key_column('world_bank_class_key')
+    add_key_column("world_bank_class_key")
 
-  if(pseudonymise)
-    return(filtered |> dplyr::select(!"fiscal_year"))
+  country_map <- filtered |>
+    dplyr::select(tidyselect::all_of(
+      c("world_bank_class_key", "organisationUnits")))
 
-  filtered
+  public <- filtered |>
+    finalize_to_schema(worldBankClasses_cols, opts)
+  assert_schema(public, worldBankClasses_cols, opts)
+
+  list(public = public, country_map = country_map)
 }
 
 read_metadata_countries <- function(
-    metadata, include_country, has_country_filter, world_bank_classes)
+    metadata, include_country, has_country_filter, wb_country_map)
 {
-  if(!has_country_filter && include_country == "no" && is.null(world_bank_classes))
+  if(!has_country_filter && include_country == "no" && is.null(wb_country_map))
     return(NULL)
 
   organisationUnitGroups <- read_metadata_organisationUnitGroups(
@@ -287,11 +316,10 @@ read_metadata_countries <- function(
     dplyr::rename(country = "id") |>
     add_key_column('country_key')
 
-  if(!is.null(world_bank_classes))
+  if(!is.null(wb_country_map))
     organisationUnitGroups <- organisationUnitGroups |>
     dplyr::left_join(
-      world_bank_classes |>
-        dplyr::select("world_bank_class_key", "organisationUnits") |>
+      wb_country_map |>
         tidyr::unnest_longer("organisationUnits") |>
         tidyr::hoist("organisationUnits", country = list(1L)),
       dplyr::join_by("country"))

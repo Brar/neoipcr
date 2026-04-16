@@ -194,7 +194,12 @@ apply_postfilter <- function(x)
   if(!is.null(countries) && "country_key" %in% names(enrollments))
     countries <- countries |>
     dplyr::semi_join(enrollments, dplyr::join_by("country_key"))
-  if(!is.null(worldBankClasses) && "world_bank_class_key" %in% names(enrollments))
+  # `worldBankClasses` is always a tibble (never NULL) since the reader
+  # honors the three-mode schema contract. Guard on column presence
+  # instead of null-ness: under "no" the tibble has 0 columns and the
+  # semi_join would fail to find `world_bank_class_key`.
+  if("world_bank_class_key" %in% names(worldBankClasses) &&
+     "world_bank_class_key" %in% names(enrollments))
     worldBankClasses <- worldBankClasses |>
     dplyr::semi_join(enrollments, dplyr::join_by("world_bank_class_key"))
 
