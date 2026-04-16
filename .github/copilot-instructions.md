@@ -197,6 +197,7 @@ Test files mirror source files: `R/foo.R` -> `tests/testthat/test-foo.R`.
 | `tests/testthat/test-dhis2-metadata.R` | `read_metadata()` validation and data-reading tests |
 | `tests/testthat/test-dhis2-connect.R` | `dhis2_connection_options()`, `get_auth_data()`, `read_token()`, `get_password()` |
 | `tests/testthat/test-data-protection.R` | `assert_data_protection()` — happy-path (schema-compliant ds passes) and failure-path (reader regression leaks a forbidden column → abort) coverage; pure-assertion guardian post phase-b-event-details |
+| `tests/testthat/test-data-protection-complete.R` | Option-matrix coverage: iterates every `include_*` gate (hierarchy, link-privacy, user, timestamps, deleted) under every value against a schema-compliant ds, verifying the guardian passes. Maximally-restrictive smoke test. |
 | `tests/testthat/test-validation.R` | `validate()` orchestrator, rule registry |
 | `tests/testthat/test-validation-rules-*.R` | Per-domain rule tests (42 rules; 34 skip-wrapped stubs for unmigrated rules) |
 | `tests/testthat/test-calc-api.R` | `calculate_department_data()` integration: structure, counts, table presence |
