@@ -220,7 +220,7 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(
   if (nrow(r) == 0) {
     boot_cis <- na_boot[0, ]
   } else {
-    boot_cis <- purrr::map_dfr(seq_len(nrow(r)), function(i) {
+    boot_cis <- purrr::map(seq_len(nrow(r)), function(i) {
       if (r$drop_quartiles[i]) return(na_boot)
       d <- dept_data
       if (!is.null(group_cols) && all(group_cols %in% names(d))) {
@@ -230,7 +230,7 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(
       if (nrow(d) < 2) return(na_boot)
       bootstrap_quantile_ci(d$n, d$inf_with_pathogen,
                             type = "poisson", multiplier = 100)
-    })
+    }) |> purrr::list_rbind()
   }
 
   r |> dplyr::mutate(
@@ -457,7 +457,7 @@ get_resistance_test_rate_with_department_quartiles <- function(
   if (nrow(rate) == 0) {
     boot_cis <- na_boot[0, ]
   } else {
-    boot_cis <- purrr::map_dfr(seq_len(nrow(rate)), function(i) {
+    boot_cis <- purrr::map(seq_len(nrow(rate)), function(i) {
       if (rate$drop_quartiles[i]) return(na_boot)
       d <- dplyr::ungroup(deps)
       if (!is.null(group_cols) && all(group_cols %in% names(d))) {
@@ -469,7 +469,7 @@ get_resistance_test_rate_with_department_quartiles <- function(
       if (nrow(d) < 2) return(na_boot)
       bootstrap_quantile_ci(d$tested, d$total,
                             type = "binomial", multiplier = 100)
-    })
+    }) |> purrr::list_rbind()
   }
 
   rate |>
@@ -640,7 +640,7 @@ get_resistance_rate_with_department_quartiles <- function(
   if (nrow(rate) == 0) {
     boot_cis <- na_boot[0, ]
   } else {
-    boot_cis <- purrr::map_dfr(seq_len(nrow(rate)), function(i) {
+    boot_cis <- purrr::map(seq_len(nrow(rate)), function(i) {
       if (rate$drop_quartiles[i]) return(na_boot)
       d <- dplyr::ungroup(deps)
       if (!is.null(group_cols) && all(group_cols %in% names(d))) {
@@ -652,7 +652,7 @@ get_resistance_rate_with_department_quartiles <- function(
       if (nrow(d) < 2) return(na_boot)
       bootstrap_quantile_ci(d$inf_rs, d$inf_w_ia,
                             type = "binomial", multiplier = 100)
-    })
+    }) |> purrr::list_rbind()
   }
 
   rate |>
@@ -752,7 +752,7 @@ get_organism_resistance_rate_with_department_quartiles <- function(
   if (nrow(rate) == 0) {
     boot_cis <- na_boot[0, ]
   } else {
-    boot_cis <- purrr::map_dfr(seq_len(nrow(rate)), function(i) {
+    boot_cis <- purrr::map(seq_len(nrow(rate)), function(i) {
       if (rate$drop_quartiles[i]) return(na_boot)
       d <- dplyr::ungroup(deps)
       if (!is.null(group_cols) && all(group_cols %in% names(d))) {
@@ -762,7 +762,7 @@ get_organism_resistance_rate_with_department_quartiles <- function(
       if (nrow(d) < 2) return(na_boot)
       bootstrap_quantile_ci(d$ia_rs, d$ia_tst_tot,
                             type = "binomial", multiplier = 100)
-    })
+    }) |> purrr::list_rbind()
   }
 
   rate |>
