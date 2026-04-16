@@ -81,13 +81,13 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
     patients <- patients |>
       tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
       dplyr::left_join(
-        metadata$users |>
+        metadata$.users_internal_map |>
           dplyr::select("user_key", "username"),
         dplyr::join_by("createdBy" == "username")) |>
       dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
       tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
       dplyr::left_join(
-        metadata$users |>
+        metadata$.users_internal_map |>
           dplyr::select("user_key", "username"),
         dplyr::join_by("updatedBy" == "username")) |>
       dplyr::mutate(updatedBy = .data$user_key, .keep = "unused")
@@ -96,10 +96,17 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
      "attributes_storedBy" %in% names(patients))
     patients <- patients |>
       dplyr::left_join(
-        metadata$users |>
+        metadata$.users_internal_map |>
           dplyr::select("user_key", "username"),
         dplyr::join_by("attributes_storedBy" == "username")) |>
       dplyr::mutate(attributes_storedBy = .data$user_key, .keep = "unused")
+  # `metadata$users` → `metadata$.users_internal_map` on every lookup above.
+  # `metadata$users` carries the public three-mode shape (0×0 / 1-col
+  # `user_key` / full) declared by `users_cols`; pseudo mode intentionally
+  # drops `username`, so FK substitution here must read the internal map
+  # carrying `user_key + username + user` regardless of the public mode.
+  # See `R/schema-orgunits.R::users_cols` and
+  # `R/dhis2-users.R::read_metadata_users()`.
 
   if(!dataset_options$include_test_data ||
      length(dataset_options$country_filter) > 0 ||

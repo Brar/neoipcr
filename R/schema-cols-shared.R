@@ -64,6 +64,20 @@ col_wb_class_key   <- schema_col(
   \(opts) opts$include_world_bank_class != "no"
 )
 
+# ---- User key -------------------------------------------------------------
+#
+# Users sit alongside the hierarchy-metadata entities. `user_key` is the
+# public pseudonymous key; the username→user_key lookup needed by fact
+# readers (for `createdBy` / `updatedBy` / `storedBy` / `completedBy`
+# substitution) is carried by the orchestrator-internal `.users_internal_map`
+# so the public `metadata$users` can honour the strict `0 → 1 → N`
+# progression without exposing `username` in pseudo mode.
+
+col_user_key       <- schema_col(
+  "user_key",             integer(),
+  \(opts) opts$include_user != "no"
+)
+
 # ---- isTest flag ----------------------------------------------------------
 #
 # Present when the caller asked for test departments alongside real ones

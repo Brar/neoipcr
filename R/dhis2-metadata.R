@@ -131,10 +131,23 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
   # URLs) can consume it, and stripped at the `import_dhis2()` exit
   # just before the final dataset is assembled.
 
-  if (!("users" %in% names(metadata)))
-    metadata$users <- read_user_info_table(
-      user_info,
-      dataset_options$include_user)
+  # Users are read via one of two paths depending on caller authorities:
+  # the full metadata endpoint (earlier in `read_metadata_reponse()`) or
+  # the fallback `/me` single-row path below. Either way, the reader
+  # returns `list(public, internal_map)` — the public tibble matches
+  # `users_cols`, the internal map carries `user_key + username + user`
+  # for fact-reader FK substitution. `.users_internal_map` is threaded
+  # through the orchestrator and stripped at `import_dhis2()` exit.
+  if (!is.list(metadata$.users_result)) {
+    metadata$.users_result <- read_user_info_table(
+      user_info, dataset_options)
+  }
+
+  metadata$users                <- metadata$.users_result$public
+  metadata$.users_internal_map  <- metadata$.users_result$internal_map
+  metadata$.users_result        <- NULL
+
+  assert_schema(metadata$users, users_cols, dataset_options)
 
   if(dataset_options$include_test_data)
     metadata$departments <- metadata$departments |>
@@ -340,9 +353,11 @@ read_metadata <- function(metadata, dataset_options)
   testUnitIds <- read_metadata_test_unit_ids(
     metadata, dataset_options$include_test_data)
 
-  users <- read_metadata_users(
-    metadata,
-    dataset_options$include_user)
+  # `read_metadata_users()` now returns `list(public, internal_map)`.
+  # Under `include_user = "no"` or when the response lacks a `users`
+  # payload, `internal_map` is NULL and the caller falls back to
+  # `read_user_info_table()` in `read_metadata_reponses()`.
+  users_result <- read_metadata_users(metadata, dataset_options)
 
   trials <- read_metadata_trials(
     metadata,
@@ -384,8 +399,15 @@ read_metadata <- function(metadata, dataset_options)
     surveillanceResults = surveillanceResults
   )
 
-  if(!is.null(users))
-    ret <- c(ret, list(users = users))
+  # Thread users through only when the metadata endpoint actually
+  # supplied a payload (`internal_map != NULL`). Otherwise leave the
+  # orchestrator's fallback path (`read_user_info_table`) to fill in
+  # from the `/me` response. `.users_result` carries the whole
+  # `list(public, internal_map)` up to `read_metadata_reponses()`
+  # where it is unpacked into `metadata$users` and
+  # `metadata$.users_internal_map`.
+  if (!is.null(users_result$internal_map))
+    ret <- c(ret, list(.users_result = users_result))
   if(!is.null(trials))
     ret <- c(ret, list(trials = trials))
   # `world_bank_classes` is always a tibble (never NULL) — the three-mode

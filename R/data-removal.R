@@ -124,11 +124,38 @@ apply_data_removal <- function(x, dataset_options)
         dplyr::select(!tidyselect::any_of("programStage"))
   }
 
-  if(!("users" %in% dataset_options$include_dhis2_ids))
-  {
-    if(!is.null(x$metadata$users))
-      x$metadata$users <- x$metadata$users |>
-        dplyr::select(!tidyselect::any_of("user"))
+  # `include_user` / `include_dhis2_ids == "users"` — tibble shape is now
+  # reader-owned via `R/schema-orgunits.R::users_cols`. The `user` column
+  # is gated on `"users" %in% include_dhis2_ids` at the schema level, and
+  # the rest of the three-mode shape is driven by `include_user`. The
+  # legacy scrub here is redundant and removed.
+
+  # Metadata tibbles are curated by the NeoIPC team, not by partner-site
+  # data entry, so they must never carry per-row author/timestamp
+  # companion columns. Assert loudly in the guardian so an accidental
+  # reader regression that leaks these columns surfaces here. When this
+  # function is renamed to `assert_data_protection()` in Phase C the
+  # assertion stays with it.
+  metadata_companion_cols <- c(
+    "createdBy", "updatedBy", "createdAt", "updatedAt")
+  metadata_tables <- c(
+    "worldBankClasses", "countries", "hospitals",
+    "departments", "users", "eventTypes")
+  for (tbl in metadata_tables) {
+    t <- x$metadata[[tbl]]
+    if (!is.null(t)) {
+      leaked <- intersect(metadata_companion_cols, names(t))
+      if (length(leaked) > 0L)
+        rlang::abort(c(
+          sprintf(
+            paste0("Metadata tibble `%s` carries companion column(s) ",
+                   "that are reserved for partner-site-entered entities:"),
+            tbl),
+          "x" = paste(leaked, collapse = ", "),
+          "i" = paste0("Metadata entities are curated by NeoIPC, not ",
+                       "partner sites. Drop these columns from the reader.")
+        ))
+    }
   }
 
   if(!("id" %in% dataset_options$patient_columns))

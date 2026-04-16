@@ -487,11 +487,32 @@ make_test_metadata_event_types <- function() {
     name           = c("Admission", "Surveillance End", "BSI", "NEC", "HAP", "SSI", "Surgery"))
 }
 
-make_test_metadata_users <- function(n = 2) {
-  tibble::tibble(
-    user_key = seq_len(n),
-    username = paste0("user", seq_len(n)),
-    user     = paste0("USER_", seq_len(n)))
+make_test_metadata_users <- function(
+    n = 2,
+    include_user      = "full",
+    include_dhis2_ids = "users") {
+  schema <- neoipcr:::compile_schema(
+    neoipcr:::users_cols,
+    dhis2_dataset_options(
+      include_user      = include_user,
+      include_dhis2_ids = include_dhis2_ids))
+  if (ncol(schema) == 0L) return(schema)
+
+  # Deterministic values across modes — tests that need to cross-check
+  # user_key / username / user can rely on the same formula.
+  keys <- seq_len(n)
+  full <- tibble::tibble(
+    user_key  = keys,
+    user      = paste0("USER_", keys),
+    username  = paste0("user", keys),
+    firstName = paste0("First", keys),
+    surname   = paste0("Surname", keys),
+    email     = paste0("user", keys, "@example.org"),
+    lastLogin = as.POSIXct("2024-01-01", tz = "UTC") + keys,
+    created   = as.POSIXct("2023-01-01", tz = "UTC") + keys)
+
+  full |>
+    dplyr::select(tidyselect::all_of(names(schema)))
 }
 
 # ---------------------------------------------------------------------------

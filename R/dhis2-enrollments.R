@@ -94,13 +94,13 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
     enrollments <- enrollments |>
       tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
       dplyr::left_join(
-        metadata$users |>
+        metadata$.users_internal_map |>
           dplyr::select("user_key", "username"),
         dplyr::join_by("createdBy" == "username")) |>
       dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
       tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
       dplyr::left_join(
-        metadata$users |>
+        metadata$.users_internal_map |>
           dplyr::select("user_key", "username"),
         dplyr::join_by("updatedBy" == "username")) |>
       dplyr::mutate(updatedBy = .data$user_key, .keep = "unused")
@@ -108,7 +108,7 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
     if("completedBy" %in% names(enrollments))
       enrollments <- enrollments |>
         dplyr::left_join(
-          metadata$users |>
+          metadata$.users_internal_map |>
             dplyr::select("user_key", "username"),
           dplyr::join_by("completedBy" == "username")) |>
         dplyr::mutate(completedBy = .data$user_key, .keep = "unused")
@@ -116,7 +116,7 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
     if("storedBy" %in% names(enrollments))
       enrollments <- enrollments |>
         dplyr::left_join(
-          metadata$users |>
+          metadata$.users_internal_map |>
             dplyr::select("user_key", "username"),
           dplyr::join_by("storedBy" == "username")) |>
         dplyr::mutate(storedBy = .data$user_key, .keep = "unused")

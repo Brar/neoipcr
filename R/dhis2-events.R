@@ -140,12 +140,12 @@ read_event_details <- function(events, processed_events, metadata, dataset_optio
       tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
       tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
       dplyr::left_join(
-        metadata$users |>
+        metadata$.users_internal_map |>
           dplyr::select("user_key", "username"),
         dplyr::join_by("createdBy" == "username")) |>
       dplyr::mutate(createdBy = .data$user_key, .keep = "unused") |>
       dplyr::left_join(
-        metadata$users |>
+        metadata$.users_internal_map |>
           dplyr::select("user_key", "username"),
         dplyr::join_by("updatedBy" == "username")) |>
       dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
@@ -154,7 +154,7 @@ read_event_details <- function(events, processed_events, metadata, dataset_optio
     if("storedBy" %in% names(events))
       events <- events |>
         dplyr::left_join(
-          metadata$users |>
+          metadata$.users_internal_map |>
             dplyr::select("user_key", "username"),
           dplyr::join_by("storedBy" == "username")) |>
         dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
@@ -201,7 +201,7 @@ read_event_notes <- function(events, processed_events, metadata, dataset_options
     events <- events |>
       tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
       dplyr::left_join(
-        metadata$users |>
+        metadata$.users_internal_map |>
           dplyr::select("user", "user_key"),
         dplyr::join_by("createdBy" == "user")) |>
       dplyr::mutate(createdBy = .data$user_key, .keep = "unused")
@@ -209,7 +209,7 @@ read_event_notes <- function(events, processed_events, metadata, dataset_options
     if("storedBy" %in% names(events))
       events <- events |>
         dplyr::left_join(
-          metadata$users |>
+          metadata$.users_internal_map |>
             dplyr::select("username", "user_key"),
           dplyr::join_by("storedBy" == "username")) |>
         dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
@@ -240,7 +240,7 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
     events <- events |>
       tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
       dplyr::left_join(
-        metadata$users |>
+        metadata$.users_internal_map |>
           dplyr::select("username", "user_key"),
         dplyr::join_by("createdBy" == "username")) |>
       dplyr::mutate(

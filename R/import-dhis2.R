@@ -209,6 +209,7 @@ import_dhis2 <- function(
   metadata$.countries_internal_map <- NULL
   metadata$.hospitals_internal_map <- NULL
   metadata$.wb_country_map         <- NULL
+  metadata$.users_internal_map     <- NULL
   class(metadata) <- c("neoipcr_metadata", class(metadata))
 
   r <- structure(

@@ -280,3 +280,74 @@ departments_cols <- with_entity_gate(
 
 get_departments_schema <- function(opts)
   compile_schema(departments_cols, opts)
+
+# ---- Users ----------------------------------------------------------------
+#
+# Users sit outside the org-unit hierarchy but are metadata curated by the
+# NeoIPC team, not by partner-site data entry. No per-attribute companion
+# columns (settled decision in plan.md — "Explicitly out of scope: metadata
+# tibbles"). The public three-mode shape follows the strict `0 → 1 → N`
+# progression:
+#
+#   "no"     — 0×0 (via the entity gate).
+#   "pseudo" — `user_key` only. Downstream fact readers substitute
+#              `createdBy` / `updatedBy` / etc. via the
+#              orchestrator-internal `.users_internal_map` rather than
+#              through `metadata$users`, so the pseudo shape can stay
+#              strictly single-column without breaking the FK-resolution
+#              path.
+#   "full"   — `user_key`, `user` (raw DHIS2 id — gated on
+#              `"users" %in% include_dhis2_ids`), `username`, `firstName`,
+#              `surname`, `email`, `lastLogin`, `created`.
+#
+# Fallback path (`read_user_info_table`, fires when the caller lacks
+# `F_USER_VIEW` / `F_METADATA_EXPORT` / `ALL`): produces the same public
+# shape, populated with only the calling user's row. The reader must emit
+# a schema-conformant tibble in both paths — tail `assert_schema()`
+# enforces it at the orchestrator boundary.
+
+users_cols <- with_entity_gate(
+  list(
+    col_user_key,
+    schema_col(
+      "user", character(),
+      # `user` is the raw DHIS2 id, gated by BOTH the containing-entity
+      # `include_user == "full"` mode AND the `"users" %in%
+      # include_dhis2_ids` opt-in. The double gate keeps pseudo mode
+      # strictly single-column even when `include_dhis2_ids` includes
+      # "users" (otherwise pseudo would leak the DHIS2 id alongside
+      # `user_key`, violating the `0 → 1 → N` progression).
+      include_when = \(opts)
+        opts$include_user == "full" &&
+        "users" %in% opts$include_dhis2_ids
+    ),
+    schema_col(
+      "username", character(),
+      include_when = \(opts) opts$include_user == "full"
+    ),
+    schema_col(
+      "firstName", character(),
+      include_when = \(opts) opts$include_user == "full"
+    ),
+    schema_col(
+      "surname", character(),
+      include_when = \(opts) opts$include_user == "full"
+    ),
+    schema_col(
+      "email", character(),
+      include_when = \(opts) opts$include_user == "full"
+    ),
+    schema_col(
+      "lastLogin", as.POSIXct(character()),
+      include_when = \(opts) opts$include_user == "full"
+    ),
+    schema_col(
+      "created", as.POSIXct(character()),
+      include_when = \(opts) opts$include_user == "full"
+    )
+  ),
+  gate = \(opts) opts$include_user != "no"
+)
+
+get_users_schema <- function(opts)
+  compile_schema(users_cols, opts)

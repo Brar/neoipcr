@@ -802,3 +802,128 @@ test_that("finalize_to_schema silently drops schema-declared-but-gated-out cols 
   expect_identical(names(out), c("department_key", "hospital_key"))
 })
 
+# ---- Users ----------------------------------------------------------------
+#
+# Users is a metadata tibble curated by the NeoIPC team, not by partner-site
+# data entry. The three-mode contract applies identically to the hierarchy
+# metadata entities: 0×0 under `"no"`, single `user_key` column under
+# `"pseudo"`, full schema under `"full"`. The username → user_key FK
+# lookup used by fact readers goes through `.users_internal_map`, not
+# through `metadata$users` — so pseudo mode can stay strictly 1-col
+# without breaking the FK resolution path.
+
+test_that("users_cols: `no` mode returns 0x0 via the entity gate", {
+  opts <- dhis2_dataset_options(include_user = "no")
+  schema <- neoipcr:::compile_schema(neoipcr:::users_cols, opts)
+  expect_s3_class(schema, "tbl_df")
+  expect_equal(ncol(schema), 0L)
+  expect_equal(nrow(schema), 0L)
+})
+
+test_that("users_cols: `pseudo` mode is strictly user_key only", {
+  opts <- dhis2_dataset_options(include_user = "pseudo")
+  schema <- neoipcr:::compile_schema(neoipcr:::users_cols, opts)
+  expect_identical(names(schema), "user_key")
+  expect_type(schema$user_key, "integer")
+})
+
+test_that("users_cols: `pseudo` mode stays 1-col even with users in include_dhis2_ids", {
+  # The `user` column is only exposed under `"full"` + `"users" %in%
+  # include_dhis2_ids`. Under `"pseudo"`, the DHIS2 id is considered
+  # part of the "full" detail set and is gated out along with
+  # username / firstName / etc. This matches the strict `0 → 1 → N`
+  # progression: pseudo is single-column regardless of other gates.
+  opts <- dhis2_dataset_options(
+    include_user      = "pseudo",
+    include_dhis2_ids = "users")
+  schema <- neoipcr:::compile_schema(neoipcr:::users_cols, opts)
+  expect_identical(names(schema), "user_key")
+})
+
+test_that("users_cols: `full` mode exposes all columns, gates `user` on include_dhis2_ids", {
+  # Without "users" in include_dhis2_ids, the raw DHIS2 id (`user`) is
+  # absent from the public schema even under "full" — the id is a
+  # separate opt-in from the rest of the user profile.
+  opts_no_ids <- dhis2_dataset_options(
+    include_user = "full", include_dhis2_ids = character())
+  schema_no_ids <- neoipcr:::compile_schema(neoipcr:::users_cols, opts_no_ids)
+  expect_identical(
+    names(schema_no_ids),
+    c("user_key", "username", "firstName", "surname", "email",
+      "lastLogin", "created"))
+
+  opts_with_ids <- dhis2_dataset_options(
+    include_user = "full", include_dhis2_ids = "users")
+  schema_with_ids <- neoipcr:::compile_schema(
+    neoipcr:::users_cols, opts_with_ids)
+  expect_identical(
+    names(schema_with_ids),
+    c("user_key", "user", "username", "firstName", "surname", "email",
+      "lastLogin", "created"))
+})
+
+test_that("users_cols: no companion columns (createdBy/updatedBy/createdAt/updatedAt)", {
+  # Metadata tibbles are curated by the NeoIPC team, not partner-site
+  # users. Companion columns are reserved for partner-site-entered
+  # entities. users_cols must never declare any of these atoms.
+  declared <- purrr::map_chr(neoipcr:::users_cols, "name")
+  forbidden <- c("createdBy", "updatedBy", "createdAt", "updatedAt")
+  expect_setequal(intersect(declared, forbidden), character())
+})
+
+test_that("users fixture honors the three-mode contract across include_user x include_dhis2_ids", {
+  for (umode in c("no", "pseudo", "full")) {
+    for (ids in list(character(), "users")) {
+      opts <- dhis2_dataset_options(
+        include_user      = umode,
+        include_dhis2_ids = ids)
+      schema <- neoipcr:::compile_schema(neoipcr:::users_cols, opts)
+      fixture <- make_test_metadata_users(
+        n = 2,
+        include_user      = umode,
+        include_dhis2_ids = ids)
+      expect_schema_matches(fixture, schema)
+    }
+  }
+})
+
+# ---- Metadata companion-column assertion (apply_data_removal) -------------
+#
+# The phase-b-users acceptance criterion asks for the assertion to land
+# in apply_data_removal now, so it's picked up when the function is
+# renamed to assert_data_protection() in Phase C. Covered by tests here
+# rather than test-data-removal because the invariant is tightly
+# coupled to the metadata schema contract.
+
+test_that("apply_data_removal errors loudly when metadata carries companion columns", {
+  # A metadata-reader regression that accidentally emits `createdBy` /
+  # `updatedBy` / `createdAt` / `updatedAt` on a curated metadata
+  # tibble must be loud — these columns are reserved for
+  # partner-site-entered entities and have no meaning on NeoIPC-
+  # curated metadata.
+  ds <- make_test_ds(
+    metadata = list(
+      users       = tibble::tibble(user_key = 1L, createdBy = "rogue"),
+      departments = tibble::tibble(department_key = integer())))
+
+  expect_error(
+    neoipcr:::apply_data_removal(ds, dhis2_dataset_options()),
+    "companion column")
+  expect_error(
+    neoipcr:::apply_data_removal(ds, dhis2_dataset_options()),
+    "createdBy")
+  expect_error(
+    neoipcr:::apply_data_removal(ds, dhis2_dataset_options()),
+    "`users`")
+})
+
+test_that("apply_data_removal succeeds when metadata tibbles carry no companion columns", {
+  ds <- make_test_ds(
+    metadata = list(
+      users       = tibble::tibble(user_key = 1L),
+      departments = tibble::tibble(department_key = integer())))
+
+  # Should not throw the companion-column error.
+  expect_no_error(
+    neoipcr:::apply_data_removal(ds, dhis2_dataset_options()))
+})
