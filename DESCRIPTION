@@ -68,6 +68,7 @@ Collate:
     'neoipcr-package.R'
     'pathogens.R'
     'scales.R'
+    'schema-patients.R'
     'types-check.R'
     'validation-rules-completeness.R'
     'validation-rules-dates.R'

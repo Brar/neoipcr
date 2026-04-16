@@ -1,16 +1,14 @@
 apply_data_removal <- function(x, dataset_options)
 {
-  if(!("id" %in% dataset_options$patient_columns))
-  {
-    x$patients <- x$patients |>
-      dplyr::select(!tidyselect::any_of("patient_id"))
-  }
-
-  if(!("patients" %in% dataset_options$include_dhis2_ids))
-  {
-    x$patients <- x$patients |>
-      dplyr::select(!tidyselect::any_of("trackedEntity"))
-  }
+  # `include_patient` / `patient_columns` / `"patients" %in%
+  # include_dhis2_ids` — tibble shape is now reader-owned via
+  # `R/schema-patients.R::patients_cols`. Patient-attribute columns
+  # (`patient_id`, `sex`, ...), their companion columns, the entity
+  # flags (`inactive`, `potentialDuplicate`), and the
+  # `trackedEntity` id are all gated at the schema level. Legacy
+  # scrubs for `patient_id` (via `"id" %in% patient_columns`) and
+  # `trackedEntity` (via `"patients" %in% include_dhis2_ids`) are
+  # redundant and removed.
 
   if(!("enrollments" %in% dataset_options$include_dhis2_ids))
   {
@@ -157,10 +155,6 @@ apply_data_removal <- function(x, dataset_options)
         ))
     }
   }
-
-  if(!("id" %in% dataset_options$patient_columns))
-    x$patients <- x$patients |>
-      dplyr::select(!tidyselect::any_of("neoipc_patient_id"))
 
   return(x)
 }

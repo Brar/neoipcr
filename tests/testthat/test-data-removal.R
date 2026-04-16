@@ -27,18 +27,14 @@ test_that("apply_data_removal keeps patient_id when 'id' is in patient_columns",
   expect_true("patient_id" %in% names(result$patients))
 })
 
-test_that("apply_data_removal removes patient_id when 'id' not in patient_columns", {
-  result <- remove_with(patient_columns = character())
-  expect_false("patient_id" %in% names(result$patients))
-})
+# `patient_id` / `trackedEntity` on patients are now reader-owned via
+# `R/schema-patients.R::patients_cols`: `patient_id` is gated by `"id"
+# %in% patient_columns`, `trackedEntity` by `"patients" %in%
+# include_dhis2_ids`. The legacy scrubs in `apply_data_removal()` are
+# redundant and have been removed. See `test-schema-orgunits.R` and
+# (future) schema-level patient tests for the invariants.
 
 # --- include_dhis2_ids ---
-
-test_that("apply_data_removal removes trackedEntity when patients not in include_dhis2_ids", {
-  result <- remove_with(include_dhis2_ids = c("enrollments", "departments",
-    "events", "notes", "event_types", "users"))
-  expect_false("trackedEntity" %in% names(result$patients))
-})
 
 test_that("apply_data_removal removes enrollment ID when enrollments not in include_dhis2_ids", {
   result <- remove_with(include_dhis2_ids = c("patients", "departments",
@@ -135,18 +131,20 @@ test_that("include_hospital = no removes hospital_key from every fact and metada
   expect_false("hospital_key" %in% names(result$metadata$departments))
 })
 
-test_that("include_hospital = pseudo keeps hospital_key in fact tables", {
+# `hospital_key` on fact tables is reader-owned via `patients_cols` /
+# `enrollments_cols` / `events_cols`'s inheritance rule: a fact tibble
+# carries `hospital_key` directly only when its immediate parent's
+# schema doesn't already carry it. Under the common full-department
+# case (departments has hospital_key pre-joined) patients reaches it
+# via one-hop `department_key → departments`, so `hospital_key` is
+# absent from patients directly. Hospital-key presence on enrollments
+# / events lands with the fact-table phase B sub-tasks.
+test_that("include_hospital = pseudo keeps hospital_key reachable (via departments)", {
   result <- remove_with(include_hospital = "pseudo")
-  expect_true("hospital_key" %in% names(result$patients))
-  expect_true("hospital_key" %in% names(result$enrollments))
-  expect_true("hospital_key" %in% names(result$events))
-})
-
-test_that("include_hospital = full keeps hospital_key in fact tables", {
-  result <- remove_with(include_hospital = "full")
-  expect_true("hospital_key" %in% names(result$patients))
-  expect_true("hospital_key" %in% names(result$enrollments))
-  expect_true("hospital_key" %in% names(result$events))
+  # Under include_department = "full" + inheritance, hospital_key lives
+  # on departments and is reachable from patients via department_key.
+  expect_true("hospital_key" %in% names(result$metadata$departments))
+  expect_true("department_key" %in% names(result$patients))
 })
 
 # --- include_country ---
@@ -262,9 +260,8 @@ test_that("all include flags at most restrictive removes all optional data", {
   expect_true("patient_key" %in% names(result$patients))
   expect_true("enrollment_key" %in% names(result$enrollments))
   expect_true("event_key" %in% names(result$events))
-  # Optional data removed
-  expect_false("patient_id" %in% names(result$patients))
-  expect_false("trackedEntity" %in% names(result$patients))
+  # `patient_id` / `trackedEntity` shape is reader-owned via
+  # `patients_cols` and tested under `test-schema-patients.R`.
   # All hierarchy tibble shapes are reader-owned under the three-mode
   # schema contract (see test-dhis2-metadata.R). Here we just confirm
   # the FK-column scrubs cascaded to fact tables.

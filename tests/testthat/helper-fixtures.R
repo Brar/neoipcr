@@ -94,21 +94,87 @@ read_test_metadata <- function(
 # Each produces a tibble with correct column names, types, and S3 class.
 # `n` controls row count; keys are 1:n.  `...` overrides any column.
 
-make_test_patients <- function(n = 3, ...) {
-  d <- list(
-    patient_key        = seq_len(n),
-    trackedEntity      = paste0("TE_", seq_len(n)),
-    patient_id         = paste0("PAT_", seq_len(n)),
-    sex                = factor(rep("M", n)),
-    birth_weight       = rep(1500L, n),
-    gest_age           = rep("30+0", n),
+make_test_patients <- function(
+    n                     = 3,
+    include_patient       = "full",
+    patient_columns       = c("id", "sex", "birth_weight", "gest_age"),
+    include_dhis2_ids     = "patients",
+    include_user          = "no",
+    include_timestamps    = FALSE,
+    include_test_data     = FALSE,
+    include_deleted       = FALSE,
+    include_department    = "pseudo",
+    include_hospital      = "pseudo",
+    include_country       = "pseudo",
+    include_world_bank_class = "pseudo",
+    ...) {
+  opts <- dhis2_dataset_options(
+    include_patient          = include_patient,
+    patient_columns          = patient_columns,
+    include_dhis2_ids        = include_dhis2_ids,
+    include_user             = include_user,
+    include_timestamps       = include_timestamps,
+    include_test_data        = include_test_data,
+    include_deleted          = include_deleted,
+    include_department       = include_department,
+    include_hospital         = include_hospital,
+    include_country          = include_country,
+    include_world_bank_class = include_world_bank_class)
+  schema <- neoipcr:::compile_schema(neoipcr:::patients_cols, opts)
+  if (ncol(schema) == 0L || n == 0L)
+    return(structure(schema, class = c("neoipcr_pat", class(schema))))
+
+  # Deterministic per-patient values for any column that might be in
+  # the schema. `compile_schema` subset + factor coercion below align
+  # whatever set is actually declared with the declared column types.
+  keys <- seq_len(n)
+  full <- list(
+    patient_key          = keys,
+    trackedEntity        = paste0("TE_", keys),
+    patient_id           = paste0("PAT_", keys),
+    sex                  = factor(rep("M", n), levels = c("F", "M", "U")),
+    birth_weight         = rep(1500L, n),
+    gest_age             = rep("30+0", n),
     total_gestation_days = rep(210L, n),
-    department_key     = seq_len(n),
-    hospital_key       = seq_len(n),
-    country_key        = seq_len(n),
-    world_bank_class_key = seq_len(n))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
+    delivery_mode        = factor(rep("1", n), levels = c("1", "2", "3")),
+    siblings             = rep(0L, n),
+    inactive             = rep(FALSE, n),
+    potentialDuplicate   = rep(FALSE, n),
+    createdBy            = rep(1L, n),
+    updatedBy            = rep(1L, n),
+    createdAt            = as.POSIXct("2024-01-01", tz = "UTC") + keys,
+    createdAtClient      = as.POSIXct("2024-01-01", tz = "UTC") + keys,
+    updatedAt            = as.POSIXct("2024-01-02", tz = "UTC") + keys,
+    updatedAtClient      = as.POSIXct("2024-01-02", tz = "UTC") + keys,
+    deleted              = rep(FALSE, n),
+    department_key       = keys,
+    hospital_key         = keys,
+    country_key          = keys,
+    world_bank_class_key = keys)
+
+  # Per-TEA companion columns — exist only when the corresponding base
+  # attribute AND the relevant include_user/include_timestamps gates
+  # are open. Populate them for every attribute we know about; the
+  # schema's include_when predicates drop whatever isn't asked for.
+  trackable_attrs <- c(
+    "patient_id", "sex", "birth_weight", "gest_age",
+    "total_gestation_days", "delivery_mode", "siblings")
+  for (attr in trackable_attrs) {
+    full[[paste0(attr, "_storedBy")]]  <- rep(1L, n)
+    full[[paste0(attr, "_createdAt")]] <- as.POSIXct("2024-01-01", tz = "UTC") + keys
+    full[[paste0(attr, "_updatedAt")]] <- as.POSIXct("2024-01-02", tz = "UTC") + keys
+  }
+
+  # Apply caller overrides, then subset to the schema's declared
+  # columns in declared order. `...` lets tests pin specific values.
+  full <- utils::modifyList(full, list(...))
+  d <- tibble::as_tibble(full[names(schema)])
+  # Re-apply factor levels declared by the schema so the tibble exactly
+  # matches `assert_schema`'s expectations.
+  for (col in names(schema)) {
+    if (is.factor(schema[[col]]) && !is.factor(d[[col]]))
+      d[[col]] <- factor(d[[col]], levels = levels(schema[[col]]))
+  }
   structure(d, class = c("neoipcr_pat", class(d)))
 }
 

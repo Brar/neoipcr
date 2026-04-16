@@ -51,6 +51,16 @@ get_trackedEntities_request <- function(
 
 read_patients <- function(trackedEntities, metadata, dataset_options)
 {
+  opts <- dataset_options
+
+  # Entity gate short-circuit: under `include_patient = "no"` the
+  # public patients tibble is 0×0. `assert_schema` + `finalize_to_schema`
+  # short-circuit too, but returning early here avoids running the
+  # whole unnest / join / pivot pipeline on a dataset the caller has
+  # explicitly opted out of.
+  if (opts$include_patient == "no")
+    return(compile_schema(patients_cols, opts))
+
   patients <- trackedEntities |>
     tidyr::unnest_longer("attributes") |>
     tidyr::unnest_wider("attributes", names_sep = "_") |>
@@ -66,9 +76,32 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
       dplyr::join_by("optionSet" == "optionSet_code")) |>
     dplyr::select(!c("attributes_attribute", "optionSet"))
 
-  if(!("id" %in% dataset_options$patient_columns) && length(dataset_options$include_invalid_patients) <= 1)
-    patients <- patients |>
-      dplyr::filter(.data$code != "NEOIPC_PATIENT_ID")
+  # Filter attributes to the user-selected subset. Every attribute in
+  # `patient_columns` is a code stem (e.g. "sex", "birth_weight"); the
+  # DHIS2 TEA codes are `NEOIPC_[TEA_]<UPPER>`. The "id" → "patient_id"
+  # mapping is the legacy naming preserved in the schema; everything
+  # else is a 1:1 stem match against the lowercased/stripped code.
+  allowed_codes <- opts$patient_columns
+  if ("id" %in% allowed_codes)
+    allowed_codes <- c(allowed_codes, "patient_id")
+  # `gest_age` pulls its paired `total_gestation_days` — per the schema
+  # note, both TEAs carry the same datum in two shapes (text vs
+  # integer) and stay in sync via DHIS2 program rules.
+  if ("gest_age" %in% allowed_codes)
+    allowed_codes <- c(allowed_codes, "total_gestation_days")
+  # `include_invalid_patients` can be a character vector of patient IDs
+  # (exceptions to the invalid filter in `import_dhis2()`). When it is,
+  # `patient_id` must remain accessible regardless of `patient_columns`
+  # so the downstream filter can match IDs. Preserves pre-schema
+  # behaviour of the patient reader.
+  if (length(opts$include_invalid_patients) > 1)
+    allowed_codes <- c(allowed_codes, "patient_id")
+  # Match against the normalized code (lowercase, NEOIPC_[TEA_]
+  # prefix stripped) — same extraction that will run below.
+  normalized_code <- stringr::str_extract(
+    tolower(patients$code), "^neoipc_(tea_)?(.+)$", group = 2)
+  patients <- patients |>
+    dplyr::filter(normalized_code %in% allowed_codes)
 
   if(dataset_options$include_timestamps)
     patients <- patients |>
@@ -114,28 +147,37 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
     patients <- patients |>
       dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
 
+  # Pre-pivot factor-level pinning on `code`: guarantees one column per
+  # expected TEA stem regardless of whether the input data carried
+  # rows for every attribute. Paired with `pivot_wider(..., names_expand =
+  # TRUE)` below, this closes the pivot-volatility hazard where a
+  # filter-induced absence of one attribute's rows would silently drop
+  # its columns from the pivot output.
+  expected_codes <- c(
+    "patient_id", "sex", "birth_weight", "gest_age",
+    "total_gestation_days", "delivery_mode", "siblings")
+  expected_codes <- intersect(expected_codes, allowed_codes)
+
   patients <- patients |>
     dplyr::mutate(
       attributes_value = convert_value(
         .data$attributes_value, .data$valueType, .data$levels),
-      code = stringr::str_extract(
-        tolower(.data$code), "^neoipc_(tea_)?(.+)$", group = 2),
+      code = factor(
+        stringr::str_extract(
+          tolower(.data$code), "^neoipc_(tea_)?(.+)$", group = 2),
+        levels = expected_codes),
       .keep = "unused"
     ) |>
     tidyr::pivot_wider(
       names_from = "code",
       values_from = tidyselect::starts_with("attributes_"),
       names_glue = "{code}_{.value}",
-      names_vary = "slowest") |>
+      names_vary = "slowest",
+      names_expand = TRUE) |>
     tidyr::unnest_longer(dplyr::ends_with("value"), keep_empty = TRUE) |>
     dplyr::rename_with(
       ~ stringr::str_remove(.x, "_attributes"),
       tidyselect::contains("_attributes_")) |>
-    dplyr::relocate (
-      tidyselect::any_of(
-        c("patient_id_value","sex_value","siblings_value","gest_age_value",
-          "birth_weight_value")),
-      tidyselect::ends_with("_value"), .after = "trackedEntity") |>
     dplyr::rename_with(
       ~ stringr::str_remove(.x, "_value$"),
       tidyselect::ends_with("_value")) |>
@@ -185,6 +227,15 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
       dataset_options$gestational_age_from,
       dataset_options$gestational_age_to,
       dataset_options$include_ineligible_patients)
+
+  # Narrow to the public schema + loud-assert. `finalize_to_schema`
+  # drops columns that the reader intentionally carries as scratch
+  # (e.g. the raw `orgUnit` id consumed by the departments-join
+  # block above is already `select(!"orgUnit")`-dropped, so no
+  # scratch declaration is needed here).
+  patients <- patients |>
+    finalize_to_schema(patients_cols, opts)
+  assert_schema(patients, patients_cols, opts)
 
   return(patients)
 }
