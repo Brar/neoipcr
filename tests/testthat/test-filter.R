@@ -59,15 +59,15 @@ test_that("filter_surveillance_ends filters by both from and to", {
 
 # --- filter_admissions (internal) ---
 
-test_that("filter_admissions with keep_non_core=TRUE returns all", {
+test_that("filter_admissions with include_ineligible=TRUE returns all", {
   adm <- make_test_admission_data(1:3, dol = c(1L, 119L, 150L))
-  result <- neoipcr:::filter_admissions(adm, keep_non_core_patients = TRUE)
+  result <- neoipcr:::filter_admissions(adm, include_ineligible_patients = TRUE)
   expect_equal(nrow(result), 3L)
 })
 
-test_that("filter_admissions with keep_non_core=FALSE excludes dol >= 120", {
+test_that("filter_admissions with include_ineligible=FALSE excludes dol >= 120", {
   adm <- make_test_admission_data(1:4, dol = c(1L, 119L, 120L, 200L))
-  result <- neoipcr:::filter_admissions(adm, keep_non_core_patients = FALSE)
+  result <- neoipcr:::filter_admissions(adm, include_ineligible_patients = FALSE)
   # dol < 120: keeps dol=1 and dol=119 only
   expect_equal(nrow(result), 2L)
   expect_true(all(result$dol < 120))
@@ -75,11 +75,11 @@ test_that("filter_admissions with keep_non_core=FALSE excludes dol >= 120", {
 
 # --- filter_patients (internal, called on patients tibble directly) ---
 
-test_that("filter_patients with all NULL and keep_non_core=TRUE returns all", {
+test_that("filter_patients with all NULL and include_ineligible=TRUE returns all", {
   patients <- make_test_patients(3,
     birth_weight = c(800L, 1200L, 2500L),
     total_gestation_days = c(175L, 210L, 280L))
-  result <- neoipcr:::filter_patients(patients, keep_non_core_patients = TRUE)
+  result <- neoipcr:::filter_patients(patients, include_ineligible_patients = TRUE)
   expect_equal(nrow(result), 3L)
 })
 
@@ -88,7 +88,7 @@ test_that("filter_patients applies core patient filter by default", {
   patients <- make_test_patients(4,
     birth_weight = c(800L, 1200L, 2500L, 1600L),
     total_gestation_days = c(175L, 210L, 280L, 230L))
-  result <- neoipcr:::filter_patients(patients, keep_non_core_patients = FALSE)
+  result <- neoipcr:::filter_patients(patients, include_ineligible_patients = FALSE)
   # Patient 1: 175<224 → keep; Patient 2: 210<224 → keep
   # Patient 3: 280>=224 AND 2500>=1500 → exclude
   # Patient 4: 230>=224 BUT 1600>=1500 → exclude (neither condition met)
@@ -100,7 +100,7 @@ test_that("filter_patients filters by birth_weight_from", {
     birth_weight = c(800L, 1200L, 2500L),
     total_gestation_days = c(175L, 210L, 252L))
   result <- neoipcr:::filter_patients(patients,
-    birth_weight_from = 1000, keep_non_core_patients = TRUE)
+    birth_weight_from = 1000, include_ineligible_patients = TRUE)
   expect_equal(nrow(result), 2L)
   expect_true(all(result$birth_weight >= 1000))
 })
@@ -110,7 +110,7 @@ test_that("filter_patients filters by birth_weight_to", {
     birth_weight = c(800L, 1200L, 2500L),
     total_gestation_days = c(175L, 210L, 252L))
   result <- neoipcr:::filter_patients(patients,
-    birth_weight_to = 1200, keep_non_core_patients = TRUE)
+    birth_weight_to = 1200, include_ineligible_patients = TRUE)
   expect_equal(nrow(result), 2L)
   expect_true(all(result$birth_weight <= 1200))
 })
@@ -121,7 +121,7 @@ test_that("filter_patients filters by gestational age in weeks", {
     total_gestation_days = c(175L, 224L, 280L))
   # 32 weeks = 224 days
   result <- neoipcr:::filter_patients(patients,
-    gestation_weeks_from = 32, keep_non_core_patients = TRUE)
+    gestational_age_from = 32, include_ineligible_patients = TRUE)
   expect_equal(nrow(result), 2L)
   expect_true(all(result$total_gestation_days >= 224))
 })
@@ -131,8 +131,8 @@ test_that("filter_patients combines birth_weight and gestation filters", {
     birth_weight = c(800L, 1200L, 2500L, 1600L),
     total_gestation_days = c(175L, 210L, 252L, 280L))
   result <- neoipcr:::filter_patients(patients,
-    birth_weight_from = 1000, gestation_weeks_to = 36,
-    keep_non_core_patients = TRUE)
+    birth_weight_from = 1000, gestational_age_to = 36,
+    include_ineligible_patients = TRUE)
   # bw>=1000: excludes patient 1 (800)
   # ga<=252 days (36*7): excludes patient 4 (280)
   # Remaining: patients 2 (1200, 210) and 3 (2500, 252)
@@ -160,34 +160,54 @@ test_that("filter_countries filters by code", {
   expect_equal(as.character(result$code), "C1")
 })
 
-# --- filter_dataset: parameter passing bug ---
+# --- filter_dataset (new signature: takes dhis2_dataset_options) ---
+#
+# Pre phase-c-audit the function took individual args
+# (`birth_weight_from`, `include_ineligible_patients`, …) AND passed the
+# full `neoipcr_ds` to `filter_patients`/`filter_countries` (which
+# expect component tibbles). Both are fixed in C3: the signature takes
+# a `dhis2_dataset_options` object, and the helpers get `x$patients` /
+# `x$metadata$countries` respectively. Tests below cover the happy
+# paths that the old signature either crashed on or failed to exercise.
 
-# filter_dataset passes the full neoipcr_ds to filter_patients (which expects
-# a patients tibble) and filter_countries (which expects a countries tibble).
-# When keep_non_core_patients = FALSE (the default), filter_patients tries
-# dplyr::filter on the neoipcr_ds list, which crashes.
-
-test_that("filter_dataset with keep_non_core=FALSE errors (known bug)", {
+test_that("filter_dataset(opts) with default opts does not crash", {
+  # The old signature crashed here (passing full `x` to
+  # `filter_patients` → `dplyr::filter` on a list). Default opts has
+  # `include_ineligible_patients = FALSE`, which under the old code
+  # was the bug-trigger path.
   ds <- make_populated_test_ds()
-  expect_error(
-    neoipcr:::filter_dataset(ds, keep_non_core_patients = FALSE,
-      remove_orphans = FALSE))
-})
-
-test_that("filter_dataset with birth_weight_from errors (known bug)", {
-  ds <- make_populated_test_ds()
-  expect_error(
-    neoipcr:::filter_dataset(ds, birth_weight_from = 1000,
-      keep_non_core_patients = TRUE, remove_orphans = FALSE))
-})
-
-test_that("filter_dataset with all NULL + keep_non_core=TRUE succeeds", {
-  ds <- make_populated_test_ds()
-  # This path never reaches dplyr::filter on the ds list
-  result <- neoipcr:::filter_dataset(ds,
-    keep_non_core_patients = TRUE, remove_orphans = FALSE)
+  opts <- dhis2_dataset_options()
+  result <- neoipcr:::filter_dataset(ds, opts, remove_orphans = FALSE)
   expect_s3_class(result, "neoipcr_ds")
+})
+
+test_that("filter_dataset(opts) with birth_weight_from narrows patients", {
+  ds <- make_populated_test_ds()
+  # Ensure the fixture has a range we can narrow; make_test_patients
+  # default birth_weight = 1500 for every row, so BW >= 1600 is empty.
+  opts <- dhis2_dataset_options(
+    birth_weight_from            = 1600,
+    include_ineligible_patients  = TRUE)  # don't re-apply core filter
+  result <- neoipcr:::filter_dataset(ds, opts, remove_orphans = FALSE)
+  expect_equal(nrow(result$patients), 0L)
+})
+
+test_that("filter_dataset(opts) with include_ineligible_patients = TRUE keeps all", {
+  ds <- make_populated_test_ds()
+  opts <- dhis2_dataset_options(include_ineligible_patients = TRUE)
+  result <- neoipcr:::filter_dataset(ds, opts, remove_orphans = FALSE)
   expect_equal(nrow(result$patients), nrow(ds$patients))
+})
+
+test_that("filter_dataset(opts) with country_filter narrows countries", {
+  ds <- make_populated_test_ds()
+  # Capture pre-filter country codes to pick one that exists.
+  pre <- as.character(ds$metadata$countries$code)
+  opts <- dhis2_dataset_options(
+    country_filter              = pre[1],
+    include_ineligible_patients = TRUE)
+  result <- neoipcr:::filter_dataset(ds, opts, remove_orphans = FALSE)
+  expect_true(all(as.character(result$metadata$countries$code) == pre[1]))
 })
 
 # --- apply_postfilter (internal) ---

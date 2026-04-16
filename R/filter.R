@@ -1,34 +1,50 @@
-filter_dataset <- function(
-    x,
-    surveillance_end_from = NULL,
-    surveillance_end_to = NULL,
-    birth_weight_from = NULL,
-    birth_weight_to = NULL,
-    gestational_age_from = NULL,
-    gestational_age_to = NULL,
-    countries = NULL,
-    units = NULL,
-    keep_non_core_patients = FALSE,
-    remove_orphans = TRUE)
+#' Apply dataset-level filters anchored on a `dhis2_dataset_options`
+#' object.
+#'
+#' Narrows `x` by the date / range / country filters declared on
+#' `dataset_options` and then optionally runs `apply_postfilter()` to
+#' cascade orphan removal through the hierarchy. The caller typically
+#' uses the same `dataset_options` object that drove `import_dhis2()`;
+#' the filters here re-apply the configuration post-hoc (e.g. on a
+#' narrower birth-weight range than the original import request).
+#'
+#' Before phase-c-audit the function took individual filter parameters
+#' (`birth_weight_from`, `gestational_age_from`, `countries`, `units`,
+#' `keep_non_core_patients`). Pre-alpha: the old signature was removed
+#' outright, no deprecation shim. See
+#' `tasks/neoipcr-schema-arc/phase-c-audit.md` C3.
+#'
+#' @param x A `neoipcr_ds` object.
+#' @param dataset_options A `dhis2_dataset_options` object. Consulted
+#'   for `surveillance_end_from/to`, `birth_weight_from/to`,
+#'   `gestational_age_from/to`, `country_filter`, and
+#'   `include_ineligible_patients`.
+#' @param remove_orphans If `TRUE` (default), also runs
+#'   `apply_postfilter()` so that hierarchy rows with no surviving
+#'   descendants are pruned.
+#' @noRd
+filter_dataset <- function(x, dataset_options, remove_orphans = TRUE)
 {
+  opts <- dataset_options
+
   x$events <- x$events |>
     filter_surveillance_ends(
-      surveillance_end_from,
-      surveillance_end_to)
+      opts$surveillance_end_from,
+      opts$surveillance_end_to)
 
   x$admissionData <- x$admissionData |>
-    filter_admissions(keep_non_core_patients)
+    filter_admissions(opts$include_ineligible_patients)
 
-  x <- x |>
+  x$patients <- x$patients |>
     filter_patients(
-      birth_weight_from,
-      birth_weight_to,
-      gestational_age_from,
-      gestational_age_to,
-      keep_non_core_patients)
+      opts$birth_weight_from,
+      opts$birth_weight_to,
+      opts$gestational_age_from,
+      opts$gestational_age_to,
+      opts$include_ineligible_patients)
 
-  x <- x |>
-    filter_countries(countries)
+  x$metadata$countries <- x$metadata$countries |>
+    filter_countries(opts$country_filter)
 
   if(remove_orphans)
     x <- x |>
@@ -74,9 +90,9 @@ filter_surveillance_ends <- function(
 
 filter_admissions <- function(
     admission_data,
-    keep_non_core_patients = FALSE)
+    include_ineligible_patients = FALSE)
 {
-  if(keep_non_core_patients)
+  if(include_ineligible_patients)
     return(admission_data)
 
   admission_data |>
@@ -87,9 +103,9 @@ filter_patients <- function(
     patients,
     birth_weight_from = NULL,
     birth_weight_to = NULL,
-    gestation_weeks_from = NULL,
-    gestation_weeks_to = NULL,
-    keep_non_core_patients = FALSE)
+    gestational_age_from = NULL,
+    gestational_age_to = NULL,
+    include_ineligible_patients = FALSE)
 {
   if(!is.null(birth_weight_from))
     patients <- patients |>
@@ -97,13 +113,13 @@ filter_patients <- function(
   if(!is.null(birth_weight_to))
     patients <- patients |>
       dplyr::filter(.data$birth_weight <= birth_weight_to)
-  if(!is.null(gestation_weeks_from))
+  if(!is.null(gestational_age_from))
     patients <- patients |>
-      dplyr::filter(.data$total_gestation_days >= (gestation_weeks_from * 7))
-  if(!is.null(gestation_weeks_to))
+      dplyr::filter(.data$total_gestation_days >= (gestational_age_from * 7))
+  if(!is.null(gestational_age_to))
     patients <- patients |>
-      dplyr::filter(.data$total_gestation_days <= (gestation_weeks_to * 7))
-  if(!keep_non_core_patients)
+      dplyr::filter(.data$total_gestation_days <= (gestational_age_to * 7))
+  if(!include_ineligible_patients)
     patients <- patients |>
       dplyr::filter(
         .data$total_gestation_days < 224 | .data$birth_weight < 1500)
@@ -119,17 +135,6 @@ filter_countries <- function(
 
   countries |>
     dplyr::filter(.data$code %in% included_countries)
-}
-
-filter_units <- function(
-    units,
-    included_units)
-{
-  if(is.null(included_units) || length(included_units) < 1)
-    return(units)
-
-  units |>
-    dplyr::filter(.data$code %in% included_units)
 }
 
 apply_postfilter <- function(x)
