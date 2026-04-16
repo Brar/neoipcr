@@ -354,9 +354,10 @@ make_test_metadata_countries <- function(
   out <- tibble::tibble(country_key = seq_len(n))
 
   if (country_mode == "full") {
-    out$code             <- ordered(paste0("C", seq_len(n)))
-    out$displayName      <- ordered(paste0("Country ", seq_len(n)))
-    out$displayShortName <- ordered(paste0("Ctry ", seq_len(n)))
+    out$code               <- ordered(paste0("C", seq_len(n)))
+    out$displayName        <- ordered(paste0("Country ", seq_len(n)))
+    out$displayShortName   <- ordered(paste0("Ctry ", seq_len(n)))
+    out$displayDescription <- ordered(paste0("Description ", seq_len(n)))
   }
 
   if (wb_mode != "no")

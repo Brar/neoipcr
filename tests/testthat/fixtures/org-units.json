@@ -7,13 +7,15 @@
           "id": "P3M2xL6Gtbs",
           "code": "CH",
           "displayName": "Switzerland",
-          "displayShortName": "Switzerland"
+          "displayShortName": "Switzerland",
+          "displayDescription": "Swiss Confederation"
         },
         {
           "id": "TS5pOUJsdoa",
           "code": "DE",
           "displayName": "Germany",
-          "displayShortName": "Germany"
+          "displayShortName": "Germany",
+          "displayDescription": "Federal Republic of Germany"
         }
       ]
     },

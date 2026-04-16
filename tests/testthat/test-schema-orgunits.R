@@ -164,7 +164,10 @@ test_that("col_country_key appears iff include_country != 'no'", {
 })
 
 test_that("country display columns appear only under include_country = 'full'", {
-  for (name in c("code", "displayName", "displayShortName")) {
+  # All four display columns are requested from DHIS2 under `include_country
+  # == "full"` via `organisationUnitGroups:fields` in R/dhis2-metadata.R.
+  for (name in c("code", "displayName", "displayShortName",
+                 "displayDescription")) {
     col <- purrr::detect(
       neoipcr:::countries_cols, \(c) c$name == name)
     expect_false(is.null(col))
@@ -247,26 +250,28 @@ test_that("get_countries_schema is full schema under include_country='full'", {
   schema <- neoipcr:::get_countries_schema(dhis2_dataset_options(
     include_country = "full", include_world_bank_class = "full"))
 
-  expect_equal(ncol(schema), 5L)
+  expect_equal(ncol(schema), 6L)
   expect_identical(
     names(schema),
     c("country_key", "code", "displayName", "displayShortName",
-      "world_bank_class_key"))
+      "displayDescription", "world_bank_class_key"))
   expect_true(is.integer(schema$country_key))
   expect_s3_class(schema$code, "ordered")
   expect_s3_class(schema$displayName, "ordered")
   expect_s3_class(schema$displayShortName, "ordered")
+  expect_s3_class(schema$displayDescription, "ordered")
   expect_true(is.integer(schema$world_bank_class_key))
 })
 
-test_that("get_countries_schema full - wb_no = 4 columns (no WB FK)", {
+test_that("get_countries_schema full - wb_no = 5 columns (no WB FK)", {
   schema <- neoipcr:::get_countries_schema(dhis2_dataset_options(
     include_country = "full", include_world_bank_class = "no"))
 
-  expect_equal(ncol(schema), 4L)
+  expect_equal(ncol(schema), 5L)
   expect_identical(
     names(schema),
-    c("country_key", "code", "displayName", "displayShortName"))
+    c("country_key", "code", "displayName", "displayShortName",
+      "displayDescription"))
 })
 
 test_that("get_countries_schema strict 0 -> 1 -> N column-count progression under wb='no'", {

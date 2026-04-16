@@ -99,6 +99,11 @@ countries_cols <- list(
     levels_source = "data"
   ),
   schema_col(
+    "displayDescription", ordered(),
+    include_when  = \(opts) opts$include_country == "full",
+    levels_source = "data"
+  ),
+  schema_col(
     "world_bank_class_key", integer(),
     include_when = \(opts)
       opts$include_country != "no" &&
