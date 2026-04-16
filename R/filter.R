@@ -141,7 +141,6 @@ apply_postfilter <- function(x)
   patients <- x$patients
   enrollments <- x$enrollments
   events <- x$events
-  eventDetails <- x$eventDetails
   eventNotes <- x$eventNotes
   enrollment_notes <- x$enrollment_notes
   admissionData <- x$admissionData
@@ -221,9 +220,10 @@ apply_postfilter <- function(x)
   events <- events |>
     dplyr::semi_join(enrollments, dplyr::join_by("enrollment_key"))
 
-  if(!is.null(eventDetails))
-    eventDetails <- eventDetails |>
-    dplyr::semi_join(events, dplyr::join_by("event_key"))
+  # (No `eventDetails` semi_join — merged into `events` in
+  # phase-b-event-details; entity-level user / timestamp / deleted /
+  # followup fields now travel on `events` itself and are carried by the
+  # events semi_join above.)
 
   # eventNotes + enrollment_notes are always tibbles under the schema
   # contract — guard on column presence (0×0 under gate means no
@@ -270,7 +270,6 @@ apply_postfilter <- function(x)
   x$patients <- patients
   x$enrollments <- enrollments
   x$events <- events
-  x$eventDetails <- eventDetails
   x$eventNotes <- eventNotes
   x$enrollment_notes <- enrollment_notes
   x$admissionData <- admissionData

@@ -197,19 +197,21 @@ test_that("patients_cols: trackedEntity gated on include_dhis2_ids", {
     neoipcr:::compile_schema(neoipcr:::patients_cols, opts_yes)))
 })
 
-test_that("patients_cols: entity-level createdBy/updatedBy gated on include_user", {
+test_that("patients_cols: entity-level storedBy/createdBy/updatedBy gated on include_user", {
   base <- list(include_patient = "full")
   no_user <- do.call(dhis2_dataset_options, c(base, list(include_user = "no")))
   with_user <- do.call(dhis2_dataset_options,
                        c(base, list(include_user = "full")))
-  expect_false("createdBy" %in% names(
-    neoipcr:::compile_schema(neoipcr:::patients_cols, no_user)))
-  expect_true("createdBy" %in% names(
-    neoipcr:::compile_schema(neoipcr:::patients_cols, with_user)))
-  expect_false("updatedBy" %in% names(
-    neoipcr:::compile_schema(neoipcr:::patients_cols, no_user)))
-  expect_true("updatedBy" %in% names(
-    neoipcr:::compile_schema(neoipcr:::patients_cols, with_user)))
+  # `storedBy` added in phase-b-event-details (latent-drop symmetric
+  # with enrollments + events — TrackedEntity.java carries it at
+  # entity level; previously only per-TEA storedBy was captured).
+  user_cols <- c("storedBy", "createdBy", "updatedBy")
+  for (col in user_cols) {
+    expect_false(col %in% names(
+      neoipcr:::compile_schema(neoipcr:::patients_cols, no_user)), info = col)
+    expect_true(col %in% names(
+      neoipcr:::compile_schema(neoipcr:::patients_cols, with_user)), info = col)
+  }
 })
 
 test_that("patients_cols: entity-level timestamps gated on include_timestamps", {

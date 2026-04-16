@@ -160,7 +160,10 @@ import_dhis2 <- function(
   # read_enrollment_details — not yet implemented
   enrollment_notes <- read_enrollment_notes(
     enrollments_raw, enrollments, metadata, dataset_options)
-  eventDetails <- read_event_details(events_raw, events, metadata, dataset_options)
+  # (Former `read_event_details()` merged into `read_events()` in
+  # phase-b-event-details; the `eventDetails` sidecar tibble no longer
+  # exists — entity-level user / timestamp / deleted / followup fields
+  # now live directly on `events`.)
   eventNotes <- read_event_notes(events_raw, events, metadata, dataset_options)
   surveillanceEndData <- read_event_data(events_raw, events, metadata, dataset_options, "end")
   sepsisData <- read_event_data(events_raw, events, metadata, dataset_options, "bsi")
@@ -190,7 +193,6 @@ import_dhis2 <- function(
   class(patients) <- c("neoipcr_pat", class(patients))
   class(enrollments) <- c("neoipcr_enr", class(enrollments))
   class(events) <- c("neoipcr_evt", class(events))
-  class(eventDetails) <- c("neoipcr_evd", class(eventDetails))
   # eventNotes / enrollment_notes are always tibbles under the schema
   # contract (never NULL — gate → 0×0 instead). Slug `_eln` aligned
   # with the `_evn` precedent pending the class-slug-rename task.
@@ -222,7 +224,6 @@ import_dhis2 <- function(
       enrollments = enrollments,
       enrollment_notes = enrollment_notes,
       events = events,
-      eventDetails = eventDetails,
       eventNotes = eventNotes,
       admissionData = admissionData,
       surveillanceEndData = surveillanceEndData,

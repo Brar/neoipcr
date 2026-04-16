@@ -38,7 +38,13 @@ get_trackedEntities_request <- function(
 
   if(dataset_options$include_user != "no")
   {
-    fields <- paste0(fields,",createdBy[username],updatedBy[username]")
+    # Entity-level `storedBy` added in phase-b-event-details (closing
+    # the latent-drop symmetric with enrollments + events). Previously
+    # only per-attribute `storedBy` was requested; the entity itself
+    # also carries one and it's now in `patients_cols`.
+    fields <- paste0(
+      fields,
+      ",storedBy,createdBy[username],updatedBy[username]")
     attributeFields <- paste0(attributeFields,",storedBy")
   }
 
@@ -123,7 +129,12 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
         metadata$.users_internal_map |>
           dplyr::select("user_key", "username"),
         dplyr::join_by("updatedBy" == "username")) |>
-      dplyr::mutate(updatedBy = .data$user_key, .keep = "unused")
+      dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
+      dplyr::left_join(
+        metadata$.users_internal_map |>
+          dplyr::select("user_key", "username"),
+        dplyr::join_by("storedBy" == "username")) |>
+      dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
 
   if(dataset_options$include_user != "no" &&
      "attributes_storedBy" %in% names(patients))

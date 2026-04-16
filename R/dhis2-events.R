@@ -39,8 +39,18 @@ get_events_request <- function(req_base, dataset_options, programId)
 
   if(dataset_options$include_user != "no")
   {
-    fields <- paste0(fields,",storedBy,createdBy[username],updatedBy[username]")
-    dataValueFields <- paste0(dataValueFields,",createdBy[username]")
+    # `completedBy` is a plain String in DHIS2 (Event.java) — no
+    # `[username]` subselect needed. Added in phase-b-event-details
+    # alongside the entity-level user-field merger from the old
+    # `eventDetails` sidecar.
+    fields <- paste0(
+      fields,
+      ",storedBy,createdBy[username],updatedBy[username],completedBy")
+    # Per-DE companions extended in phase-b-event-details to cover all
+    # five DataValue.java audit fields (was only `createdBy[username]`).
+    dataValueFields <- paste0(
+      dataValueFields,
+      ",storedBy,createdBy[username],updatedBy[username]")
   }
 
   fields <- paste0(fields,",dataValues[", dataValueFields, "]")
@@ -57,10 +67,10 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
 
   # Entity gate short-circuit: under `include_event = "no"` the public
   # events tibble is 0×0. Downstream readers that consume events
-  # (read_event_details, read_event_notes, read_event_data,
-  # read_infectious_agent_findings, read_substance_days) must tolerate
-  # the empty shape. Matches the pattern in read_patients() /
-  # read_enrollments().
+  # (read_event_notes, read_event_data, read_infectious_agent_findings,
+  # read_substance_days) must tolerate the empty shape. Matches the
+  # pattern in read_patients() / read_enrollments(). (read_event_details
+  # was folded into read_events in phase-b-event-details.)
   if (opts$include_event == "no")
     return(compile_schema(events_cols, opts))
 
@@ -157,40 +167,19 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
     events <- events |>
       dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
 
-  # `orgUnit`, `programStage`, `trackedEntity`, `enrollment` are
-  # reader-internal scratch — fetched for the joins / filter above and
-  # either substituted (programStage → event_type_key, trackedEntity
-  # → patient_key, enrollment → enrollment_key) or used only for the
-  # departments lookup (orgUnit). `isTest` is declared on events_cols
-  # and survives the finalize. `event` stays if the id opt-in is set;
-  # the schema gates it. Remaining scratch columns are raw DHIS2 fields
-  # consumed downstream by read_event_details / read_event_notes /
-  # read_event_data — they live on the raw response but not on the
-  # public events tibble.
-  events <- events |>
-    add_key_column("event_key") |>
-    finalize_to_schema(
-      events_cols, opts,
-      scratch = c(
-        "orgUnit", "programStage", "trackedEntity", "enrollment",
-        "dataValues", "followup", "scheduledAt", "completedAt",
-        "createdAt", "createdAtClient", "updatedAt", "updatedAtClient",
-        "createdBy", "updatedBy", "storedBy", "deleted", "notes"))
-
-  assert_schema(events, events_cols, opts)
-
-  events
-}
-
-read_event_details <- function(events, processed_events, metadata, dataset_options)
-{
-  events <- events |>
-    dplyr::inner_join(
-      processed_events |>
-        dplyr::select("event_key", "event"),
-      dplyr::join_by("event"))
-
-  if(dataset_options$include_user != "no") {
+  # Entity-level user-field substitution — folded in from the former
+  # `read_event_details()` ahead of the schema finalize. Each raw field
+  # arrives with a different JSON shape:
+  #   - `storedBy` / `completedBy`: plain String — username directly.
+  #   - `createdBy` / `updatedBy`:   User object from `createdBy[username]`
+  #                                  subselect; the first element of the
+  #                                  hoisted list is the username.
+  # All four get substituted to integer `user_key` via the orchestrator-
+  # internal `.users_internal_map`'s `username` column (different from
+  # notes' `createdBy` join, which uses the UID-bearing `user` column —
+  # see the reader comment in `read_event_notes()` and `docs/dhis2-user-
+  # timestamp-semantics.md` for the DHIS2-source rationale).
+  if (opts$include_user != "no") {
     events <- events |>
       tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
       tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
@@ -203,24 +192,59 @@ read_event_details <- function(events, processed_events, metadata, dataset_optio
         metadata$.users_internal_map |>
           dplyr::select("user_key", "username"),
         dplyr::join_by("updatedBy" == "username")) |>
-      dplyr::mutate(updatedBy = .data$user_key, .keep = "unused") |>
-      dplyr::mutate(dplyr::across(dplyr::ends_with("At"), readr::parse_datetime))
+      dplyr::mutate(updatedBy = .data$user_key, .keep = "unused")
 
-    if("storedBy" %in% names(events))
+    if ("storedBy" %in% names(events))
       events <- events |>
         dplyr::left_join(
           metadata$.users_internal_map |>
             dplyr::select("user_key", "username"),
           dplyr::join_by("storedBy" == "username")) |>
         dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
+
+    if ("completedBy" %in% names(events))
+      events <- events |>
+        dplyr::left_join(
+          metadata$.users_internal_map |>
+            dplyr::select("user_key", "username"),
+          dplyr::join_by("completedBy" == "username")) |>
+        dplyr::mutate(completedBy = .data$user_key, .keep = "unused")
   }
 
-  events |>
-    dplyr::select(
-      tidyselect::any_of(
-        c(
-          "event_key","scheduledAt","createdAt","updatedAt","completedAt",
-          "storedBy","createdBy","updatedBy","followup","deleted")))
+  # Entity-level timestamp parsing — six ISO-8601 Instants from the API
+  # (scheduledAt / completedAt / createdAt / createdAtClient / updatedAt
+  # / updatedAtClient) parsed to POSIXct. Gated by `include_timestamps`,
+  # which is also what gates their presence in the request (see
+  # `get_events_request()` line 16-23). The legacy `read_event_details()`
+  # nested this parse inside the `include_user != "no"` branch — under
+  # `include_timestamps = TRUE` + `include_user = "no"` the columns
+  # survived unparsed as strings (latent bug); the merged reader parses
+  # them unconditionally under the schema's gate.
+  if (isTRUE(opts$include_timestamps))
+    events <- events |>
+      dplyr::mutate(dplyr::across(dplyr::ends_with("At"), readr::parse_datetime))
+
+  # `orgUnit`, `programStage`, `trackedEntity`, `enrollment` are
+  # reader-internal scratch — fetched for the joins / filter above and
+  # either substituted (programStage → event_type_key, trackedEntity
+  # → patient_key, enrollment → enrollment_key) or used only for the
+  # departments lookup (orgUnit). `isTest` is declared on events_cols
+  # and survives the finalize. `event` stays if the id opt-in is set;
+  # the schema gates it. `dataValues` / `notes` are raw DHIS2 payloads
+  # consumed downstream by `read_event_data()` / `read_event_notes()`
+  # (via the separate `processed_events` argument) — they live on the
+  # raw response but not on the public events tibble.
+  events <- events |>
+    add_key_column("event_key") |>
+    finalize_to_schema(
+      events_cols, opts,
+      scratch = c(
+        "orgUnit", "programStage", "trackedEntity", "enrollment",
+        "dataValues", "notes"))
+
+  assert_schema(events, events_cols, opts)
+
+  events
 }
 
 read_event_notes <- function(events, processed_events, metadata, dataset_options)
@@ -311,14 +335,16 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
   # Derive the set of declared DE codes for the pivot's `code`-factor
   # pinning. "Declared DE codes" = every schema atom minus the link /
   # hierarchy / isTest / vs_days columns minus the per-DE companion
-  # columns (which the pivot generates from value + createdBy + ...).
-  # Under the schema contract this set is a pure function of opts.
+  # columns (which the pivot generates from value + storedBy +
+  # createdBy + updatedBy + createdAt + updatedAt). Under the schema
+  # contract this set is a pure function of opts.
   all_names  <- names(compile_schema(cols, opts))
   non_de     <- c(
     "event_key", "enrollment_key", "patient_key",
     "department_key", "hospital_key", "country_key",
     "world_bank_class_key", "isTest", "vs_days")
-  companion  <- grepl("_(createdBy|createdAt|updatedAt)$", all_names)
+  companion  <- grepl(
+    "_(storedBy|createdBy|updatedBy|createdAt|updatedAt)$", all_names)
   de_codes   <- setdiff(all_names[!companion], non_de)
 
   events <- events |>
@@ -331,6 +357,11 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
     tidyr::unnest_longer("dataValues") |>
     tidyr::unnest_wider("dataValues")
 
+  # Per-DE user-key substitution — extended in phase-b-event-details
+  # to cover all three user companions (`storedBy`, `createdBy`,
+  # `updatedBy`). `storedBy` arrives as a plain String per DataValue
+  # (no hoist); `createdBy` / `updatedBy` arrive as `{username: ...}`
+  # User-subselect objects (hoist the first element = username).
   if (opts$include_user != "no" && "createdBy" %in% names(events))
     events <- events |>
       tidyr::hoist("createdBy", createdBy = 1, .remove = FALSE) |>
@@ -339,6 +370,23 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
           dplyr::select("username", "user_key"),
         dplyr::join_by("createdBy" == "username")) |>
       dplyr::mutate(createdBy = .data$user_key, .keep = "unused")
+
+  if (opts$include_user != "no" && "updatedBy" %in% names(events))
+    events <- events |>
+      tidyr::hoist("updatedBy", updatedBy = 1, .remove = FALSE) |>
+      dplyr::left_join(
+        metadata$.users_internal_map |>
+          dplyr::select("username", "user_key"),
+        dplyr::join_by("updatedBy" == "username")) |>
+      dplyr::mutate(updatedBy = .data$user_key, .keep = "unused")
+
+  if (opts$include_user != "no" && "storedBy" %in% names(events))
+    events <- events |>
+      dplyr::left_join(
+        metadata$.users_internal_map |>
+          dplyr::select("username", "user_key"),
+        dplyr::join_by("storedBy" == "username")) |>
+      dplyr::mutate(storedBy = .data$user_key, .keep = "unused")
 
   if (opts$include_timestamps &&
       "createdAt" %in% names(events) &&

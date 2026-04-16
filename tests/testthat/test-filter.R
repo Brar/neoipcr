@@ -244,12 +244,9 @@ test_that("apply_postfilter handles 0x0 eventNotes (was NULL pre-schema)", {
   expect_equal(ncol(result$eventNotes), 0L)
 })
 
-test_that("apply_postfilter handles NULL eventDetails", {
-  ds <- make_populated_test_ds()
-  ds$eventDetails <- NULL
-  result <- neoipcr:::apply_postfilter(ds)
-  expect_null(result$eventDetails)
-})
+# `eventDetails` was merged into `events` in phase-b-event-details; the
+# slot no longer exists. The former "handles NULL eventDetails" test is
+# obsolete under the schema contract and has been removed.
 
 test_that("apply_postfilter handles NULL metadata tables", {
   ds <- make_populated_test_ds()

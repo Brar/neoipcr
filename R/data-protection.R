@@ -8,10 +8,7 @@
 #' a column reserved for another option value surfaces here with an
 #' actionable `rlang::abort()`.
 #'
-#' The only remaining scrub is on the `eventDetails` tibble, which is
-#' not yet schematized -- see `tasks/merge-event-details-into-events.md`.
-#' Once that lands, the scrub turns into an assertion like the rest.
-#'
+#' Under the schema contract every branch is an assertion -- no scrubs.
 #' The name change from `apply_data_removal()` (which scrubbed) reflects
 #' this semantic shift: this is a guardian, not a remover. Adding a new
 #' scrub here should not be necessary -- push the narrowing into the
@@ -19,7 +16,7 @@
 #'
 #' @param x A `neoipcr_ds` object.
 #' @param dataset_options A `dhis2_dataset_options` object.
-#' @return `x`, unchanged except for the `eventDetails` scrub shim.
+#' @return `x`, unchanged.
 #' @noRd
 assert_data_protection <- function(x, dataset_options)
 {
@@ -52,16 +49,9 @@ assert_data_protection <- function(x, dataset_options)
     fact_targets     = c("patients", "enrollments", "events"),
     metadata_targets = c("countries", "hospitals", "departments"))
 
-  # eventDetails is not yet schematized; see
-  # `tasks/merge-event-details-into-events.md`. Until that lands, keep a
-  # single remaining scrub here so the `event` id drops when the user
-  # opted out of event DHIS2 IDs. Converts to an assertion once the
-  # eventDetails schema lands.
-  if (!("events" %in% dataset_options$include_dhis2_ids)) {
-    if (!is.null(x$eventDetails))
-      x$eventDetails <- x$eventDetails |>
-        dplyr::select(!tidyselect::any_of("event"))
-  }
+  # (Former `eventDetails` scrub removed in phase-b-event-details --
+  # the sidecar tibble was merged into `events`, and the `event` id on
+  # events itself is now schema-gated via `events_cols`.)
 
   # Metadata tibbles are curated by the NeoIPC team, not by partner-site
   # data entry, so they must never carry per-row author/timestamp

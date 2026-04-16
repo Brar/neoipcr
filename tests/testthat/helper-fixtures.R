@@ -140,6 +140,7 @@ make_test_patients <- function(
     siblings             = rep(0L, n),
     inactive             = rep(FALSE, n),
     potentialDuplicate   = rep(FALSE, n),
+    storedBy             = rep(1L, n),
     createdBy            = rep(1L, n),
     updatedBy            = rep(1L, n),
     createdAt            = as.POSIXct("2024-01-01", tz = "UTC") + keys,
@@ -256,6 +257,9 @@ make_test_events <- function(
     include_dhis2_ids        = "events",
     include_incomplete       = "events",
     include_test_data        = FALSE,
+    include_user             = "no",
+    include_timestamps       = FALSE,
+    include_deleted          = FALSE,
     include_department       = "pseudo",
     include_hospital         = "pseudo",
     include_country          = "pseudo",
@@ -268,6 +272,9 @@ make_test_events <- function(
     include_dhis2_ids        = include_dhis2_ids,
     include_incomplete       = include_incomplete,
     include_test_data        = include_test_data,
+    include_user             = include_user,
+    include_timestamps       = include_timestamps,
+    include_deleted          = include_deleted,
     include_department       = include_department,
     include_hospital         = include_hospital,
     include_country          = include_country,
@@ -277,6 +284,7 @@ make_test_events <- function(
     return(structure(schema, class = c("neoipcr_evt", class(schema))))
 
   keys <- seq_len(n)
+  base_time <- as.POSIXct("2024-01-01 00:00:00", tz = "UTC")
   full <- list(
     event_key            = keys,
     event                = paste0("EVT_", keys),
@@ -293,7 +301,22 @@ make_test_events <- function(
     hospital_key         = rep(1L, n),
     country_key          = rep(1L, n),
     world_bank_class_key = rep(1L, n),
-    isTest               = rep(FALSE, n))
+    isTest               = rep(FALSE, n),
+    # Entity-level user fields (phase-b-event-details).
+    storedBy             = rep(1L, n),
+    createdBy            = rep(1L, n),
+    updatedBy            = rep(1L, n),
+    completedBy          = rep(1L, n),
+    # Entity-level timestamps.
+    scheduledAt          = rep(base_time, n),
+    completedAt          = rep(base_time, n),
+    createdAt            = rep(base_time, n),
+    createdAtClient      = rep(base_time, n),
+    updatedAt            = rep(base_time, n),
+    updatedAtClient      = rep(base_time, n),
+    # Lifecycle flags.
+    followup             = rep(FALSE, n),
+    deleted              = rep(FALSE, n))
   full <- utils::modifyList(full, list(...))
   d <- tibble::as_tibble(full[names(schema)])
   for (col in names(schema)) {
@@ -619,16 +642,6 @@ make_test_unknown_pathogen_names <- function(agent_finding_keys = integer(0),
       d[[nm]] <- overrides[[nm]]
   }
   structure(d, class = c("neoipcr_upn", class(d)))
-}
-
-make_test_event_details <- function(event_keys = 1L, ...) {
-  n <- length(event_keys)
-  d <- list(
-    event_key = event_keys,
-    event     = paste0("EVT_", event_keys))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
-  structure(d, class = c("neoipcr_evd", class(d)))
 }
 
 make_test_event_notes <- function(event_keys = 1L,
@@ -967,7 +980,6 @@ make_populated_test_ds <- function(
     events          = all_events,
     admissionData   = adm_data,
     surveillanceEndData = end_data,
-    eventDetails    = make_test_event_details(all_events$event_key),
     eventNotes      = make_test_event_notes(all_events$event_key[1:2]),
     ...)
 }
@@ -1054,7 +1066,6 @@ make_test_ds <- function(
     patients                = structure(patients, class = c("neoipcr_pat", class(patients))),
     enrollments             = structure(enrollments, class = c("neoipcr_enr", class(enrollments))),
     events                  = structure(events, class = c("neoipcr_evt", class(events))),
-    eventDetails            = make_test_event_details(integer(0)),
     eventNotes              = make_test_event_notes(integer(0)),
     enrollment_notes        = make_test_enrollment_notes(integer(0)),
     admissionData           = make_test_admission_data(integer(0)),

@@ -137,8 +137,16 @@ patients_cols <- with_entity_gate(
     patient_attribute_cols(
       "potentialDuplicate", logical(), trackable = FALSE),
 
-    # Entity-level user fields (server-authenticated, substituted to
-    # user_key via `metadata$.users_internal_map`).
+    # Entity-level user fields. `createdBy` / `updatedBy` are server-
+    # authenticated User objects (fetched as `createdBy[username]`);
+    # `storedBy` is a client-asserted String. All three substituted to
+    # integer `user_key` via `metadata$.users_internal_map` in the
+    # reader.
+    list(schema_col(
+      "storedBy", integer(),
+      include_when = \(opts) opts$include_patient == "full" &&
+                             opts$include_user != "no"
+    )),
     list(schema_col(
       "createdBy", integer(),
       include_when = \(opts) opts$include_patient == "full" &&

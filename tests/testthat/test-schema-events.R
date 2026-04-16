@@ -30,16 +30,21 @@ test_that("events_cols: 'pseudo' mode is strictly event_key only", {
   expect_identical(names(schema), "event_key")
 })
 
-test_that("events_cols: 'full' minimal — event_key + occurredAt + event_type_key + enrollment_key + patient_key", {
+test_that("events_cols: 'full' minimal — event_key + occurredAt + event_type_key + enrollment_key + patient_key + followup", {
   opts <- dhis2_dataset_options(
     include_event      = "full",
     include_enrollment = "full",
     include_patient    = "full")
   schema <- neoipcr:::compile_schema(neoipcr:::events_cols, opts)
+  # `followup` is always declared under full mode (no sub-gate).
+  # Mirrors enrollments' `followUp`. The other entity-level companions
+  # (user / timestamp / deleted) need include_user / include_timestamps
+  # / include_deleted to be set and are covered in the dedicated tests
+  # further down.
   expect_identical(
     names(schema),
     c("event_key", "occurredAt", "event_type_key",
-      "enrollment_key", "patient_key"))
+      "enrollment_key", "patient_key", "followup"))
 })
 
 test_that("events_cols: event id gated on include_dhis2_ids", {
@@ -183,6 +188,73 @@ test_that("isTest absent under pseudo-event even with include_test_data = TRUE",
     include_test_data = TRUE)
   schema <- neoipcr:::compile_schema(neoipcr:::events_cols, opts)
   expect_false("isTest" %in% names(schema))
+})
+
+# ---- Entity-level companion atoms (phase-b-event-details) ---------------
+
+test_that("events_cols: user fields gated by include_user != 'no' × full", {
+  opts_off <- dhis2_dataset_options(
+    include_event = "full", include_user = "no")
+  opts_on  <- dhis2_dataset_options(
+    include_event = "full", include_user = "full")
+  opts_pseudo <- dhis2_dataset_options(
+    include_event = "pseudo", include_user = "full")
+
+  user_cols <- c("storedBy", "createdBy", "updatedBy", "completedBy")
+  s_off    <- neoipcr:::compile_schema(neoipcr:::events_cols, opts_off)
+  s_on     <- neoipcr:::compile_schema(neoipcr:::events_cols, opts_on)
+  s_pseudo <- neoipcr:::compile_schema(neoipcr:::events_cols, opts_pseudo)
+
+  for (col in user_cols) {
+    expect_false(col %in% names(s_off),    info = col)
+    expect_true (col %in% names(s_on),     info = col)
+    expect_false(col %in% names(s_pseudo), info = col)
+  }
+})
+
+test_that("events_cols: timestamps gated by include_timestamps × full", {
+  opts_off <- dhis2_dataset_options(
+    include_event = "full", include_timestamps = FALSE)
+  opts_on  <- dhis2_dataset_options(
+    include_event = "full", include_timestamps = TRUE)
+  opts_pseudo <- dhis2_dataset_options(
+    include_event = "pseudo", include_timestamps = TRUE)
+
+  ts_cols <- c("scheduledAt", "completedAt", "createdAt", "createdAtClient",
+               "updatedAt", "updatedAtClient")
+  s_off    <- neoipcr:::compile_schema(neoipcr:::events_cols, opts_off)
+  s_on     <- neoipcr:::compile_schema(neoipcr:::events_cols, opts_on)
+  s_pseudo <- neoipcr:::compile_schema(neoipcr:::events_cols, opts_pseudo)
+
+  for (col in ts_cols) {
+    expect_false(col %in% names(s_off),    info = col)
+    expect_true (col %in% names(s_on),     info = col)
+    expect_false(col %in% names(s_pseudo), info = col)
+  }
+})
+
+test_that("events_cols: followup always present under full, absent under pseudo", {
+  s_full   <- neoipcr:::compile_schema(
+    neoipcr:::events_cols, dhis2_dataset_options(include_event = "full"))
+  s_pseudo <- neoipcr:::compile_schema(
+    neoipcr:::events_cols, dhis2_dataset_options(include_event = "pseudo"))
+  expect_true ("followup" %in% names(s_full))
+  expect_false("followup" %in% names(s_pseudo))
+})
+
+test_that("events_cols: deleted gated by include_deleted × full", {
+  s_off <- neoipcr:::compile_schema(
+    neoipcr:::events_cols,
+    dhis2_dataset_options(include_event = "full", include_deleted = FALSE))
+  s_on <- neoipcr:::compile_schema(
+    neoipcr:::events_cols,
+    dhis2_dataset_options(include_event = "full", include_deleted = TRUE))
+  s_pseudo <- neoipcr:::compile_schema(
+    neoipcr:::events_cols,
+    dhis2_dataset_options(include_event = "pseudo", include_deleted = TRUE))
+  expect_false("deleted" %in% names(s_off))
+  expect_true ("deleted" %in% names(s_on))
+  expect_false("deleted" %in% names(s_pseudo))
 })
 
 # ---- Fixture round-trip ---------------------------------------------------

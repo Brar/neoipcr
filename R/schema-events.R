@@ -18,12 +18,15 @@ NULL
 #              materialization — see `event_hierarchy_col()` below for
 #              the fat-lookup rationale.
 #
-# Events is a lean tibble: entity-level user / timestamp / deleted /
-# followup fields on events belong to a separate `eventDetails` tibble
-# (schematized in its own sub-task under phase-b-event-type-data). No
-# per-attribute wrapper is needed on events itself — there are no
-# per-DE companion columns at this level; those appear on per-event-
-# type data tibbles (also phase-b-event-type-data).
+# Events carries its entity-level user / timestamp / deleted / followup
+# fields directly (DHIS2's Event.java puts them on the event itself —
+# one per event, not per DE). Before phase-b-event-details this set
+# lived on a sidecar `eventDetails` tibble (class `neoipcr_evd`); the
+# split predated the schema contract and was merged in once events was
+# schematized, giving events the same entity-level payload pattern as
+# enrollments. No per-attribute wrapper is needed — per-DE companion
+# columns appear on the per-event-type data tibbles (see
+# `schema-event-data.R`), not here.
 #
 # `isTest` is declared on events (matches enrollments). The legacy
 # reader's `read_events()` actively fetches `isTest` via the
@@ -135,6 +138,88 @@ events_cols <- with_entity_gate(
       "isTest", logical(),
       include_when = \(opts) opts$include_event == "full" &&
                              isTRUE(opts$include_test_data)
+    ),
+
+    # Entity-level user fields. All four are gated by
+    # `include_user != "no"`. DHIS2's Event.java carries them as:
+    #   - `storedBy`   : String (client-asserted username)
+    #   - `createdBy`  : User (server-authenticated, fetched as
+    #                    `createdBy[username]`)
+    #   - `updatedBy`  : User (same pattern)
+    #   - `completedBy`: String (server-authenticated, populated when
+    #                    status transitions to COMPLETED)
+    # All four are substituted to `user_key` via
+    # `.users_internal_map` in `read_events()`.
+    schema_col(
+      "storedBy", integer(),
+      include_when = \(opts) opts$include_event == "full" &&
+                             opts$include_user != "no"
+    ),
+    schema_col(
+      "createdBy", integer(),
+      include_when = \(opts) opts$include_event == "full" &&
+                             opts$include_user != "no"
+    ),
+    schema_col(
+      "updatedBy", integer(),
+      include_when = \(opts) opts$include_event == "full" &&
+                             opts$include_user != "no"
+    ),
+    schema_col(
+      "completedBy", integer(),
+      include_when = \(opts) opts$include_event == "full" &&
+                             opts$include_user != "no"
+    ),
+
+    # Entity-level timestamps. All six gated by `include_timestamps`;
+    # parsed to POSIXct in `read_events()` from the raw ISO-8601 Instants.
+    # `createdAtClient` / `updatedAtClient` were silently dropped by the
+    # legacy `read_event_details()`'s final select despite being in the
+    # API request fields (line 20 of `dhis2-events.R`); declaring them
+    # here fixes that latent drop-bug, same pattern as the `isTest`
+    # fix in phase-b-events.
+    schema_col(
+      "scheduledAt", as.POSIXct(character()),
+      include_when = \(opts) opts$include_event == "full" &&
+                             isTRUE(opts$include_timestamps)
+    ),
+    schema_col(
+      "completedAt", as.POSIXct(character()),
+      include_when = \(opts) opts$include_event == "full" &&
+                             isTRUE(opts$include_timestamps)
+    ),
+    schema_col(
+      "createdAt", as.POSIXct(character()),
+      include_when = \(opts) opts$include_event == "full" &&
+                             isTRUE(opts$include_timestamps)
+    ),
+    schema_col(
+      "createdAtClient", as.POSIXct(character()),
+      include_when = \(opts) opts$include_event == "full" &&
+                             isTRUE(opts$include_timestamps)
+    ),
+    schema_col(
+      "updatedAt", as.POSIXct(character()),
+      include_when = \(opts) opts$include_event == "full" &&
+                             isTRUE(opts$include_timestamps)
+    ),
+    schema_col(
+      "updatedAtClient", as.POSIXct(character()),
+      include_when = \(opts) opts$include_event == "full" &&
+                             isTRUE(opts$include_timestamps)
+    ),
+
+    # Lifecycle flags. `followup` is always present under full mode
+    # (API always returns it; mirrors enrollments' `followUp`).
+    # `deleted` only when `include_deleted` opted in (request-gated).
+    schema_col(
+      "followup", logical(),
+      include_when = \(opts) opts$include_event == "full"
+    ),
+    schema_col(
+      "deleted", logical(),
+      include_when = \(opts) opts$include_event == "full" &&
+                             isTRUE(opts$include_deleted)
     )
   ),
   gate = \(opts) opts$include_event != "no"

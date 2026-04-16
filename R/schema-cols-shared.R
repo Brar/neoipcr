@@ -191,22 +191,32 @@ tea_attribute_cols <- function(base_col, base_when)
 # per-event-type data tibbles (`admissionData`, `surveillanceEndData`,
 # `sepsisData`, `necData`, `pneumoniaData`, `surgeryData`, `ssiData`).
 #
-# DHIS2's `EventDataValue.java` carries `createdByUserInfo`,
-# `lastUpdatedByUserInfo`, `storedBy`, `created`, `lastUpdated` on every
-# data value. neoipcr's current readers only fetch `createdBy` (via the
-# API `createdBy[username]` selector) and the two timestamps; `storedBy`
-# and `updatedBy` are not fetched. This wrapper mirrors the current
-# reader output exactly — three companions per DE (`_createdBy`,
-# `_createdAt`, `_updatedAt`). If/when `storedBy` / `updatedBy` gain
-# reader coverage, extend here and this changes every entity that
-# uses the wrapper.
+# DHIS2's tracker `DataValue.java` carries all five audit fields on
+# every data value: `createdAt`, `updatedAt`, `storedBy` (String),
+# `createdBy` (User, fetched as `createdBy[username]`), `updatedBy`
+# (User, fetched as `updatedBy[username]`). Before phase-b-event-details
+# neoipcr only fetched three of them (`createdBy`, `createdAt`,
+# `updatedAt`); `storedBy` and `updatedBy` were latent drops (analogous
+# to the `isTest` / `createdAtClient` / `completedBy` fixes in other
+# entities). This wrapper now declares five companions per DE —
+# `_storedBy`, `_createdBy`, `_updatedBy` gated by `include_user`;
+# `_createdAt`, `_updatedAt` gated by `include_timestamps`. The matching
+# request + reader extensions land in `dhis2-events.R`.
 event_data_attribute_cols <- function(base_col, base_when)
 {
   name <- base_col$name
   list(
     base_col,
     schema_col(
+      paste0(name, "_storedBy"), integer(),
+      \(opts) base_when(opts) && opts$include_user != "no"
+    ),
+    schema_col(
       paste0(name, "_createdBy"), integer(),
+      \(opts) base_when(opts) && opts$include_user != "no"
+    ),
+    schema_col(
+      paste0(name, "_updatedBy"), integer(),
       \(opts) base_when(opts) && opts$include_user != "no"
     ),
     schema_col(

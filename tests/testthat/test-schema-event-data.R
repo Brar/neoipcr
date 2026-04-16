@@ -151,7 +151,7 @@ test_that("ssiData: infection_type + sec_bsi + organisms_* are all factors", {
 
 # ---- Companion-column gating -------------------------------------------
 
-test_that("event_data_attribute_cols: three companions per DE (createdBy + createdAt + updatedAt)", {
+test_that("event_data_attribute_cols: five companions per DE (storedBy + createdBy + updatedBy + createdAt + updatedAt)", {
   opts_bare <- dhis2_dataset_options(include_event = "full")
   opts_user <- dhis2_dataset_options(
     include_event = "full", include_user = "full")
@@ -166,23 +166,33 @@ test_that("event_data_attribute_cols: three companions per DE (createdBy + creat
   s_ts   <- neoipcr:::compile_schema(neoipcr:::admissionData_cols, opts_ts)
   s_full <- neoipcr:::compile_schema(neoipcr:::admissionData_cols, opts_full)
 
-  expect_false("dol_createdBy" %in% names(s_bare))
-  expect_false("dol_createdAt" %in% names(s_bare))
-  expect_false("dol_updatedAt" %in% names(s_bare))
+  # Bare opts: no include_user, no include_timestamps → no companions.
+  for (suffix in c("_storedBy", "_createdBy", "_updatedBy",
+                   "_createdAt", "_updatedAt"))
+    expect_false(paste0("dol", suffix) %in% names(s_bare), info = suffix)
 
-  expect_true("dol_createdBy" %in% names(s_user))
+  # include_user alone → three user companions, no timestamp companions.
+  expect_true("dol_storedBy"   %in% names(s_user))
+  expect_true("dol_createdBy"  %in% names(s_user))
+  expect_true("dol_updatedBy"  %in% names(s_user))
   expect_false("dol_createdAt" %in% names(s_user))
-  expect_true("dol_createdBy" %in% names(s_full))
-  expect_true("dol_createdAt" %in% names(s_full))
-  expect_true("dol_updatedAt" %in% names(s_full))
-  # DHIS2 EventDataValue createdBy/updatedBy not both fetched by the
-  # current reader — only _createdBy, _createdAt, _updatedAt. No
-  # _updatedBy / _storedBy on the schema.
-  expect_false("dol_updatedBy" %in% names(s_full))
-  expect_false("dol_storedBy"  %in% names(s_full))
+  expect_false("dol_updatedAt" %in% names(s_user))
 
-  expect_true("dol_createdAt" %in% names(s_ts))
-  expect_true("dol_updatedAt" %in% names(s_ts))
+  # include_timestamps alone → two timestamp companions, no user
+  # companions.
+  expect_false("dol_storedBy"  %in% names(s_ts))
+  expect_false("dol_createdBy" %in% names(s_ts))
+  expect_false("dol_updatedBy" %in% names(s_ts))
+  expect_true("dol_createdAt"  %in% names(s_ts))
+  expect_true("dol_updatedAt"  %in% names(s_ts))
+
+  # Full: all five companions present. DHIS2 DataValue.java carries all
+  # five audit fields (storedBy, createdBy, updatedBy, createdAt,
+  # updatedAt) per data value. Extended from three to five companions
+  # in phase-b-event-details.
+  for (suffix in c("_storedBy", "_createdBy", "_updatedBy",
+                   "_createdAt", "_updatedAt"))
+    expect_true(paste0("dol", suffix) %in% names(s_full), info = suffix)
 })
 
 # ---- Fixture round-trips -------------------------------------------------

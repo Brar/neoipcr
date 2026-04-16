@@ -9,9 +9,9 @@
 # and the failure path (assertion aborts when a reader regression leaks
 # a forbidden column).
 #
-# The single remaining scrub (on `eventDetails`, pending its own
-# schematization — see tasks/merge-event-details-into-events.md) has a
-# dedicated test below.
+# Phase-b-event-details removed the `eventDetails` sidecar (merged into
+# `events`); the last remaining scrub shim is gone, so the guardian is
+# now purely assertions.
 
 # Build a fully-populated dataset once for reuse across tests.
 base_ds <- make_populated_test_ds()
@@ -162,22 +162,10 @@ test_that("assert_data_protection aborts naming multiple leak sites under includ
   expect_match(msg, "x\\$metadata\\$departments")
 })
 
-# --- eventDetails scrub shim ------------------------------------------
-#
-# eventDetails is not yet schematized (merge-event-details-into-events
-# task). Until that lands, the guardian keeps a single scrub on the
-# `event` id when `!("events" %in% include_dhis2_ids)`.
-
-test_that("assert_data_protection scrubs event ID on eventDetails when events not in include_dhis2_ids", {
-  result <- guard_with(include_dhis2_ids = c("patients", "enrollments",
-    "departments", "notes", "event_types", "users"))
-  expect_false("event" %in% names(result$eventDetails))
-})
-
-test_that("assert_data_protection keeps event ID on eventDetails when events in include_dhis2_ids", {
-  result <- guard_with()
-  expect_true("event" %in% names(result$eventDetails))
-})
+# `eventDetails` scrub-shim tests removed in phase-b-event-details —
+# the sidecar tibble was merged into `events`, and the `event` id on
+# events is now schema-gated by `events_cols`. Coverage of the
+# `events$event` gate lives in `test-schema-events.R`.
 
 # --- Full-restriction smoke -------------------------------------------
 
