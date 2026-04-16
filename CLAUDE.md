@@ -82,6 +82,7 @@ The `R/` directory follows a deliberate structure established by the neoipcr fil
 | `R/schema-cols-shared.R` | Cross-entity column declarations: `col_patient_key`, `col_enrollment_key`, `col_event_key`, `col_department_key`, `col_hospital_key`, `col_country_key`, `col_wb_class_key`, `col_isTest`, plus `col_inherited_from()` (hierarchy-inheritance helper) and `attribute_cols()` / `tea_attribute_cols()` (companion-column helpers for partner-site-entered attributes). Loads before every `schema-<domain>.R` via `@include`. |
 | `R/schema-orgunits.R` | Column declarations + `get_<entity>_schema(opts)` wrappers for the org-unit-derived metadata entities: WB classes, countries, hospitals, departments, users, event types. Loads after `schema-cols-shared.R`. Internal. |
 | `R/schema-patients.R` | `patient_attribute_cols()` wrapper + `patients_cols` + `get_patients_schema()`. First fact-layer schema. Loads after `schema-orgunits.R`. Internal. |
+| `R/schema-enrollments.R` | `enrollment_inherited_from()` helper + `enrollments_cols` + `get_enrollments_schema()`. Second fact-layer schema; atoms declared directly (no per-attribute wrapper — every user/timestamp field on enrollments is entity-level). Loads after `schema-patients.R`. Internal. |
 | **Data protection** | |
 | `R/data-removal.R` | `apply_data_removal()` — the authoritative data-protection guardian |
 | `R/filter.R` | `filter_*` family + `apply_postfilter` |
@@ -204,6 +205,7 @@ Test files mirror source files: `R/foo.R` -> `tests/testthat/test-foo.R`.
 | `tests/testthat/test-schema-cols-shared.R` | Shared column declarations, `col_inherited_from()`, `attribute_cols()` / `tea_attribute_cols()`, plus `expect_schema_matches()` / `iter_dataset_options()` helpers |
 | `tests/testthat/test-schema-orgunits.R` | Per-domain schema assembly for org-unit-derived metadata entities: WB classes / countries / hospitals / departments / users / event types. |
 | `tests/testthat/test-schema-patients.R` | `patient_attribute_cols()` wrapper behaviour + `patients_cols` three-mode shape, hierarchy-key inheritance, companion-column semantics. |
+| `tests/testthat/test-schema-enrollments.R` | `enrollments_cols` three-mode shape, entity-level user/timestamp gating, hierarchy-key inheritance anchored on patients. |
 | `tests/testthat/helper-fixtures.R` | `read_test_metadata()`, `make_test_ds()`, `make_populated_test_ds()`, `make_calc_test_ds()`, per-table builders |
 | `tests/testthat/helper-schema.R` | `expect_schema_matches(x, expected)`, `iter_dataset_options(fields)` |
 

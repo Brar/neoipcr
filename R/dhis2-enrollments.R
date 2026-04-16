@@ -39,6 +39,33 @@ get_enrollments_request <- function(req_base, dataset_options, programId)
 
 read_enrollments <- function(enrollments, patients, metadata, dataset_options)
 {
+  opts <- dataset_options
+
+  # Entity gate short-circuit: under `include_enrollment = "no"` the
+  # public enrollments tibble is 0×0, and downstream readers that
+  # consume `enrollments` must tolerate the empty shape. Matches the
+  # pattern in `read_patients()`.
+  if (opts$include_enrollment == "no")
+    return(compile_schema(enrollments_cols, opts))
+
+  # The patient → enrollment link join needs `trackedEntity` on
+  # patients. Under `include_patient = "full"` + `"patients" %in%
+  # include_dhis2_ids`, `patients_cols` declares `trackedEntity` —
+  # otherwise the column is absent from the public patients tibble.
+  # The legacy reader assumed it was always there; now it's an
+  # option-dependent dependency that we have to document.
+  #
+  # For the patient_key substitution to work at all, `include_patient`
+  # must be at least "pseudo" (so patients has the key). Under "full"
+  # + id-opt-in, patients also has `trackedEntity`, which is what the
+  # join key needs. Under "full" + no id-opt-in, `trackedEntity` is
+  # absent — the reader falls back to the raw `trackedEntity` on the
+  # enrollments response and matches via the `.users_internal_map`-
+  # style internal map of patients. TODO(phase-b-enrollments): if
+  # this combination is a real use case, introduce
+  # `.patients_internal_map` matching the established pattern. For
+  # now, require the id-opt-in or include_patient = "pseudo" with
+  # patient_key matched through a reader-internal join.
   enrollments <- enrollments |>
     dplyr::inner_join(
       patients |>
@@ -83,10 +110,16 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
     if(dataset_options$include_test_data)
       cols <- c(cols, "isTest")
 
+    # Consumer-side assertion at the schema-to-consumer boundary —
+    # same pattern as read_patients(). The hierarchy-key columns that
+    # the option branches above committed to must actually be on
+    # `metadata$departments`; silent `any_of` tolerance would turn a
+    # schema ↔ reader mismatch into downstream wrong data.
+    require_cols(metadata$departments, cols, "departments")
     enrollments <- enrollments |>
       dplyr::left_join(
         metadata$departments |>
-          dplyr::select(tidyselect::any_of(cols)),
+          dplyr::select(tidyselect::all_of(cols)),
         dplyr::join_by("orgUnit"))
   }
 
@@ -128,7 +161,14 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
     enrollments <- enrollments |>
       dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
 
-  enrollments |>
-    dplyr::select(!"orgUnit") |>
+  enrollments <- enrollments |>
+    dplyr::select(!tidyselect::any_of("orgUnit")) |>
     add_key_column("enrollment_key")
+
+  # Narrow to the public schema + loud-assert.
+  enrollments <- enrollments |>
+    finalize_to_schema(enrollments_cols, opts)
+  assert_schema(enrollments, enrollments_cols, opts)
+
+  enrollments
 }

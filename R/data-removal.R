@@ -10,11 +10,11 @@ apply_data_removal <- function(x, dataset_options)
   # `trackedEntity` (via `"patients" %in% include_dhis2_ids`) are
   # redundant and removed.
 
-  if(!("enrollments" %in% dataset_options$include_dhis2_ids))
-  {
-    x$enrollments <- x$enrollments |>
-      dplyr::select(!tidyselect::any_of("enrollment"))
-  }
+  # `include_enrollment` / `"enrollments" %in% include_dhis2_ids` —
+  # tibble shape is reader-owned via
+  # `R/schema-enrollments.R::enrollments_cols`. The `enrollment` id is
+  # gated on `"enrollments" %in% include_dhis2_ids` at the schema
+  # level; legacy scrub removed.
 
   # `include_department` — tibble shape is reader-owned via
   # `R/schema-orgunits.R::departments_cols`. The `orgUnit` column is

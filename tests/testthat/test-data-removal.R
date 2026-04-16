@@ -36,11 +36,10 @@ test_that("apply_data_removal keeps patient_id when 'id' is in patient_columns",
 
 # --- include_dhis2_ids ---
 
-test_that("apply_data_removal removes enrollment ID when enrollments not in include_dhis2_ids", {
-  result <- remove_with(include_dhis2_ids = c("patients", "departments",
-    "events", "notes", "event_types", "users"))
-  expect_false("enrollment" %in% names(result$enrollments))
-})
+# `enrollment` id on the enrollments tibble is reader-owned via
+# `R/schema-enrollments.R::enrollments_cols` — gated on `"enrollments"
+# %in% include_dhis2_ids` at the schema level. Legacy scrub removed.
+# See `test-schema-enrollments.R` for the invariant.
 
 # Note: `orgUnit` stripping under `"departments" %not in% include_dhis2_ids`
 # is now handled by the reader's `finalize_to_schema()` via

@@ -180,22 +180,68 @@ make_test_patients <- function(
 
 make_test_enrollments <- function(
     n = 3,
-    patient_keys = seq_len(n),
+    patient_keys         = seq_len(n),
+    include_enrollment   = "full",
+    include_patient      = "full",
+    include_dhis2_ids    = "enrollments",
+    include_incomplete   = "enrollments",
+    include_user         = "no",
+    include_timestamps   = FALSE,
+    include_test_data    = FALSE,
+    include_deleted      = FALSE,
+    include_department   = "pseudo",
+    include_hospital     = "pseudo",
+    include_country      = "pseudo",
+    include_world_bank_class = "pseudo",
     ...) {
-  d <- list(
-    enrollment_key     = seq_len(n),
-    enrollment         = paste0("ENR_", seq_len(n)),
-    patient_key        = patient_keys[seq_len(n)],
-    enrolledAt         = as.Date("2024-01-01") + seq_len(n) - 1L,
-    followUp           = rep(FALSE, n),
-    status             = factor(rep("COMPLETED", n),
-                                levels = c("ACTIVE", "COMPLETED", "CANCELLED")),
-    department_key     = seq_len(n),
-    hospital_key       = seq_len(n),
-    country_key        = seq_len(n),
-    world_bank_class_key = seq_len(n))
-  d <- utils::modifyList(d, list(...))
-  d <- tibble::as_tibble(d)
+  opts <- dhis2_dataset_options(
+    include_enrollment       = include_enrollment,
+    include_patient          = include_patient,
+    include_dhis2_ids        = include_dhis2_ids,
+    include_incomplete       = include_incomplete,
+    include_user             = include_user,
+    include_timestamps       = include_timestamps,
+    include_test_data        = include_test_data,
+    include_deleted          = include_deleted,
+    include_department       = include_department,
+    include_hospital         = include_hospital,
+    include_country          = include_country,
+    include_world_bank_class = include_world_bank_class)
+  schema <- neoipcr:::compile_schema(neoipcr:::enrollments_cols, opts)
+  if (ncol(schema) == 0L || n == 0L)
+    return(structure(schema, class = c("neoipcr_enr", class(schema))))
+
+  keys <- seq_len(n)
+  full <- list(
+    enrollment_key       = keys,
+    enrollment           = paste0("ENR_", keys),
+    patient_key          = patient_keys[keys],
+    enrolledAt           = as.Date("2024-01-01") + keys - 1L,
+    followUp             = rep(FALSE, n),
+    status               = factor(rep("COMPLETED", n),
+                                  levels = c("ACTIVE","COMPLETED","CANCELLED")),
+    createdBy            = rep(1L, n),
+    updatedBy            = rep(1L, n),
+    completedBy          = rep(1L, n),
+    storedBy             = rep(1L, n),
+    occurredAt           = as.POSIXct("2024-01-01", tz = "UTC") + keys,
+    createdAt            = as.POSIXct("2024-01-01", tz = "UTC") + keys,
+    createdAtClient      = as.POSIXct("2024-01-01", tz = "UTC") + keys,
+    updatedAt            = as.POSIXct("2024-01-02", tz = "UTC") + keys,
+    updatedAtClient      = as.POSIXct("2024-01-02", tz = "UTC") + keys,
+    completedAt          = as.POSIXct("2024-01-03", tz = "UTC") + keys,
+    deleted              = rep(FALSE, n),
+    department_key       = keys,
+    hospital_key         = keys,
+    country_key          = keys,
+    world_bank_class_key = keys,
+    isTest               = rep(FALSE, n))
+  full <- utils::modifyList(full, list(...))
+  d <- tibble::as_tibble(full[names(schema)])
+  for (col in names(schema)) {
+    if (is.factor(schema[[col]]) && !is.factor(d[[col]]))
+      d[[col]] <- factor(d[[col]], levels = levels(schema[[col]]))
+  }
   structure(d, class = c("neoipcr_enr", class(d)))
 }
 
