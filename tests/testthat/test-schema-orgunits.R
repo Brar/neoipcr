@@ -532,3 +532,185 @@ test_that("make_test_metadata_hospitals matches schema across key (h, c, wb) com
     }
   }
 })
+
+# ---- departments_cols — per-column include_when predicates ---
+
+test_that("col_department_key appears iff include_department != 'no'", {
+  key_col <- neoipcr:::col_department_key
+  expect_false(key_col$include_when(dhis2_dataset_options(
+    include_department = "no")))
+  expect_true(key_col$include_when(dhis2_dataset_options(
+    include_department = "pseudo")))
+  expect_true(key_col$include_when(dhis2_dataset_options(
+    include_department = "full")))
+})
+
+test_that("departments orgUnit appears iff 'departments' in include_dhis2_ids", {
+  col <- purrr::detect(
+    neoipcr:::departments_cols, \(c) c$name == "orgUnit")
+  expect_false(is.null(col))
+  expect_false(col$include_when(dhis2_dataset_options(
+    include_dhis2_ids = character())))
+  expect_true(col$include_when(dhis2_dataset_options(
+    include_dhis2_ids = "departments")))
+})
+
+test_that("departments display / geometry / openingDate columns appear only under include_department = 'full'", {
+  for (name in c("code", "displayName", "displayShortName",
+                 "displayDescription", "comment", "openingDate",
+                 "longitude", "latitude")) {
+    col <- purrr::detect(
+      neoipcr:::departments_cols, \(c) c$name == name)
+    expect_false(is.null(col), info = name)
+    expect_false(col$include_when(dhis2_dataset_options(
+      include_department = "pseudo")),
+      info = name)
+    expect_true(col$include_when(dhis2_dataset_options(
+      include_department = "full")),
+      info = name)
+  }
+})
+
+test_that("departments pre-joined country_key appears iff dept='full' AND country!='no'", {
+  # Under the pragmatic direct-materialization design (not the strict
+  # inheritance rule), departments carries country_key as a pre-joined
+  # fat-lookup column — but only under "full" dept mode where the full
+  # schema is in play. Pseudo dept trims to the PK + link-FK.
+  for (dmode in c("no", "pseudo", "full")) {
+    for (cmode in c("no", "pseudo", "full")) {
+      schema <- neoipcr:::get_departments_schema(dhis2_dataset_options(
+        include_department = dmode, include_country = cmode))
+      expected <- dmode == "full" && cmode != "no"
+      expect_equal(
+        "country_key" %in% names(schema),
+        expected,
+        info = sprintf("d=%s, c=%s", dmode, cmode))
+    }
+  }
+})
+
+test_that("departments pre-joined world_bank_class_key appears iff dept='full' AND wb!='no'", {
+  for (dmode in c("no", "pseudo", "full")) {
+    for (wbmode in c("no", "pseudo", "full")) {
+      schema <- neoipcr:::get_departments_schema(dhis2_dataset_options(
+        include_department = dmode, include_world_bank_class = wbmode))
+      expected <- dmode == "full" && wbmode != "no"
+      expect_equal(
+        "world_bank_class_key" %in% names(schema),
+        expected,
+        info = sprintf("d=%s, wb=%s", dmode, wbmode))
+    }
+  }
+})
+
+test_that("departments hospital_key (direct link-FK) appears iff dept!='no' AND hospital!='no'", {
+  for (dmode in c("no", "pseudo", "full")) {
+    for (hmode in c("no", "pseudo", "full")) {
+      schema <- neoipcr:::get_departments_schema(dhis2_dataset_options(
+        include_department = dmode, include_hospital = hmode))
+      expected <- dmode != "no" && hmode != "no"
+      expect_equal(
+        "hospital_key" %in% names(schema),
+        expected,
+        info = sprintf("d=%s, h=%s", dmode, hmode))
+    }
+  }
+})
+
+test_that("departments isTest appears iff include_test_data = TRUE AND dept != 'no'", {
+  for (dmode in c("no", "pseudo", "full")) {
+    for (td in c(FALSE, TRUE)) {
+      schema <- neoipcr:::get_departments_schema(dhis2_dataset_options(
+        include_department = dmode, include_test_data = td))
+      expected <- dmode != "no" && isTRUE(td)
+      expect_equal(
+        "isTest" %in% names(schema),
+        expected,
+        info = sprintf("d=%s, td=%s", dmode, td))
+    }
+  }
+})
+
+# --- get_departments_schema — three-mode shape contract ---
+
+test_that("get_departments_schema is 0x0 under include_department = 'no' regardless of other modes", {
+  for (hmode in c("no", "pseudo", "full")) {
+    for (cmode in c("no", "pseudo", "full")) {
+      for (td in c(FALSE, TRUE)) {
+        opts <- dhis2_dataset_options(
+          include_department = "no",
+          include_hospital   = hmode,
+          include_country    = cmode,
+          include_test_data  = td)
+        schema <- neoipcr:::get_departments_schema(opts)
+        expect_equal(ncol(schema), 0L,
+          info = sprintf("h=%s, c=%s, td=%s", hmode, cmode, td))
+      }
+    }
+  }
+})
+
+test_that("get_departments_schema pseudo has just {PK, hospital_key link, isTest?}", {
+  # Pseudo departments = PK + direct link-FK (hospital_key) + isTest if
+  # include_test_data. No display cols, no pre-joined hierarchy keys,
+  # no orgUnit (unless dhis2_ids includes it).
+  schema <- neoipcr:::get_departments_schema(dhis2_dataset_options(
+    include_department = "pseudo",
+    include_hospital   = "full",
+    include_dhis2_ids  = character()))
+  expect_equal(ncol(schema), 2L)
+  expect_identical(
+    names(schema),
+    c("department_key", "hospital_key"))
+})
+
+test_that("get_departments_schema full + full hierarchy has all hierarchy keys + display cols", {
+  schema <- neoipcr:::get_departments_schema(dhis2_dataset_options(
+    include_department       = "full",
+    include_hospital         = "full",
+    include_country          = "full",
+    include_world_bank_class = "full",
+    include_dhis2_ids        = "departments",
+    include_test_data        = TRUE))
+  expect_identical(
+    names(schema),
+    c("department_key", "orgUnit", "code", "displayName", "displayShortName",
+      "displayDescription", "comment", "openingDate", "longitude", "latitude",
+      "hospital_key", "country_key", "world_bank_class_key", "isTest"))
+})
+
+test_that("make_test_metadata_departments matches schema across key mode combinations", {
+  # Sample the space: full cross-product is 3×3×3×3×2×2 = 324 combos;
+  # exercise a reasonable subset to keep test runtime bounded. The
+  # 27-combo per-column tests above already pin the per-column rules.
+  for (dmode in c("no", "pseudo", "full")) {
+    for (hmode in c("no", "pseudo", "full")) {
+      for (cmode in c("no", "full")) {
+        for (wbmode in c("no", "full")) {
+          for (td in c(FALSE, TRUE)) {
+            for (ids in list(character(), "departments")) {
+              opts <- dhis2_dataset_options(
+                include_department       = dmode,
+                include_hospital         = hmode,
+                include_country          = cmode,
+                include_world_bank_class = wbmode,
+                include_dhis2_ids        = ids,
+                include_test_data        = td)
+              schema  <- neoipcr:::get_departments_schema(opts)
+              fixture <- make_test_metadata_departments(
+                n = 2,
+                include_department       = dmode,
+                include_dhis2_ids        = ids,
+                include_hospital         = hmode,
+                include_country          = cmode,
+                include_world_bank_class = wbmode,
+                include_test_data        = td)
+
+              expect_schema_matches(fixture, schema)
+            }
+          }
+        }
+      }
+    }
+  }
+})

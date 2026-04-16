@@ -314,15 +314,61 @@ make_test_event_notes <- function(event_keys = 1L, ...) {
 # Metadata builders for data-removal tests
 # ---------------------------------------------------------------------------
 
-make_test_metadata_departments <- function(n = 2) {
-  tibble::tibble(
-    department_key       = seq_len(n),
-    orgUnit              = paste0("OU_DEPT_", seq_len(n)),
-    code                 = paste0("DEPT_", seq_len(n)),
-    displayName          = paste0("Department ", seq_len(n)),
-    hospital_key         = seq_len(n),
-    country_key          = seq_len(n),
-    world_bank_class_key = seq_len(n))
+# Shape matches `departments_cols` in R/schema-orgunits.R. Defaults are
+# "full" across the board plus "departments" in include_dhis2_ids so
+# existing callers (make_populated_test_ds / make_calc_test_ds /
+# test-test-units.R) keep producing fully-populated tibbles. Pass
+# narrower modes to test other shapes.
+make_test_metadata_departments <- function(
+    n = 2,
+    include_department       = "full",
+    include_dhis2_ids        = "departments",
+    include_hospital         = "full",
+    include_country          = "full",
+    include_world_bank_class = "full",
+    include_test_data        = FALSE)
+{
+  d_mode  <- rlang::arg_match(
+    include_department, c("no", "pseudo", "full"))
+  h_mode  <- rlang::arg_match(
+    include_hospital, c("no", "pseudo", "full"))
+  c_mode  <- rlang::arg_match(
+    include_country, c("no", "pseudo", "full"))
+  wb_mode <- rlang::arg_match(
+    include_world_bank_class, c("no", "pseudo", "full"))
+
+  if (d_mode == "no")
+    return(tibble::tibble())
+
+  out <- tibble::tibble(department_key = seq_len(n))
+
+  if ("departments" %in% include_dhis2_ids)
+    out$orgUnit <- paste0("OU_DEPT_", seq_len(n))
+
+  if (d_mode == "full") {
+    out$code               <- paste0("DEPT_", seq_len(n))
+    out$displayName        <- paste0("Department ", seq_len(n))
+    out$displayShortName   <- paste0("Dept ", seq_len(n))
+    out$displayDescription <- paste0("Department description ", seq_len(n))
+    out$comment            <- paste0("Department comment ", seq_len(n))
+    out$openingDate        <- as.Date("2020-01-01") + seq_len(n) - 1L
+    out$longitude          <- 7.5 + seq_len(n)
+    out$latitude           <- 47.5 + seq_len(n)
+  }
+
+  if (h_mode != "no")
+    out$hospital_key <- seq_len(n)
+
+  # Pre-joined hierarchy keys: present only under d_mode = "full".
+  if (d_mode == "full" && c_mode != "no")
+    out$country_key <- seq_len(n)
+  if (d_mode == "full" && wb_mode != "no")
+    out$world_bank_class_key <- seq_len(n)
+
+  if (isTRUE(include_test_data))
+    out$isTest <- rep(FALSE, n)
+
+  out
 }
 
 # Shape matches `hospitals_cols` in R/schema-orgunits.R. `world_bank_class_key`

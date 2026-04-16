@@ -255,7 +255,11 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
   # Pre-join hierarchy into departments so that read_patients/enrollments/events
   # can use a single flat left_join instead of cascading joins.
   # Gate on column presence — under `include_hospital = "no"` hospitals
-  # is 0×0 and the join is skipped.
+  # is 0×0 and the hospitals-relay join is skipped; under
+  # `include_country = "no"` countries is 0×0 and the wb_class_key relay
+  # is skipped. `departments_cols` declares the relay columns only under
+  # `include_department = "full"`, so `finalize_to_schema()` below drops
+  # them in pseudo mode regardless of whether the join fired.
   if ("hospital_key" %in% names(metadata$departments) &&
       all(c("hospital_key", "country_key") %in% names(metadata$hospitals)))
   {
@@ -272,6 +276,15 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
             dplyr::select("country_key", "world_bank_class_key"),
           dplyr::join_by("country_key"))
   }
+
+  # Narrow `metadata$departments` from the reader's working tibble to
+  # the public three-mode shape declared by `departments_cols`. Tail
+  # `assert_schema()` confirms. Under `include_department = "no"` the
+  # entity-gate short-circuits to 0×0 regardless of any columns still
+  # present from the raw reader path.
+  metadata$departments <- metadata$departments |>
+    finalize_to_schema(departments_cols, dataset_options)
+  assert_schema(metadata$departments, departments_cols, dataset_options)
 
   metadata$testUnitIds <- NULL
 

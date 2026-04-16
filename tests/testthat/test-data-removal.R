@@ -46,11 +46,10 @@ test_that("apply_data_removal removes enrollment ID when enrollments not in incl
   expect_false("enrollment" %in% names(result$enrollments))
 })
 
-test_that("apply_data_removal removes orgUnit from departments when departments not in include_dhis2_ids", {
-  result <- remove_with(include_dhis2_ids = c("patients", "enrollments",
-    "events", "notes", "event_types", "users"))
-  expect_false("orgUnit" %in% names(result$metadata$departments))
-})
+# Note: `orgUnit` stripping under `"departments" %not in% include_dhis2_ids`
+# is now handled by the reader's `finalize_to_schema()` via
+# `departments_cols` in R/schema-orgunits.R, not by `apply_data_removal()`.
+# Coverage moved to `test-schema-orgunits.R`.
 
 test_that("apply_data_removal removes event ID when events not in include_dhis2_ids", {
   result <- remove_with(include_dhis2_ids = c("patients", "enrollments",
@@ -86,38 +85,35 @@ test_that("apply_data_removal keeps all IDs when all types in include_dhis2_ids"
 })
 
 # --- include_department ---
+#
+# Like the other hierarchy entities, the `metadata$departments` tibble
+# shape is reader-owned under the three-mode schema contract
+# (`departments_cols` in R/schema-orgunits.R, verified in
+# test-dhis2-metadata.R). Tests here cover `apply_data_removal()`'s
+# remaining responsibility: scrubbing the `department_key` foreign key
+# from fact tables when the user opted out of departments entirely.
 
-test_that("include_department = fullkeeps departments and department_key", {
+test_that("include_department = full keeps department_key in fact tables", {
   result <- remove_with(include_department = "full")
-  expect_false(is.null(result$metadata$departments))
   expect_true("department_key" %in% names(result$patients))
   expect_true("department_key" %in% names(result$enrollments))
   expect_true("department_key" %in% names(result$events))
 })
 
-test_that("include_department = no removes departments table and department_key columns", {
+test_that("include_department = no removes department_key from fact tables", {
   result <- remove_with(include_department = "no")
-  expect_null(result$metadata$departments)
   expect_false("department_key" %in% names(result$patients))
   expect_false("department_key" %in% names(result$enrollments))
   expect_false("department_key" %in% names(result$events))
 })
 
-test_that("include_department = pseudo with dhis2 IDs keeps only department_key and orgUnit", {
+test_that("include_department = pseudo keeps department_key in fact tables", {
   result <- remove_with(include_department = "pseudo")
-  expect_equal(
-    sort(names(result$metadata$departments)),
-    sort(c("department_key", "orgUnit")))
-  # Foreign keys preserved in data tables
+  # Foreign keys preserved in data tables — the tibble shape itself is
+  # reader-owned and verified via the schema tests.
   expect_true("department_key" %in% names(result$patients))
-})
-
-test_that("include_department = pseudo without dhis2 IDs removes departments table", {
-  result <- remove_with(
-    include_department = "pseudo",
-    include_dhis2_ids = c("patients", "enrollments",
-      "events", "notes", "event_types", "users"))
-  expect_null(result$metadata$departments)
+  expect_true("department_key" %in% names(result$enrollments))
+  expect_true("department_key" %in% names(result$events))
 })
 
 # --- include_hospital ---
@@ -268,7 +264,12 @@ test_that("all include flags at most restrictive removes all optional data", {
   # Optional data removed
   expect_false("patient_id" %in% names(result$patients))
   expect_false("trackedEntity" %in% names(result$patients))
-  expect_null(result$metadata$departments)
+  # All hierarchy tibble shapes are reader-owned under the three-mode
+  # schema contract (see test-dhis2-metadata.R). Here we just confirm
+  # the FK-column scrubs cascaded to fact tables.
+  expect_false("department_key" %in% names(result$patients))
+  expect_false("department_key" %in% names(result$enrollments))
+  expect_false("department_key" %in% names(result$events))
   # `hospitals` + `countries` + `worldBankClasses` shapes are
   # reader-owned under the three-mode schema contract and asserted in
   # test-dhis2-metadata.R. Here we just confirm the FK-column scrubs

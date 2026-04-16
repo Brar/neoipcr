@@ -187,3 +187,96 @@ hospitals_cols <- with_entity_gate(
 
 get_hospitals_schema <- function(opts)
   compile_schema(hospitals_cols, opts)
+
+# ---- Departments ----------------------------------------------------------
+#
+# Bottom of the org-unit hierarchy (patients are the next layer below,
+# but they belong to the fact-table side of the schema). Departments
+# sits at the "fat lookup" tier: under `include_department = "full"`,
+# all hierarchy keys are pre-joined in (`hospital_key`, `country_key`,
+# `world_bank_class_key`) so downstream fact readers (patients,
+# enrollments, events) can do a single one-hop join to reach any
+# hierarchy level. This pragmatic design deviates from the strict
+# `col_inherited_from()` rule used on hospitals: inheritance would say
+# "departments doesn't carry `country_key` under full-chain-intact
+# because hospitals reaches it via its own country_key". But existing
+# downstream consumers (e.g. `R/dhis2-trackedEntities.R:151-153`) read
+# `metadata$departments$country_key` directly, so the pre-join is the
+# load-bearing behaviour the schema must describe, not optimise away.
+# Under pseudo / no modes, the fat-lookup role collapses to just the
+# link-FK and PK.
+#
+# `isTest` is populated by the orchestrator (computed from
+# `orgUnit %in% testUnitIds`), gated by `include_test_data`. Source #1
+# of the three-source isTest merge (group membership); sources #2
+# (subtree) and #3 (IsTestunit attribute) land later via
+# `tasks/orgunit-attributes-import.md`.
+#
+# Three-mode shape:
+#   "no"     — 0×0 tibble (via the entity gate).
+#   "pseudo" — `department_key`, `hospital_key` (link FK when hospital
+#              != "no"), `isTest` (when include_test_data = TRUE). Plus
+#              `orgUnit` if "departments" is in include_dhis2_ids.
+#   "full"   — adds display / geometry / openingDate columns AND the
+#              pre-joined hierarchy keys (`country_key`,
+#              `world_bank_class_key`) for downstream one-hop access.
+
+departments_cols <- with_entity_gate(
+  list(
+    col_department_key,
+    schema_col(
+      "orgUnit", character(),
+      include_when = \(opts) "departments" %in% opts$include_dhis2_ids
+    ),
+    schema_col(
+      "code", character(),
+      include_when = \(opts) opts$include_department == "full"
+    ),
+    schema_col(
+      "displayName", character(),
+      include_when = \(opts) opts$include_department == "full"
+    ),
+    schema_col(
+      "displayShortName", character(),
+      include_when = \(opts) opts$include_department == "full"
+    ),
+    schema_col(
+      "displayDescription", character(),
+      include_when = \(opts) opts$include_department == "full"
+    ),
+    schema_col(
+      "comment", character(),
+      include_when = \(opts) opts$include_department == "full"
+    ),
+    schema_col(
+      "openingDate", as.Date(character()),
+      include_when = \(opts) opts$include_department == "full"
+    ),
+    schema_col(
+      "longitude", double(),
+      include_when = \(opts) opts$include_department == "full"
+    ),
+    schema_col(
+      "latitude", double(),
+      include_when = \(opts) opts$include_department == "full"
+    ),
+    col_hospital_key,
+    # Pre-joined hierarchy keys under full mode (see module note above).
+    schema_col(
+      "country_key", integer(),
+      include_when = \(opts)
+        opts$include_country != "no" && opts$include_department == "full"
+    ),
+    schema_col(
+      "world_bank_class_key", integer(),
+      include_when = \(opts)
+        opts$include_world_bank_class != "no" &&
+        opts$include_department == "full"
+    ),
+    col_isTest
+  ),
+  gate = \(opts) opts$include_department != "no"
+)
+
+get_departments_schema <- function(opts)
+  compile_schema(departments_cols, opts)

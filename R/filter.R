@@ -181,14 +181,18 @@ apply_postfilter <- function(x)
       .data$country_key %in% countries$country_key)
 
   # Filtering by unit will only work if we have unit information
-  if(!is.null(departments) && "department_key" %in% names(enrollments))
+  # `departments` is always a tibble (never NULL) under the three-mode
+  # schema contract — guard on column presence, not null-ness.
+  if("department_key" %in% names(departments) &&
+     "department_key" %in% names(enrollments))
     enrollments <- enrollments |>
     dplyr::semi_join(departments, dplyr::join_by("department_key"))
 
   ########################################################
   ## Second filter all the other elements by enrollments #
   ########################################################
-  if(!is.null(departments) && "department_key" %in% names(enrollments))
+  if("department_key" %in% names(departments) &&
+     "department_key" %in% names(enrollments))
     departments <- departments |>
     dplyr::semi_join(enrollments, dplyr::join_by("department_key"))
   # `hospitals` is always a tibble (never NULL) under the three-mode

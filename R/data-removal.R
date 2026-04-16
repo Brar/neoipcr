@@ -18,30 +18,21 @@ apply_data_removal <- function(x, dataset_options)
       dplyr::select(!tidyselect::any_of("enrollment"))
   }
 
-  if(!("departments" %in% dataset_options$include_dhis2_ids))
-  {
-    x$metadata$departments <- x$metadata$departments |>
-      dplyr::select(!tidyselect::any_of("orgUnit"))
-  }
-
+  # `include_department` — tibble shape is reader-owned via
+  # `R/schema-orgunits.R::departments_cols`. The `orgUnit` column is
+  # gated by `"departments" %in% include_dhis2_ids` at the schema level,
+  # so `finalize_to_schema()` in the metadata orchestrator drops it when
+  # needed; the legacy scrub here is redundant and removed. The guardian
+  # keeps the FK-scrub cascade on fact tables until those entities
+  # schematize.
   if(dataset_options$include_department == "no")
   {
-    x$metadata$departments <- NULL
-
     x$patients <- x$patients |>
       dplyr::select(!tidyselect::any_of("department_key"))
     x$enrollments <- x$enrollments |>
       dplyr::select(!tidyselect::any_of("department_key"))
     x$events <- x$events |>
       dplyr::select(!tidyselect::any_of("department_key"))
-  }
-  else if(dataset_options$include_department == "pseudo")
-  {
-    if("departments" %in% dataset_options$include_dhis2_ids)
-      x$metadata$departments <- x$metadata$departments |>
-        dplyr::select(tidyselect::all_of(c("department_key","orgUnit")))
-    else
-      x$metadata$departments <- NULL
   }
 
   # `include_hospital` — tibble shape is reader-owned via

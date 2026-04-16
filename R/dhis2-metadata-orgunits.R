@@ -54,7 +54,7 @@ read_organisationUnits <- function(organisationUnits, dataset_options)
   ret$departments <- read_organisationUnits_departments(
     department_base,
     ret,
-    "hospitals" %in% dataset_options$include_dhis2_ids)
+    dataset_options)
 
   ret
 }
@@ -125,7 +125,7 @@ read_organisationUnits_hospitals <- function(x, dataset_options)
   list(processed = processed, internal_map = internal_map)
 }
 
-read_organisationUnits_departments <- function(x, y, include_hospital_ids) {
+read_organisationUnits_departments <- function(x, y, dataset_options) {
 
   # Dept → hospital join uses the orchestrator-internal hospitals map
   # (not `y$hospitals` directly), because `metadata$hospitals` is later
@@ -150,13 +150,20 @@ read_organisationUnits_departments <- function(x, y, include_hospital_ids) {
         openingDate =  readr::parse_date(
           stringr::str_sub(.data$openingDate, end = 10)))
 
-  if("geometry" %in% cols)
+  # Hoist geometry when present; otherwise pad NA under "full" so the
+  # schema's longitude/latitude columns are populated either way.
+  if("geometry" %in% cols) {
     x <- x |>
-    tidyr::hoist(
-      "geometry",
-      longitude = list("coordinates", 1),
-      latitude = list("coordinates", 2)) |>
-    dplyr::select(!"geometry")
+      tidyr::hoist(
+        "geometry",
+        longitude = list("coordinates", 1),
+        latitude  = list("coordinates", 2)) |>
+      dplyr::select(!"geometry")
+  } else if (dataset_options$include_department == "full") {
+    x <- x |> dplyr::mutate(
+      longitude = NA_real_,
+      latitude  = NA_real_)
+  }
 
   x |>
     dplyr::relocate("orgUnit" = "id") |>
