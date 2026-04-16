@@ -252,3 +252,127 @@ test_that("finalize_to_schema respects include_when() filtering", {
     x, cols, dhis2_dataset_options(include_country = "no"))
   expect_identical(names(out), "always")
 })
+
+# ---- with_entity_gate / entity_gate / entity_exists ----------------------
+#
+# The containing-entity gate closes a latent gap: individual atoms only
+# know their own option, not the containing entity's option. Without the
+# gate, using a shared atom whose predicate is "the linked entity
+# exists" on a child entity would produce a stray non-empty tibble
+# under `include_<child_entity> = "no"` — a violation of the `0 → 1 → N`
+# strict progression. See R/schema-tools.R::with_entity_gate for the
+# design rationale, and tasks/neoipcr-schema-arc/schema-entity-gate.md
+# for the tracker.
+
+test_that("with_entity_gate attaches the gate attribute; entity_gate reads it", {
+  cols <- list(neoipcr:::schema_col("x", integer()))
+  gate <- \(opts) opts$include_country != "no"
+  gated <- neoipcr:::with_entity_gate(cols, gate = gate)
+
+  expect_identical(neoipcr:::entity_gate(gated), gate)
+})
+
+test_that("with_entity_gate rejects non-function gate", {
+  expect_error(
+    neoipcr:::with_entity_gate(list(), gate = "not a function"),
+    "must be a function")
+})
+
+test_that("entity_gate returns NULL for cols without a gate", {
+  expect_null(neoipcr:::entity_gate(list()))
+})
+
+test_that("entity_exists returns TRUE when no gate is set", {
+  opts <- dhis2_dataset_options()
+  expect_true(neoipcr:::entity_exists(list(), opts))
+})
+
+test_that("entity_exists honors the gate predicate", {
+  cols <- neoipcr:::with_entity_gate(
+    list(), gate = \(o) o$include_country != "no")
+  expect_false(neoipcr:::entity_exists(
+    cols, dhis2_dataset_options(include_country = "no")))
+  expect_true(neoipcr:::entity_exists(
+    cols, dhis2_dataset_options(include_country = "pseudo")))
+  expect_true(neoipcr:::entity_exists(
+    cols, dhis2_dataset_options(include_country = "full")))
+})
+
+test_that("compile_schema returns 0x0 when entity_gate rejects opts, ignoring atoms", {
+  # `always_true_atom` would fire under any opts; with the gate
+  # rejecting opts, the entity is treated as empty anyway.
+  always_true_atom <- neoipcr:::schema_col("stray", integer())
+  cols <- neoipcr:::with_entity_gate(
+    list(always_true_atom),
+    gate = \(o) o$include_country != "no")
+
+  schema <- neoipcr:::compile_schema(
+    cols, dhis2_dataset_options(include_country = "no"))
+
+  expect_s3_class(schema, "tbl_df")
+  expect_equal(ncol(schema), 0L)
+  expect_equal(nrow(schema), 0L)
+})
+
+test_that("compile_schema proceeds when entity_gate accepts opts", {
+  always_true_atom <- neoipcr:::schema_col("x", integer())
+  cols <- neoipcr:::with_entity_gate(
+    list(always_true_atom),
+    gate = \(o) o$include_country != "no")
+
+  schema <- neoipcr:::compile_schema(
+    cols, dhis2_dataset_options(include_country = "pseudo"))
+
+  expect_identical(names(schema), "x")
+})
+
+test_that("compile_schema with no gate behaves exactly as before (backward compat)", {
+  cols <- list(neoipcr:::schema_col("x", integer()))
+
+  # Default gate is absent → entity_exists always TRUE → no short-circuit.
+  schema <- neoipcr:::compile_schema(
+    cols, dhis2_dataset_options(include_country = "no"))
+  expect_identical(names(schema), "x")
+})
+
+test_that("assert_schema short-circuits when entity_gate rejects opts", {
+  cols <- neoipcr:::with_entity_gate(
+    list(neoipcr:::schema_col("x", integer())),
+    gate = \(o) o$include_country != "no")
+  opts <- dhis2_dataset_options(include_country = "no")
+
+  # A 0×0 tibble matches the expected 0×0 shape → passes silently.
+  expect_silent(neoipcr:::assert_schema(tibble::tibble(), cols, opts))
+
+  # A tibble with stray columns fails the column-name-order check.
+  expect_error(
+    neoipcr:::assert_schema(tibble::tibble(x = integer()), cols, opts),
+    "column names / order differ")
+})
+
+test_that("finalize_to_schema returns 0x0 when entity_gate rejects opts", {
+  cols <- neoipcr:::with_entity_gate(
+    list(neoipcr:::schema_col("x", integer())),
+    gate = \(o) o$include_country != "no")
+  x <- tibble::tibble(x = 1:3, y = letters[1:3])
+
+  out <- neoipcr:::finalize_to_schema(
+    x, cols, dhis2_dataset_options(include_country = "no"))
+
+  expect_s3_class(out, "tbl_df")
+  expect_equal(ncol(out), 0L)
+  expect_equal(nrow(out), 0L)
+})
+
+test_that("schema_codes honors entity_gate via compile_schema", {
+  cols <- neoipcr:::with_entity_gate(
+    list(neoipcr:::schema_col("x", integer())),
+    gate = \(o) o$include_country != "no")
+
+  expect_identical(
+    neoipcr:::schema_codes(cols, dhis2_dataset_options(include_country = "no")),
+    character(0))
+  expect_identical(
+    neoipcr:::schema_codes(cols, dhis2_dataset_options(include_country = "pseudo")),
+    "x")
+})

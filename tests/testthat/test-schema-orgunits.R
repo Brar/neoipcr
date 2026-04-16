@@ -184,23 +184,54 @@ test_that("country display columns appear only under include_country = 'full'", 
   }
 })
 
-test_that("countries world_bank_class_key appears iff BOTH country and WB are non-'no'", {
-  wb_col <- purrr::detect(
-    neoipcr:::countries_cols, \(c) c$name == "world_bank_class_key")
-  expect_false(is.null(wb_col))
+test_that("countries schema has world_bank_class_key iff BOTH country and WB are non-'no'", {
+  # Tests the direct parent-link FK contract at the SCHEMA level, not
+  # at the atom level. The `world_bank_class_key` column on countries
+  # is the shared `col_wb_class_key` atom (predicate:
+  # `include_world_bank_class != "no"`) gated by the countries
+  # containing-entity gate (`include_country != "no"`). Neither alone
+  # encodes the compound rule; the composition does — which is the
+  # whole point of `with_entity_gate`.
+  for (cmode in c("no", "pseudo", "full")) {
+    for (wbmode in c("no", "pseudo", "full")) {
+      schema <- neoipcr:::get_countries_schema(dhis2_dataset_options(
+        include_country = cmode, include_world_bank_class = wbmode))
+      expected <- cmode != "no" && wbmode != "no"
+      expect_equal(
+        "world_bank_class_key" %in% names(schema),
+        expected,
+        info = sprintf("c=%s, wb=%s", cmode, wbmode))
+    }
+  }
+})
 
-  # Direct parent-link FK — requires countries tibble AND WB tibble to
-  # both exist. Shared `col_wb_class_key` atom's single-option predicate
-  # is intentionally not reused here; see the comment in schema-orgunits.R
-  # on the compound gate.
-  expect_false(wb_col$include_when(dhis2_dataset_options(
-    include_country = "no", include_world_bank_class = "full")))
-  expect_false(wb_col$include_when(dhis2_dataset_options(
-    include_country = "full", include_world_bank_class = "no")))
-  expect_true(wb_col$include_when(dhis2_dataset_options(
-    include_country = "pseudo", include_world_bank_class = "pseudo")))
-  expect_true(wb_col$include_when(dhis2_dataset_options(
-    include_country = "full", include_world_bank_class = "full")))
+test_that("get_countries_schema honors 0 -> 1 -> N progression across full cross-product", {
+  # Regression for the latent containing-entity-gate gap: under every
+  # combination of `include_country × include_world_bank_class`, the
+  # schema shape must obey the strict progression. In particular,
+  # under `include_country = "no"` + any WB mode, the schema must be
+  # 0×0 — no stray `world_bank_class_key` leaking through because the
+  # shared atom's predicate would otherwise fire.
+  for (cmode in c("no", "pseudo", "full")) {
+    for (wbmode in c("no", "pseudo", "full")) {
+      opts <- dhis2_dataset_options(
+        include_country = cmode, include_world_bank_class = wbmode)
+      schema <- neoipcr:::get_countries_schema(opts)
+
+      expected_ncol <- if (cmode == "no") {
+        0L
+      } else if (cmode == "pseudo") {
+        if (wbmode == "no") 1L else 2L  # country_key (+ wb FK if WB exists)
+      } else {  # "full"
+        if (wbmode == "no") 5L else 6L  # + 4 display cols (+ wb FK)
+      }
+
+      expect_equal(ncol(schema), expected_ncol,
+        info = sprintf("c=%s, wb=%s", cmode, wbmode))
+      expect_equal(nrow(schema), 0L,
+        info = sprintf("c=%s, wb=%s", cmode, wbmode))
+    }
+  }
 })
 
 # --- get_countries_schema — three-mode shape contract ---

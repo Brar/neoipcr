@@ -35,17 +35,20 @@ NULL
 #              factor uses protocol-declared levels (fixed); `fiscal_year`
 #              is an integer year.
 
-worldBankClasses_cols <- list(
-  col_wb_class_key,
-  schema_col(
-    "class", factor(),
-    include_when  = \(opts) opts$include_world_bank_class == "full",
-    factor_levels = c("L", "LM", "UM", "H")
+worldBankClasses_cols <- with_entity_gate(
+  list(
+    col_wb_class_key,
+    schema_col(
+      "class", factor(),
+      include_when  = \(opts) opts$include_world_bank_class == "full",
+      factor_levels = c("L", "LM", "UM", "H")
+    ),
+    schema_col(
+      "fiscal_year", integer(),
+      include_when = \(opts) opts$include_world_bank_class == "full"
+    )
   ),
-  schema_col(
-    "fiscal_year", integer(),
-    include_when = \(opts) opts$include_world_bank_class == "full"
-  )
+  gate = \(opts) opts$include_world_bank_class != "no"
 )
 
 get_worldBankClasses_schema <- function(opts)
@@ -60,14 +63,11 @@ get_worldBankClasses_schema <- function(opts)
 # *further up* the chain that the immediate parent might or might not
 # carry (e.g. patients inheriting `country_key` from departments). For a
 # direct parent-child link the FK is *always* present when both sides
-# exist; we declare it inline with a compound predicate here rather than
-# reusing the shared `col_wb_class_key` atom, because the shared atom's
-# predicate (`include_world_bank_class != "no"`) does not also require
-# the containing entity to exist. Without the compound gate, a
-# `compile_schema(countries_cols, opts)` under
-# `include_country = "no"` + `include_world_bank_class = "full"`
-# would produce a 1-col tibble with just `world_bank_class_key` — a
-# violation of the `0 → 1 → N` strict progression for countries.
+# exist; per plan.md's "gated on both sides of the link" rule for link
+# FKs. The shared `col_wb_class_key` atom encodes the "WB side exists"
+# half (its predicate is `include_world_bank_class != "no"`); the
+# "countries side exists" half is supplied by the containing-entity gate
+# declared below via `with_entity_gate()`.
 #
 # Display columns are ordered factors with data-derived levels, matching
 # the current reader's `dplyr::across(!"id", ordered)` conversion. Under
@@ -76,39 +76,38 @@ get_worldBankClasses_schema <- function(opts)
 # orchestrator-level joins) that aren't in the public schema.
 #
 # Three-mode shape:
-#   "no"     — 0×0 tibble.
+#   "no"     — 0×0 tibble (via the entity gate's short-circuit).
 #   "pseudo" — `country_key` only, plus `world_bank_class_key` when
 #              `include_world_bank_class != "no"` (direct link-FK).
-#   "full"   — adds `code`, `displayName`, `displayShortName`.
+#   "full"   — adds `code`, `displayName`, `displayShortName`,
+#              `displayDescription`.
 
-countries_cols <- list(
-  col_country_key,
-  schema_col(
-    "code", ordered(),
-    include_when  = \(opts) opts$include_country == "full",
-    levels_source = "data"
+countries_cols <- with_entity_gate(
+  list(
+    col_country_key,
+    schema_col(
+      "code", ordered(),
+      include_when  = \(opts) opts$include_country == "full",
+      levels_source = "data"
+    ),
+    schema_col(
+      "displayName", ordered(),
+      include_when  = \(opts) opts$include_country == "full",
+      levels_source = "data"
+    ),
+    schema_col(
+      "displayShortName", ordered(),
+      include_when  = \(opts) opts$include_country == "full",
+      levels_source = "data"
+    ),
+    schema_col(
+      "displayDescription", ordered(),
+      include_when  = \(opts) opts$include_country == "full",
+      levels_source = "data"
+    ),
+    col_wb_class_key
   ),
-  schema_col(
-    "displayName", ordered(),
-    include_when  = \(opts) opts$include_country == "full",
-    levels_source = "data"
-  ),
-  schema_col(
-    "displayShortName", ordered(),
-    include_when  = \(opts) opts$include_country == "full",
-    levels_source = "data"
-  ),
-  schema_col(
-    "displayDescription", ordered(),
-    include_when  = \(opts) opts$include_country == "full",
-    levels_source = "data"
-  ),
-  schema_col(
-    "world_bank_class_key", integer(),
-    include_when = \(opts)
-      opts$include_country != "no" &&
-      opts$include_world_bank_class != "no"
-  )
+  gate = \(opts) opts$include_country != "no"
 )
 
 get_countries_schema <- function(opts)

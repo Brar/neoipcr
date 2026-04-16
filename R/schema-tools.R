@@ -51,12 +51,56 @@ schema_col <- function(name, type,
   )
 }
 
+# Wrap a list of schema_col atoms with a containing-entity gate. The gate
+# is a `function(opts) logical(1)` predicate evaluated before any atom's
+# `include_when`; when it returns FALSE, the whole entity is treated as
+# empty and `compile_schema` / `schema_codes` / `assert_schema` /
+# `finalize_to_schema` return (or operate on) a 0×0 tibble regardless of
+# individual atom predicates.
+#
+# This closes a latent gap in the pure per-atom design: shared atoms such
+# as `col_wb_class_key` only know about their own option
+# (`include_world_bank_class != "no"`), not about the containing entity's
+# option. Without the gate, using `col_wb_class_key` on countries under
+# `include_country = "no" + include_world_bank_class = "full"` would
+# produce a stray 1-col tibble instead of the required 0×0. The gate is
+# the "entity exists" half of the compound predicate, applied once per
+# entity, centralized and DRY.
+#
+# `get_<entity>_schema()` wrappers don't need to change — they still
+# call `compile_schema(cols, opts)`. The gate is picked up via the
+# attribute.
+with_entity_gate <- function(cols, gate)
+{
+  if (!is.function(gate))
+    rlang::abort("`gate` must be a function of `opts`.")
+  attr(cols, "entity_gate") <- gate
+  cols
+}
+
+# Look up the containing-entity gate for a cols list. Returns `NULL` when
+# no gate is set — callers should treat that as "always-open".
+entity_gate <- function(cols)
+  attr(cols, "entity_gate", exact = TRUE)
+
+# TRUE iff the containing entity's gate passes under `opts`; always TRUE
+# when no gate has been declared.
+entity_exists <- function(cols, opts)
+{
+  g <- entity_gate(cols)
+  if (is.null(g)) TRUE else isTRUE(g(opts))
+}
+
 # Compile a list of schema_col atoms into a 0-row tibble under `opts`.
-# Columns appear in declaration order, filtered by each atom's
-# `include_when(opts)`. Factor columns are built with their declared
-# levels.
+# Short-circuits to 0×0 when the containing-entity gate (if any) rejects
+# `opts`. Otherwise, columns appear in declaration order, filtered by
+# each atom's `include_when(opts)`. Factor columns are built with their
+# declared levels.
 compile_schema <- function(cols, opts)
 {
+  if (!entity_exists(cols, opts))
+    return(tibble::tibble())
+
   included <- purrr::keep(cols, \(c) isTRUE(c$include_when(opts)))
 
   if (length(included) == 0L)
@@ -90,6 +134,12 @@ schema_codes <- function(cols, opts)
 # per column, same factor levels for fixed-levels factors.
 # Data-derived-levels factors are not asserted on levels (use
 # `droplevels()` to regenerate them post-filter).
+#
+# Honours the containing-entity gate via `compile_schema()`: when the
+# gate rejects `opts`, `x` must be a 0-col tibble to match the empty
+# expected shape. The per-atom class / levels loop is driven by
+# `exp_names` which is empty under that condition, so the check is a
+# single name-order comparison.
 assert_schema <- function(x, cols, opts)
 {
   expected  <- compile_schema(cols, opts)
@@ -102,6 +152,12 @@ assert_schema <- function(x, cols, opts)
       "i" = paste("expected:", paste(exp_names, collapse = ", ")),
       "x" = paste("actual:  ", paste(act_names, collapse = ", "))
     ))
+
+  # When the entity gate rejected `opts`, `exp_names` is empty and we
+  # skip the per-atom iteration — the name-order equality above is the
+  # whole contract for "entity doesn't exist".
+  if (!entity_exists(cols, opts))
+    return(invisible(x))
 
   included <- purrr::keep(cols, \(c) isTRUE(c$include_when(opts)))
   col_map  <- stats::setNames(included, purrr::map_chr(included, "name"))
@@ -132,8 +188,14 @@ assert_schema <- function(x, cols, opts)
 # Errors via `dplyr::select(all_of(...))` if any declared column is
 # missing from `x` — the pre-pivot `names_expand = TRUE` contract
 # makes missing columns a real bug, not silent drift.
+#
+# Honours the containing-entity gate: when the gate rejects `opts`,
+# return a 0×0 tibble (no atoms iterated, no columns selected).
 finalize_to_schema <- function(x, cols, opts)
 {
+  if (!entity_exists(cols, opts))
+    return(tibble::tibble())
+
   included  <- purrr::keep(cols, \(c) isTRUE(c$include_when(opts)))
   exp_names <- purrr::map_chr(included, "name")
 

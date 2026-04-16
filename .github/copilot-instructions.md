@@ -78,7 +78,7 @@ The `R/` directory follows a deliberate structure established by the neoipcr fil
 | `R/cache.R` | Cache primitives (`cache`, `get_cached`, `new_cache`, `clean_cache`) + `add_class` |
 | `R/ci.R` | Confidence interval functions (`neoipc_poisson_ci()`, `neoipc_wilson_ci()`) |
 | **Schema engine** | |
-| `R/schema-tools.R` | `schema_col()`, `compile_schema()`, `schema_codes()`, `assert_schema()`, `finalize_to_schema()` — column-as-declaration engine. Internal, no `@export`. |
+| `R/schema-tools.R` | `schema_col()`, `compile_schema()`, `schema_codes()`, `assert_schema()`, `finalize_to_schema()` — column-as-declaration engine. `with_entity_gate(cols, gate)` + `entity_gate()` + `entity_exists()` attach a containing-entity-gate predicate so `compile_schema`/`assert_schema`/`finalize_to_schema` short-circuit to 0×0 when the gate rejects `opts`. Internal, no `@export`. |
 | `R/schema-cols-shared.R` | Cross-entity column declarations: `col_patient_key`, `col_enrollment_key`, `col_event_key`, `col_department_key`, `col_hospital_key`, `col_country_key`, `col_wb_class_key`, `col_isTest`, plus `col_inherited_from()` (hierarchy-inheritance helper) and `attribute_cols()` / `tea_attribute_cols()` (companion-column helpers for partner-site-entered attributes). Loads before every `schema-<domain>.R` via `@include`. |
 | `R/schema-orgunits.R` | Column declarations + `get_<entity>_schema(opts)` wrappers for the org-unit hierarchy. Today carries `worldBankClasses_cols`; countries / hospitals / departments land in subsequent Phase B sub-tasks. Loads after `schema-cols-shared.R`. Internal. |
 | **Data protection** | |
