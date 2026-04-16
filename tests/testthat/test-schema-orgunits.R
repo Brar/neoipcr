@@ -827,23 +827,25 @@ test_that("users_cols: `pseudo` mode is strictly user_key only", {
   expect_type(schema$user_key, "integer")
 })
 
-test_that("users_cols: `pseudo` mode stays 1-col even with users in include_dhis2_ids", {
-  # The `user` column is only exposed under `"full"` + `"users" %in%
-  # include_dhis2_ids`. Under `"pseudo"`, the DHIS2 id is considered
-  # part of the "full" detail set and is gated out along with
-  # username / firstName / etc. This matches the strict `0 → 1 → N`
-  # progression: pseudo is single-column regardless of other gates.
+test_that("users_cols: `pseudo` mode adds `user` when include_dhis2_ids opts in", {
+  # The `user` column is gated only on `"users" %in% include_dhis2_ids`
+  # (the raw DHIS2-id opt-in axis), same pattern as hospitals' /
+  # departments' `orgUnit`. Under pseudo + id-opt-in the tibble is
+  # `user_key + user` — the DHIS2 id by itself is opaque and
+  # identifies nothing outside DHIS2; content-gated columns
+  # (`username`, `firstName`, `email`, …) stay absent.
   opts <- dhis2_dataset_options(
     include_user      = "pseudo",
     include_dhis2_ids = "users")
   schema <- neoipcr:::compile_schema(neoipcr:::users_cols, opts)
-  expect_identical(names(schema), "user_key")
+  expect_identical(names(schema), c("user_key", "user"))
 })
 
-test_that("users_cols: `full` mode exposes all columns, gates `user` on include_dhis2_ids", {
+test_that("users_cols: `full` mode exposes all content columns; `user` gated on include_dhis2_ids", {
   # Without "users" in include_dhis2_ids, the raw DHIS2 id (`user`) is
-  # absent from the public schema even under "full" — the id is a
-  # separate opt-in from the rest of the user profile.
+  # absent from the public schema even under "full" — the id is an
+  # orthogonal opt-in to the content columns (username / firstName /
+  # …). Same two-axis pattern as hospitals' / departments' `orgUnit`.
   opts_no_ids <- dhis2_dataset_options(
     include_user = "full", include_dhis2_ids = character())
   schema_no_ids <- neoipcr:::compile_schema(neoipcr:::users_cols, opts_no_ids)

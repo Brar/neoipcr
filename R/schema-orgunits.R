@@ -290,15 +290,17 @@ get_departments_schema <- function(opts)
 # progression:
 #
 #   "no"     — 0×0 (via the entity gate).
-#   "pseudo" — `user_key` only. Downstream fact readers substitute
-#              `createdBy` / `updatedBy` / etc. via the
-#              orchestrator-internal `.users_internal_map` rather than
-#              through `metadata$users`, so the pseudo shape can stay
-#              strictly single-column without breaking the FK-resolution
-#              path.
-#   "full"   — `user_key`, `user` (raw DHIS2 id — gated on
-#              `"users" %in% include_dhis2_ids`), `username`, `firstName`,
-#              `surname`, `email`, `lastLogin`, `created`.
+#   "pseudo" — `user_key`, plus `user` when `"users" %in%
+#              include_dhis2_ids` (same orthogonal id-opt-in axis as
+#              hospitals' / departments' `orgUnit`). Content columns
+#              (`username`, `firstName`, `email`, …) stay absent.
+#              Downstream fact readers substitute `createdBy` /
+#              `updatedBy` / etc. via the orchestrator-internal
+#              `.users_internal_map` rather than through
+#              `metadata$users`, so the pseudo shape can omit
+#              `username` without breaking the FK-resolution path.
+#   "full"   — `user_key`, `user` (when id-opt-in), `username`,
+#              `firstName`, `surname`, `email`, `lastLogin`, `created`.
 #
 # Fallback path (`read_user_info_table`, fires when the caller lacks
 # `F_USER_VIEW` / `F_METADATA_EXPORT` / `ALL`): produces the same public
@@ -311,15 +313,18 @@ users_cols <- with_entity_gate(
     col_user_key,
     schema_col(
       "user", character(),
-      # `user` is the raw DHIS2 id, gated by BOTH the containing-entity
-      # `include_user == "full"` mode AND the `"users" %in%
-      # include_dhis2_ids` opt-in. The double gate keeps pseudo mode
-      # strictly single-column even when `include_dhis2_ids` includes
-      # "users" (otherwise pseudo would leak the DHIS2 id alongside
-      # `user_key`, violating the `0 → 1 → N` progression).
-      include_when = \(opts)
-        opts$include_user == "full" &&
-        "users" %in% opts$include_dhis2_ids
+      # `user` is the raw DHIS2 user id — an opaque UID, not a
+      # human-identifying string. Gated only on
+      # `"users" %in% include_dhis2_ids`, same as `orgUnit` on hospitals
+      # and departments. The DHIS2-id opt-in is an orthogonal axis to
+      # the `include_user` no/pseudo/full mode axis: the mode axis
+      # controls content (names, email, lastLogin, ...), while
+      # include_dhis2_ids controls exposure of the raw DHIS2 id. Under
+      # pseudo + `"users"` in include_dhis2_ids the tibble carries
+      # `user_key + user` — the DHIS2 id by itself identifies nothing
+      # outside DHIS2 (in contrast to `username`, which IS a public
+      # identifier and stays gated by `include_user == "full"`).
+      include_when = \(opts) "users" %in% opts$include_dhis2_ids
     ),
     schema_col(
       "username", character(),
