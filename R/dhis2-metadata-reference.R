@@ -23,8 +23,25 @@ read_metadata_program_id <- function(metadata)
   program_id
 }
 
-read_metadata_programStages <- function(metadata)
+# Read the program-stages metadata into an `eventTypes` tibble.
+#
+# Returns a named list with two components:
+#   * `public`       — schema-conformant tibble matching
+#                      `compile_schema(eventTypes_cols, dataset_options)`.
+#                      Always returned (never NULL); rows = all program
+#                      stages present in the DHIS2 payload, mapped to
+#                      the protocol's `event_type_key` factor.
+#   * `internal_map` — orchestrator-internal tibble with two columns,
+#                      `event_type_key + programStage`. Consumed by
+#                      `read_events()` for the raw `programStage` →
+#                      `event_type_key` substitution, regardless of
+#                      whether `"event_types" %in% include_dhis2_ids`
+#                      (that option controls only public exposure of
+#                      `programStage`, not internal FK resolution).
+read_metadata_programStages <- function(metadata, dataset_options)
 {
+  opts <- dataset_options
+
   programStages <- metadata |>
     purrr::pluck("programs", 1, "programStages")
 
@@ -32,16 +49,10 @@ read_metadata_programStages <- function(metadata)
     rlang::abort("Invalid DHIS2 metadata. The programStages list is missing.",
                  "neoipcr_metadata_programStages_missing")
 
-  programStages |>
+  raw <- programStages |>
     tibble::tibble() |>
     tidyr::unnest_wider(1) |>
-    dplyr::select(!tidyselect::any_of("programStageDataElements")) |>
     dplyr::mutate(
-      name = factor(
-        .data$name,
-        levels = c("Admission","Surgical Procedure","Primary Sepsis/BSI",
-                   "Necrotizing enterocolitis","Surgical Site Infection",
-                   "Pneumonia","Surveillance-End")),
       event_type_key = factor(
         dplyr::case_match(
           .data$name,
@@ -55,16 +66,29 @@ read_metadata_programStages <- function(metadata)
         ),
         levels = c("adm","pro","bsi","nec","ssi","hap","end"))
     ) |>
-    dplyr::arrange(.data$name) |>
-    dplyr::mutate(
-      displayName = factor(
-        .data$displayName,
-        levels = unique(.data$displayName)),
-      displayFormName = factor(
-        .data$displayFormName,
-        levels = unique(.data$displayFormName))
-    ) |>
-    dplyr::relocate("event_type_key", "programStage" = "id")
+    dplyr::arrange(.data$event_type_key) |>
+    dplyr::rename("programStage" = "id")
+
+  internal_map <- raw |>
+    dplyr::select(tidyselect::all_of(c("event_type_key", "programStage")))
+
+  # Narrow to the public schema. `name` / `displayName` /
+  # `displayFormName` / `displayDescription` / `programStageDataElements`
+  # live on the reader's working tibble but are deliberately not part
+  # of the public `eventTypes_cols` schema — report labelling uses
+  # protocol-driven dictionaries, and `programStageDataElements` is
+  # consumed by `read_metadata_dataElements()` via its own raw
+  # traversal. Listed as scratch so the new loud finalize recognises
+  # them as intentional drops.
+  public <- raw |>
+    finalize_to_schema(
+      eventTypes_cols, opts,
+      scratch = c(
+        "name", "displayName", "displayFormName", "displayDescription",
+        "programStageDataElements"))
+  assert_schema(public, eventTypes_cols, opts)
+
+  list(public = public, internal_map = internal_map)
 }
 
 read_metadata_dataElements <- function(metadata)

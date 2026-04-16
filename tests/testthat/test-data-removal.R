@@ -64,11 +64,11 @@ test_that("apply_data_removal removes note ID when notes not in include_dhis2_id
   expect_false("note" %in% names(result$eventNotes))
 })
 
-test_that("apply_data_removal removes programStage when event_types not in include_dhis2_ids", {
-  result <- remove_with(include_dhis2_ids = c("patients", "enrollments",
-    "departments", "events", "notes", "users"))
-  expect_false("programStage" %in% names(result$metadata$eventTypes))
-})
+# `event_types` — tibble shape is now reader-owned via
+# `R/schema-orgunits.R::eventTypes_cols`. The `programStage` column is
+# gated on `"event_types" %in% include_dhis2_ids` at the schema level;
+# the legacy scrub in `apply_data_removal()` is redundant and has been
+# removed. See `test-schema-orgunits.R` for schema-level coverage.
 
 # `users` — tibble shape is now reader-owned via
 # `R/schema-orgunits.R::users_cols`. The `user` column is gated on

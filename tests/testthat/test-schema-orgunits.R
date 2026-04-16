@@ -929,3 +929,78 @@ test_that("apply_data_removal succeeds when metadata tibbles carry no companion 
   expect_no_error(
     neoipcr:::apply_data_removal(ds, dhis2_dataset_options()))
 })
+
+# ---- Event types ----------------------------------------------------------
+#
+# The 7 program stages are protocol-fixed; the tibble is always present
+# (no entity gate, no `include_event_type` option). The only gate is
+# `include_dhis2_ids == "event_types"` which controls exposure of the
+# DHIS2 `programStage` UID — same two-axis pattern as users' `user` and
+# hospitals' / departments' `orgUnit`.
+
+test_that("eventTypes_cols always exposes event_type_key as a fixed-levels factor", {
+  opts_no_ids <- dhis2_dataset_options(include_dhis2_ids = character())
+  schema <- neoipcr:::compile_schema(neoipcr:::eventTypes_cols, opts_no_ids)
+  expect_identical(names(schema), "event_type_key")
+  expect_true(is.factor(schema$event_type_key))
+  expect_identical(
+    levels(schema$event_type_key),
+    c("adm", "pro", "bsi", "nec", "ssi", "hap", "end"))
+})
+
+test_that("eventTypes_cols exposes programStage when event_types is in include_dhis2_ids", {
+  opts_with_ids <- dhis2_dataset_options(include_dhis2_ids = "event_types")
+  schema <- neoipcr:::compile_schema(neoipcr:::eventTypes_cols, opts_with_ids)
+  expect_identical(names(schema), c("event_type_key", "programStage"))
+  expect_type(schema$programStage, "character")
+})
+
+test_that("eventTypes_cols has no entity gate — tibble is always present", {
+  # The protocol-fixed event-type set has no "opt out" mode. Unlike
+  # every other entity in `schema-orgunits.R`, `eventTypes_cols` is
+  # not wrapped with `with_entity_gate()` — `entity_gate()` must
+  # return NULL so `compile_schema` / `finalize_to_schema` proceed
+  # under any opts.
+  expect_null(neoipcr:::entity_gate(neoipcr:::eventTypes_cols))
+})
+
+test_that("assert_schema enforces factor levels on event_type_key", {
+  # Fixed-levels factor must not have levels dropped: a regression in
+  # the reader that slices the factor to a subset (e.g. missing `end`
+  # from the DHIS2 response) must fail loudly.
+  wrong_levels <- tibble::tibble(
+    event_type_key = factor("adm", levels = c("adm", "bsi")))
+  opts <- dhis2_dataset_options()
+  expect_error(
+    neoipcr:::assert_schema(wrong_levels, neoipcr:::eventTypes_cols, opts),
+    "levels differ")
+})
+
+test_that("make_test_metadata_event_types honors n and include_dhis2_ids", {
+  full <- make_test_metadata_event_types(
+    n = 7, include_dhis2_ids = "event_types")
+  expect_identical(names(full), c("event_type_key", "programStage"))
+  expect_equal(nrow(full), 7L)
+
+  no_ids <- make_test_metadata_event_types(
+    n = 3, include_dhis2_ids = character())
+  expect_identical(names(no_ids), "event_type_key")
+  expect_equal(nrow(no_ids), 3L)
+
+  zero <- make_test_metadata_event_types(
+    n = 0, include_dhis2_ids = "event_types")
+  expect_equal(nrow(zero), 0L)
+
+  # Protocol has 7 event types; asking for 8 is a test-author error.
+  expect_error(make_test_metadata_event_types(n = 8), "between 0 and 7")
+})
+
+test_that("make_test_metadata_event_types output matches eventTypes_cols schema", {
+  for (ids in list(character(), "event_types")) {
+    opts <- dhis2_dataset_options(include_dhis2_ids = ids)
+    schema <- neoipcr:::compile_schema(neoipcr:::eventTypes_cols, opts)
+    fixture <- make_test_metadata_event_types(
+      n = 3, include_dhis2_ids = ids)
+    expect_schema_matches(fixture, schema)
+  }
+})

@@ -480,11 +480,26 @@ make_test_metadata_wb_classes <- function(
   out
 }
 
-make_test_metadata_event_types <- function() {
-  tibble::tibble(
-    event_type_key = c("adm", "end", "bsi", "nec", "hap", "ssi", "pro"),
-    programStage   = paste0("PS_", c("adm", "end", "bsi", "nec", "hap", "ssi", "pro")),
-    name           = c("Admission", "Surveillance End", "BSI", "NEC", "HAP", "SSI", "Surgery"))
+make_test_metadata_event_types <- function(
+    n = 7,
+    include_dhis2_ids = "event_types") {
+  all_levels <- c("adm", "pro", "bsi", "nec", "ssi", "hap", "end")
+  if (n < 0L || n > length(all_levels))
+    rlang::abort(sprintf(
+      "n must be between 0 and %d (the 7 protocol-fixed event types).",
+      length(all_levels)))
+
+  schema <- neoipcr:::compile_schema(
+    neoipcr:::eventTypes_cols,
+    dhis2_dataset_options(include_dhis2_ids = include_dhis2_ids))
+
+  keys <- all_levels[seq_len(n)]
+  full <- tibble::tibble(
+    event_type_key = factor(keys, levels = all_levels),
+    programStage   = paste0("PS_", keys))
+
+  full |>
+    dplyr::select(tidyselect::all_of(names(schema)))
 }
 
 make_test_metadata_users <- function(

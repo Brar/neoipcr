@@ -117,12 +117,12 @@ apply_data_removal <- function(x, dataset_options)
         dplyr::select(!tidyselect::any_of("note"))
   }
 
-  if(!("event_types" %in% dataset_options$include_dhis2_ids))
-  {
-    if(!is.null(x$metadata$eventTypes))
-      x$metadata$eventTypes <- x$metadata$eventTypes |>
-        dplyr::select(!tidyselect::any_of("programStage"))
-  }
+  # `"event_types" %in% include_dhis2_ids` — tibble shape is now
+  # reader-owned via `R/schema-orgunits.R::eventTypes_cols`. The
+  # `programStage` column is gated at the schema level; the reader
+  # narrows via `finalize_to_schema()`, and the internal FK-resolution
+  # lookup (`programStage` → `event_type_key`) travels on
+  # `.eventTypes_internal_map`. Legacy scrub here is redundant.
 
   # `include_user` / `include_dhis2_ids == "users"` — tibble shape is now
   # reader-owned via `R/schema-orgunits.R::users_cols`. The `user` column

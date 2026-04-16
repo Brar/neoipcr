@@ -329,7 +329,13 @@ read_metadata <- function(metadata, dataset_options)
   programId <- read_metadata_program_id(metadata)
   trackedEntityTypeId <- metadata$trackedEntityTypes |>
     unlist(use.names = FALSE)
-  eventTypes <- read_metadata_programStages(metadata)
+  # `read_metadata_programStages()` now returns `list(public,
+  # internal_map)`. `internal_map` is consumed by `read_events()` for
+  # the raw programStage → event_type_key substitution regardless of
+  # whether `"event_types"` is in include_dhis2_ids; `public` follows
+  # the schema contract (always present; `programStage` only exposed
+  # when id-opt-in fires).
+  eventTypes_result <- read_metadata_programStages(metadata, dataset_options)
   dataElements <- read_metadata_dataElements(metadata)
   options <- read_metadata_options(metadata)
   admissionTypes <- read_metadata_admissionTypes(options)
@@ -376,7 +382,13 @@ read_metadata <- function(metadata, dataset_options)
     system = system,
     programId = programId,
     trackedEntityTypeId = trackedEntityTypeId,
-    eventTypes = eventTypes,
+    # Public `eventTypes` tibble — three-column subset of `eventTypes_cols`,
+    # `programStage` gated on `"event_types" %in% include_dhis2_ids`.
+    eventTypes = eventTypes_result$public,
+    # Orchestrator-internal two-column map consumed by `read_events()`
+    # for the raw programStage → event_type_key substitution during
+    # fact-table processing. Stripped at `import_dhis2()` exit.
+    .eventTypes_internal_map = eventTypes_result$internal_map,
     options = options,
     dataElements = dataElements,
     trackedEntityAttributes = trackedEntityAttributes,

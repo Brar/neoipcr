@@ -356,3 +356,43 @@ users_cols <- with_entity_gate(
 
 get_users_schema <- function(opts)
   compile_schema(users_cols, opts)
+
+# ---- Event types ----------------------------------------------------------
+#
+# Event types is the protocol-fixed list of 7 program stages
+# (`adm` / `pro` / `bsi` / `nec` / `ssi` / `hap` / `end`). Not
+# privacy-sensitive — the set is public domain knowledge — so there is no
+# dedicated `include_event_type` gate and no entity-gate short-circuit:
+# the tibble is always present. `include_dhis2_ids == "event_types"`
+# controls only whether the DHIS2 `programStage` UID is exposed, same
+# two-axis pattern as hospitals' / departments' `orgUnit` and users'
+# `user`. Content columns (`name`, `displayName`, …) are intentionally
+# out of scope — report code looks up event-type labels through
+# protocol-driven dictionaries, not through `metadata$eventTypes`.
+#
+# Fact readers (`read_events()` in particular) need `event_type_key +
+# programStage` regardless of the id-opt-in, because the reader
+# substitutes the raw `programStage` into `event_type_key` during
+# import. The two-column FK-resolution lookup travels on the
+# orchestrator-internal `.eventTypes_internal_map` — same pattern as
+# `.users_internal_map` — so pseudo-equivalent absence of `programStage`
+# from the public schema doesn't break the internal substitution.
+#
+# Shape:
+#   default                            — `event_type_key` only.
+#   `"event_types"` in include_dhis2_ids — adds `programStage`.
+
+eventTypes_cols <- list(
+  schema_col(
+    "event_type_key", factor(),
+    factor_levels = c("adm", "pro", "bsi", "nec", "ssi", "hap", "end"),
+    levels_source = "fixed"
+  ),
+  schema_col(
+    "programStage", character(),
+    include_when = \(opts) "event_types" %in% opts$include_dhis2_ids
+  )
+)
+
+get_eventTypes_schema <- function(opts)
+  compile_schema(eventTypes_cols, opts)

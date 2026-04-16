@@ -206,10 +206,11 @@ import_dhis2 <- function(
   # Strip orchestrator-internal lookups before stamping the final S3
   # class — they are not part of the public `neoipcr_metadata` shape.
   # See `read_metadata_reponses()` for where each is set.
-  metadata$.countries_internal_map <- NULL
-  metadata$.hospitals_internal_map <- NULL
-  metadata$.wb_country_map         <- NULL
-  metadata$.users_internal_map     <- NULL
+  metadata$.countries_internal_map  <- NULL
+  metadata$.hospitals_internal_map  <- NULL
+  metadata$.wb_country_map          <- NULL
+  metadata$.users_internal_map      <- NULL
+  metadata$.eventTypes_internal_map <- NULL
   class(metadata) <- c("neoipcr_metadata", class(metadata))
 
   r <- structure(

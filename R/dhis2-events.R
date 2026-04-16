@@ -53,10 +53,16 @@ get_events_request <- function(req_base, dataset_options, programId)
 
 read_events <- function(events, enrollments, patients, metadata, dataset_options)
 {
+  # Raw `programStage` → `event_type_key` substitution uses the
+  # orchestrator-internal map (`.eventTypes_internal_map`), not
+  # `metadata$eventTypes`. The public tibble drops `programStage` when
+  # `"event_types"` isn't in `include_dhis2_ids`, so reading the raw id
+  # for this join must go through the internal map. Same pattern as
+  # the `.users_internal_map` redirects in this file and in
+  # `dhis2-trackedEntities.R` / `dhis2-enrollments.R`.
   events <- events |>
     dplyr::inner_join(
-      metadata$eventTypes |>
-        dplyr::select("event_type_key", "programStage"),
+      metadata$.eventTypes_internal_map,
       dplyr::join_by("programStage")) |>
     dplyr::inner_join(
       enrollments |>
