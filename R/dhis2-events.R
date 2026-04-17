@@ -652,11 +652,13 @@ read_substance_days <- function(events_raw, processed_events, metadata, dataset_
       index = as.integer(stringr::str_extract(
         .data$code,
         "^NEOIPC_SURVEILLANCE_END_AB_SUBST_\\d(\\d)(_DAYS)?$", 1)),
-      name = dplyr::if_else(
-        stringr::str_ends(.data$code, "_DAYS"),
-        "days", "substance_code"),
+      name = factor(
+        dplyr::if_else(
+          stringr::str_ends(.data$code, "_DAYS"),
+          "days", "substance_code"),
+        levels = c("substance_code", "days")),
       .keep = "unused") |>
-    tidyr::pivot_wider() |>
+    tidyr::pivot_wider(names_expand = TRUE) |>
     dplyr::mutate(days = as.integer(.data$days)) |>
     finalize_to_schema(substanceDays_cols, opts, scratch = "event")
   assert_schema(public, substanceDays_cols, opts)
