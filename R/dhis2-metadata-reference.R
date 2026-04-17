@@ -327,7 +327,8 @@ read_metadata_wb_classes <- function(metadata, dataset_options)
   public <- filtered |>
     finalize_to_schema(
       worldBankClasses_cols, opts,
-      scratch = c("id", "name", "displayName", "organisationUnits"))
+      scratch = c("id", "name", "displayName", "displayShortName",
+                   "displayDescription", "organisationUnits"))
   assert_schema(public, worldBankClasses_cols, opts)
 
   list(public = public, country_map = country_map)
