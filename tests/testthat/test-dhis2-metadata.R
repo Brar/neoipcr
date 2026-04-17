@@ -410,11 +410,11 @@ test_that("read_metadata_countries internal_map carries country/code/country_key
       list(
         code = "COUNTRY",
         organisationUnits = list(
-          list(id = "CID_1", code = "CH",
+          list(id = "CID_1", name = "Switzerland", code = "CH",
                displayName        = "Switzerland",
                displayShortName   = "Switzerland",
                displayDescription = "Swiss Confederation"),
-          list(id = "CID_2", code = "DE",
+          list(id = "CID_2", name = "Germany", code = "DE",
                displayName        = "Germany",
                displayShortName   = "Germany",
                displayDescription = "Federal Republic of Germany"))))),

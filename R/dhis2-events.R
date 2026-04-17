@@ -114,22 +114,8 @@ read_events <- function(events, enrollments, metadata, dataset_options)
   if (length(needed) > 0L || opts$include_test_data) {
     events <- events |>
       dplyr::left_join(
-        metadata$.departments_internal_map |>
-          dplyr::select("department_key", "orgUnit"),
+        metadata$.departments_internal_map,
         dplyr::join_by("orgUnit"))
-
-    dept_cols <- c("department_key")
-    if (length(needed) > 0L) dept_cols <- c(dept_cols, needed)
-    if (opts$include_test_data) dept_cols <- c(dept_cols, "isTest")
-    dept_cols <- intersect(dept_cols, names(metadata$departments))
-    if (length(dept_cols) > 1L) {
-      require_cols(metadata$departments, dept_cols, "departments")
-      events <- events |>
-        dplyr::left_join(
-          metadata$departments |>
-            dplyr::select(tidyselect::all_of(dept_cols)),
-          dplyr::join_by("department_key"))
-    }
   }
 
   if ("events" %in% opts$include_incomplete)

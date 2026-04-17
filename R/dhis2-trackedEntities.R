@@ -218,32 +218,11 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
      dataset_options$include_world_bank_class != "no" ||
      length(dataset_options$include_invalid_patients) > 1)
   {
-    # Bridge orgUnit → department_key via the internal map, then pull
-    # hierarchy keys from the public departments tibble on department_key.
     patients <- patients |>
       dplyr::left_join(
-        metadata$.departments_internal_map |>
-          dplyr::select("department_key", "orgUnit"),
+        metadata$.departments_internal_map,
         dplyr::join_by("orgUnit")) |>
       dplyr::select(!"orgUnit")
-
-    hierarchy_cols <- c("department_key")
-    if(dataset_options$include_hospital != "no")
-      hierarchy_cols <- c(hierarchy_cols, "hospital_key")
-    if(dataset_options$include_country != "no")
-      hierarchy_cols <- c(hierarchy_cols, "country_key")
-    if(dataset_options$include_world_bank_class != "no")
-      hierarchy_cols <- c(hierarchy_cols, "world_bank_class_key")
-
-    dept_cols <- intersect(hierarchy_cols, names(metadata$departments))
-    if (length(dept_cols) > 1L) {
-      require_cols(metadata$departments, dept_cols, "departments")
-      patients <- patients |>
-        dplyr::left_join(
-          metadata$departments |>
-            dplyr::select(tidyselect::all_of(dept_cols)),
-          dplyr::join_by("department_key"))
-    }
   }
 
   # Apply eligibility and range filters early so downstream joins operate on

@@ -296,12 +296,18 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
           dplyr::join_by("country_key"))
   }
 
-  # Snapshot department_key + orgUnit before finalize_to_schema strips
-  # orgUnit (gated on include_dhis2_ids). Downstream readers need this
-  # bridge for orgUnit-based joins against raw API responses.
+  # Snapshot the full hierarchy lookup before finalize_to_schema strips
+  # columns gated by the public schema. After the pre-join above,
+  # departments carries the complete hierarchy chain regardless of
+  # include_department mode. Unlike the other internal maps (which are
+  # simple UID-to-key bridges), this one is the single hierarchy
+  # lookup that every fact-entity reader joins on orgUnit to populate
+  # all hierarchy keys consistently.
   metadata$.departments_internal_map <- metadata$departments |>
     dplyr::select("department_key", "orgUnit",
-                  tidyselect::any_of("code"))
+                  tidyselect::any_of(c(
+                    "code", "hospital_key", "country_key",
+                    "world_bank_class_key", "isTest")))
 
   metadata$departments <- metadata$departments |>
     finalize_to_schema(departments_cols, dataset_options)

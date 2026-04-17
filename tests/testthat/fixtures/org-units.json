@@ -5,6 +5,7 @@
       "organisationUnits": [
         {
           "id": "P3M2xL6Gtbs",
+          "name": "Switzerland",
           "code": "CH",
           "displayName": "Switzerland",
           "displayShortName": "Switzerland",
@@ -12,6 +13,7 @@
         },
         {
           "id": "TS5pOUJsdoa",
+          "name": "Germany",
           "code": "DE",
           "displayName": "Germany",
           "displayShortName": "Germany",
