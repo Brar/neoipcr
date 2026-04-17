@@ -281,9 +281,8 @@ dhis2_request <- function(connection_options)
       password = connection_options$password)
 }
 
-is_single_department <- function(ds) ds$metadata$departments |>
-  dplyr::pull("code") |>
-  length() == 1
+is_single_department <- function(ds)
+  nrow(ds$metadata$departments) == 1L
 
 transform_user_exceptions <- function(ex, ds)
 {
