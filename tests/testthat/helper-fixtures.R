@@ -1107,3 +1107,32 @@ make_test_ds <- function(
 
   structure(base, class = c("neoipcr_ds", "list"))
 }
+
+
+# Empty calc pipeline fixture: neoipcr_ds with 0 patients/enrollments/events
+# but full metadata — for testing table builders on empty data.
+# ---------------------------------------------------------------------------
+
+make_empty_calc_test_ds <- function() {
+  md <- read_test_metadata(
+    dataset_options = dhis2_dataset_options(
+      include_department = "full",
+      include_country    = "full"))
+  md$departments      <- make_test_metadata_departments()
+  md$hospitals         <- make_test_metadata_hospitals()
+  md$countries         <- make_test_metadata_countries()
+  md$worldBankClasses  <- make_test_metadata_wb_classes()
+  md$eventTypes        <- make_test_metadata_event_types()
+  md$dataset_options   <- dhis2_dataset_options(
+    include_department = "full",
+    include_country    = "full",
+    include_patient    = "full",
+    include_enrollment = "full",
+    include_event      = "full")
+
+  make_test_ds(
+    metadata    = md,
+    patients    = make_test_patients(0),
+    enrollments = make_test_enrollments(0),
+    events      = make_test_events(0))
+}
