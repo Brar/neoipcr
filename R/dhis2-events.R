@@ -661,7 +661,7 @@ read_substance_days <- function(events_raw, processed_events, metadata, dataset_
       .keep = "unused") |>
     tidyr::pivot_wider() |>
     dplyr::mutate(days = as.integer(.data$days)) |>
-    finalize_to_schema(substanceDays_cols, opts)
+    finalize_to_schema(substanceDays_cols, opts, scratch = "event")
   assert_schema(public, substanceDays_cols, opts)
 
   public
