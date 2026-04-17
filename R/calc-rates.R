@@ -152,12 +152,16 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(
     names(gc) <- group_cols
     return(
       tibble::tibble(
-        n = 0,
+        n = 0L,
+        inf_with_pathogen = 0L,
         rate = NA_real_,
         drop_quartiles = TRUE,
         q1 = NA_real_,
         q2 = NA_real_,
-        q3 = NA_real_
+        q3 = NA_real_,
+        q1_ci_lower = NA_real_, q1_ci_upper = NA_real_,
+        q2_ci_lower = NA_real_, q2_ci_upper = NA_real_,
+        q3_ci_lower = NA_real_, q3_ci_upper = NA_real_
         ) |>
         dplyr::bind_rows(gc)
       )
@@ -173,7 +177,11 @@ get_infectious_agent_detection_rates_with_department_quartiles <- function(
   if (nrow(r2) < 1) {
     return(
       r1 |>
-        dplyr::mutate(q1 = NA_real_, q2 = NA_real_, q3 = NA_real_) |>
+        dplyr::mutate(
+          q1 = NA_real_, q2 = NA_real_, q3 = NA_real_,
+          q1_ci_lower = NA_real_, q1_ci_upper = NA_real_,
+          q2_ci_lower = NA_real_, q2_ci_upper = NA_real_,
+          q3_ci_lower = NA_real_, q3_ci_upper = NA_real_) |>
         cache(x, cache_key))
   }
 
