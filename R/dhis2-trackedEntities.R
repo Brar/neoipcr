@@ -173,7 +173,8 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
      length(dataset_options$country_filter) > 0 ||
      length(dataset_options$trial_keys) > 0)
     patients <- patients |>
-      dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
+      dplyr::semi_join(
+        metadata$.departments_internal_map, dplyr::join_by("orgUnit"))
 
   # Pre-pivot factor-level pinning on `code`: guarantees one column per
   # expected TEA stem regardless of whether the input data carried
@@ -217,33 +218,31 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
      dataset_options$include_world_bank_class != "no" ||
      length(dataset_options$include_invalid_patients) > 1)
   {
-    # Build the list of columns to keep from the pre-joined departments table
-    cols <- "orgUnit"
-    if(dataset_options$include_department != "no" ||
-       length(dataset_options$include_invalid_patients) > 1)
-      cols <- c(cols, "department_key")
-    if(dataset_options$include_hospital != "no")
-      cols <- c(cols, "hospital_key")
-    if(dataset_options$include_country != "no")
-      cols <- c(cols, "country_key")
-    if(dataset_options$include_world_bank_class != "no")
-      cols <- c(cols, "world_bank_class_key")
-
-    # Consumer-side assertion at the schema-to-consumer boundary. The
-    # option branches above already committed to these columns being
-    # present on `metadata$departments` under the current options; if
-    # the schema narrows them out (e.g. a future regression in
-    # `departments_cols`), silent `any_of` tolerance would turn the
-    # mismatch into downstream wrong data with no error. `require_cols`
-    # makes that mismatch a loud abort here, and `all_of` on the
-    # following select double-checks on forward-compat drift.
-    require_cols(metadata$departments, cols, "departments")
+    # Bridge orgUnit → department_key via the internal map, then pull
+    # hierarchy keys from the public departments tibble on department_key.
     patients <- patients |>
       dplyr::left_join(
-        metadata$departments |>
-          dplyr::select(tidyselect::all_of(cols)),
+        metadata$.departments_internal_map,
         dplyr::join_by("orgUnit")) |>
       dplyr::select(!"orgUnit")
+
+    hierarchy_cols <- c("department_key")
+    if(dataset_options$include_hospital != "no")
+      hierarchy_cols <- c(hierarchy_cols, "hospital_key")
+    if(dataset_options$include_country != "no")
+      hierarchy_cols <- c(hierarchy_cols, "country_key")
+    if(dataset_options$include_world_bank_class != "no")
+      hierarchy_cols <- c(hierarchy_cols, "world_bank_class_key")
+
+    dept_cols <- intersect(hierarchy_cols, names(metadata$departments))
+    if (length(dept_cols) > 1L) {
+      require_cols(metadata$departments, dept_cols, "departments")
+      patients <- patients |>
+        dplyr::left_join(
+          metadata$departments |>
+            dplyr::select(tidyselect::all_of(dept_cols)),
+          dplyr::join_by("department_key"))
+    }
   }
 
   # Apply eligibility and range filters early so downstream joins operate on

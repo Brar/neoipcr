@@ -57,7 +57,8 @@ import_dhis2 <- function(
     else I(paste0(ids, collapse = "%3B"))
 
   if (length(dataset_options$department_filter) > 0) {
-    dept_ids <- metadata$departments |> dplyr::pull(.data$orgUnit)
+    dept_ids <- metadata$.departments_internal_map |>
+      dplyr::pull(.data$orgUnit)
 
     te_enrl_req <- tracker_req |>
       httr2::req_url_query(!!!ou_query("SELECTED", multi_uid(dept_ids)))
@@ -207,12 +208,13 @@ import_dhis2 <- function(
   # Strip orchestrator-internal lookups before stamping the final S3
   # class — they are not part of the public `neoipcr_metadata` shape.
   # See `read_metadata_reponses()` for where each is set.
-  metadata$.countries_internal_map  <- NULL
-  metadata$.hospitals_internal_map  <- NULL
-  metadata$.wb_country_map          <- NULL
-  metadata$.users_internal_map      <- NULL
-  metadata$.eventTypes_internal_map <- NULL
-  metadata$.patients_internal_map   <- NULL
+  metadata$.countries_internal_map    <- NULL
+  metadata$.hospitals_internal_map   <- NULL
+  metadata$.departments_internal_map <- NULL
+  metadata$.wb_country_map           <- NULL
+  metadata$.users_internal_map       <- NULL
+  metadata$.eventTypes_internal_map  <- NULL
+  metadata$.patients_internal_map    <- NULL
   class(metadata) <- c("neoipcr_metadata", class(metadata))
 
   r <- structure(

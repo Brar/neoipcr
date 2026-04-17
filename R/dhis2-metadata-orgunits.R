@@ -51,10 +51,12 @@ read_organisationUnits <- function(organisationUnits, dataset_options)
     ret$.hospitals_internal_map <- hospitals_result$internal_map
   }
 
-  ret$departments <- read_organisationUnits_departments(
+  departments_result <- read_organisationUnits_departments(
     department_base,
     ret,
     dataset_options)
+  ret$departments               <- departments_result$processed
+  ret$.departments_internal_map <- departments_result$internal_map
 
   ret
 }
@@ -165,7 +167,12 @@ read_organisationUnits_departments <- function(x, y, dataset_options) {
       latitude  = NA_real_)
   }
 
-  x |>
+  processed <- x |>
     dplyr::relocate("orgUnit" = "id") |>
     add_key_column("department_key")
+
+  internal_map <- processed |>
+    dplyr::select("department_key", "orgUnit")
+
+  list(processed = processed, internal_map = internal_map)
 }

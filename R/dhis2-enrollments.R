@@ -89,30 +89,30 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
      dataset_options$include_world_bank_class != "no" ||
      length(dataset_options$include_invalid_patients) > 1)
   {
-    cols <- "orgUnit"
-    if(dataset_options$include_department != "no" ||
-       length(dataset_options$include_invalid_patients) > 1)
-      cols <- c(cols, "department_key")
-    if(dataset_options$include_hospital != "no")
-      cols <- c(cols, "hospital_key")
-    if(dataset_options$include_country != "no")
-      cols <- c(cols, "country_key")
-    if(dataset_options$include_world_bank_class != "no")
-      cols <- c(cols, "world_bank_class_key")
-    if(dataset_options$include_test_data)
-      cols <- c(cols, "isTest")
-
-    # Consumer-side assertion at the schema-to-consumer boundary —
-    # same pattern as read_patients(). The hierarchy-key columns that
-    # the option branches above committed to must actually be on
-    # `metadata$departments`; silent `any_of` tolerance would turn a
-    # schema ↔ reader mismatch into downstream wrong data.
-    require_cols(metadata$departments, cols, "departments")
     enrollments <- enrollments |>
       dplyr::left_join(
-        metadata$departments |>
-          dplyr::select(tidyselect::all_of(cols)),
+        metadata$.departments_internal_map,
         dplyr::join_by("orgUnit"))
+
+    hierarchy_cols <- c("department_key")
+    if(dataset_options$include_hospital != "no")
+      hierarchy_cols <- c(hierarchy_cols, "hospital_key")
+    if(dataset_options$include_country != "no")
+      hierarchy_cols <- c(hierarchy_cols, "country_key")
+    if(dataset_options$include_world_bank_class != "no")
+      hierarchy_cols <- c(hierarchy_cols, "world_bank_class_key")
+    if(dataset_options$include_test_data)
+      hierarchy_cols <- c(hierarchy_cols, "isTest")
+
+    dept_cols <- intersect(hierarchy_cols, names(metadata$departments))
+    if (length(dept_cols) > 1L) {
+      require_cols(metadata$departments, dept_cols, "departments")
+      enrollments <- enrollments |>
+        dplyr::left_join(
+          metadata$departments |>
+            dplyr::select(tidyselect::all_of(dept_cols)),
+          dplyr::join_by("department_key"))
+    }
   }
 
   if(dataset_options$include_user != "no") {
@@ -151,7 +151,8 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
      length(dataset_options$country_filter) > 0 ||
      !is.null(dataset_options$trial_keys))
     enrollments <- enrollments |>
-      dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
+      dplyr::semi_join(
+        metadata$.departments_internal_map, dplyr::join_by("orgUnit"))
 
   enrollments <- enrollments |>
     dplyr::select(!tidyselect::any_of("orgUnit")) |>

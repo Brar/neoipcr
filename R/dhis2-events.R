@@ -139,20 +139,23 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
   needed   <- intersect(hierarchy_keys, expected)
 
   if (length(needed) > 0L || opts$include_test_data) {
-    cols <- "orgUnit"
-    if (length(needed) > 0L) cols <- c(cols, needed)
-    if (opts$include_test_data) cols <- c(cols, "isTest")
-
-    # Consumer-side assertion at the schema-to-consumer boundary —
-    # the hierarchy-key columns we just decided to pull must actually
-    # be on `metadata$departments`; silent `any_of` tolerance would
-    # turn a schema ↔ reader mismatch into downstream wrong data.
-    require_cols(metadata$departments, cols, "departments")
     events <- events |>
       dplyr::left_join(
-        metadata$departments |>
-          dplyr::select(tidyselect::all_of(cols)),
+        metadata$.departments_internal_map,
         dplyr::join_by("orgUnit"))
+
+    dept_cols <- c("department_key")
+    if (length(needed) > 0L) dept_cols <- c(dept_cols, needed)
+    if (opts$include_test_data) dept_cols <- c(dept_cols, "isTest")
+    dept_cols <- intersect(dept_cols, names(metadata$departments))
+    if (length(dept_cols) > 1L) {
+      require_cols(metadata$departments, dept_cols, "departments")
+      events <- events |>
+        dplyr::left_join(
+          metadata$departments |>
+            dplyr::select(tidyselect::all_of(dept_cols)),
+          dplyr::join_by("department_key"))
+    }
   }
 
   if ("events" %in% opts$include_incomplete)
@@ -168,7 +171,8 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
       length(opts$country_filter) > 0 ||
       !is.null(opts$trial_keys))
     events <- events |>
-      dplyr::semi_join(metadata$departments, dplyr::join_by("orgUnit"))
+      dplyr::semi_join(
+        metadata$.departments_internal_map, dplyr::join_by("orgUnit"))
 
   # Entity-level user-field substitution — folded in from the former
   # `read_event_details()` ahead of the schema finalize. Each raw field

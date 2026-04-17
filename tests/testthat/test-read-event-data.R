@@ -501,10 +501,16 @@ test_that("gap 10: read_events works without trackedEntity on raw events", {
     username = "admin"
   )
 
+  departments_internal_map <- tibble::tibble(
+    department_key = 1L,
+    orgUnit        = "OU_DEPT_1"
+  )
+
   metadata <- list(
-    departments              = departments,
-    .eventTypes_internal_map = event_types_map,
-    .users_internal_map      = users_map
+    departments                = departments,
+    .departments_internal_map  = departments_internal_map,
+    .eventTypes_internal_map   = event_types_map,
+    .users_internal_map        = users_map
   )
 
   result <- neoipcr:::read_events(

@@ -296,11 +296,12 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
           dplyr::join_by("country_key"))
   }
 
-  # Narrow `metadata$departments` from the reader's working tibble to
-  # the public three-mode shape declared by `departments_cols`. Tail
-  # `assert_schema()` confirms. Under `include_department = "no"` the
-  # entity-gate short-circuits to 0×0 regardless of any columns still
-  # present from the raw reader path.
+  # Snapshot department_key + orgUnit before finalize_to_schema strips
+  # orgUnit (gated on include_dhis2_ids). Downstream readers need this
+  # bridge for orgUnit-based joins against raw API responses.
+  metadata$.departments_internal_map <- metadata$departments |>
+    dplyr::select("department_key", "orgUnit")
+
   metadata$departments <- metadata$departments |>
     finalize_to_schema(departments_cols, dataset_options)
   assert_schema(metadata$departments, departments_cols, dataset_options)
