@@ -271,22 +271,31 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
     finalize_to_schema(hospitals_cols, dataset_options, scratch = "country")
   assert_schema(metadata$hospitals, hospitals_cols, dataset_options)
 
-  # Pre-join hierarchy into departments so that read_patients/enrollments/events
-  # can use a single flat left_join instead of cascading joins.
-  # Gate on column presence — under `include_hospital = "no"` hospitals
-  # is 0×0 and the hospitals-relay join is skipped; under
-  # `include_country = "no"` countries is 0×0 and the wb_class_key relay
-  # is skipped. `departments_cols` declares the relay columns only under
-  # `include_department = "full"`, so `finalize_to_schema()` below drops
-  # them in pseudo mode regardless of whether the join fired.
+  # Pre-join hierarchy into departments so that the internal map carries
+  # the full chain (department → hospital → country → WB class).
+  # `read_organisationUnits_departments` already joined hospital_key
+  # from .hospitals_internal_map (even under include_hospital = "no"),
+  # so hospital_key is available here pre-finalize. The relay walks
+  # hospital → country → WB class via the internal hospital map (which
+  # carries the raw `country` id) and the countries tibble.
   if ("hospital_key" %in% names(metadata$departments) &&
-      all(c("hospital_key", "country_key") %in% names(metadata$hospitals)))
+      !is.null(metadata$.hospitals_internal_map) &&
+      "country" %in% names(metadata$.hospitals_internal_map))
   {
-    metadata$departments <- metadata$departments |>
-      dplyr::left_join(
-        metadata$hospitals |>
-          dplyr::select("hospital_key", "country_key"),
-        dplyr::join_by("hospital_key"))
+    # Build hospital_key → country_key relay via the raw country id.
+    if ("country_key" %in% names(metadata$countries)) {
+      metadata$departments <- metadata$departments |>
+        dplyr::left_join(
+          metadata$.hospitals_internal_map |>
+            dplyr::select("hospital_key", "country") |>
+            dplyr::inner_join(
+              metadata$countries |>
+                dplyr::select("country_key",
+                              tidyselect::any_of("country")),
+              dplyr::join_by("country")) |>
+            dplyr::select("hospital_key", "country_key"),
+          dplyr::join_by("hospital_key"))
+    }
 
     if ("world_bank_class_key" %in% names(metadata$countries))
       metadata$departments <- metadata$departments |>
