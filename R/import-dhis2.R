@@ -141,7 +141,9 @@ import_dhis2 <- function(
     purrr::map(parse_resp) |>
     purrr::list_rbind()
 
-  patients <- read_patients(trackedEntities_raw, metadata, dataset_options)
+  patients_result <- read_patients(trackedEntities_raw, metadata, dataset_options)
+  patients <- patients_result$public
+  metadata$.patients_internal_map <- patients_result$internal_map
 
   enrollments <- read_enrollments(enrollments_raw, patients, metadata, dataset_options)
   events <- read_events(events_raw, enrollments, patients, metadata, dataset_options)
@@ -216,6 +218,7 @@ import_dhis2 <- function(
   metadata$.wb_country_map          <- NULL
   metadata$.users_internal_map      <- NULL
   metadata$.eventTypes_internal_map <- NULL
+  metadata$.patients_internal_map   <- NULL
   class(metadata) <- c("neoipcr_metadata", class(metadata))
 
   r <- structure(

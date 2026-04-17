@@ -48,28 +48,14 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
   if (opts$include_enrollment == "no")
     return(compile_schema(enrollments_cols, opts))
 
-  # The patient → enrollment link join needs `trackedEntity` on
-  # patients. Under `include_patient = "full"` + `"patients" %in%
-  # include_dhis2_ids`, `patients_cols` declares `trackedEntity` —
-  # otherwise the column is absent from the public patients tibble.
-  # The legacy reader assumed it was always there; now it's an
-  # option-dependent dependency that we have to document.
-  #
-  # For the patient_key substitution to work at all, `include_patient`
-  # must be at least "pseudo" (so patients has the key). Under "full"
-  # + id-opt-in, patients also has `trackedEntity`, which is what the
-  # join key needs. Under "full" + no id-opt-in, `trackedEntity` is
-  # absent — the reader falls back to the raw `trackedEntity` on the
-  # enrollments response and matches via the `.users_internal_map`-
-  # style internal map of patients. TODO(phase-b-enrollments): if
-  # this combination is a real use case, introduce
-  # `.patients_internal_map` matching the established pattern. For
-  # now, require the id-opt-in or include_patient = "pseudo" with
-  # patient_key matched through a reader-internal join.
+  # Substitute raw DHIS2 `trackedEntity` UID with `patient_key` via
+  # the orchestrator-internal patients map. The public patients tibble
+  # may not carry `trackedEntity` (it's gated on include_dhis2_ids),
+  # so the join goes through `.patients_internal_map` which always
+  # carries `patient_key + trackedEntity` regardless of schema gates.
   enrollments <- enrollments |>
     dplyr::inner_join(
-      patients |>
-        dplyr::select("patient_key", "trackedEntity"),
+      metadata$.patients_internal_map,
       dplyr::join_by("trackedEntity")) |>
     dplyr::mutate(
       enrolledAt = readr::parse_date(

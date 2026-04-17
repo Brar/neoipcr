@@ -114,12 +114,9 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
       dplyr::join_by("programStage")) |>
     dplyr::inner_join(
       enrollments |>
-        dplyr::select("enrollment_key", "enrollment"),
+        dplyr::select("enrollment_key", "enrollment",
+                      tidyselect::any_of("patient_key")),
       dplyr::join_by("enrollment")) |>
-    dplyr::inner_join(
-      patients |>
-        dplyr::select("patient_key", "trackedEntity"),
-      dplyr::join_by("trackedEntity")) |>
     dplyr::mutate(
       occurredAt = readr::parse_date(
         stringr::str_sub(.data$occurredAt, end = 10)))

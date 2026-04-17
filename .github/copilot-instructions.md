@@ -21,6 +21,10 @@ These guardrails are **universal** — mirrored in every NeoIPC repository's ins
 - **Never** use deprecated or outdated APIs. Before introducing a function from a third-party package or a base library, verify it is current. When a replacement exists, use the replacement. When unsure, check the package's `NEWS.md` / release notes rather than assuming.
 - **Always** read the upstream source directly when you need a definitive answer about a third-party system's behaviour (DHIS2 in particular, but also R / tidyverse packages, Quarto, Pandoc, .NET runtime, etc.). Docs, release notes, and changelogs are known to be unreliable for some of these projects — the source is the ultimate authority, the written reference is a convenience shortcut. When working via the neoipc-workspace, see its `CLAUDE.md` → Reference checkouts for the `refs/` submodules that support this workflow.
 
+### Joining tibbles
+
+- **Never** join tibbles on DHIS2 UIDs (`trackedEntity`, `enrollment`, `event`, `orgUnit`, `country`, `programStage`, `dataElement`, etc.) when both sides already carry synthesized integer keys (`patient_key`, `enrollment_key`, `event_key`, `department_key`, `hospital_key`, `country_key`, etc.). Always join on the integer keys. The only exception is during import when at least one side of the join doesn't have an integer key yet (raw API response → keyed tibble bridge via an internal map like `.patients_internal_map`). DHIS2 UIDs are opaque artefacts for linking back to DHIS2; integer keys are the relational backbone.
+
 ### R/ file structure
 
 The `R/` directory follows a deliberate structure established by the neoipcr file restructure. Maintaining it requires discipline — every new function and file must land in the right place, or the structure decays silently.

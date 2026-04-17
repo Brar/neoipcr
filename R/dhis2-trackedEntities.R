@@ -248,9 +248,16 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
   # (e.g. the raw `orgUnit` id consumed by the departments-join
   # block above is already `select(!"orgUnit")`-dropped, so no
   # scratch declaration is needed here).
+  # Internal map: carries `patient_key + trackedEntity` for
+  # downstream readers (read_enrollments) that need to substitute
+  # the raw DHIS2 TE uid with the integer key. Built before finalize
+  # so `trackedEntity` is always available regardless of schema gates.
+  internal_map <- patients |>
+    dplyr::select("patient_key", "trackedEntity")
+
   patients <- patients |>
     finalize_to_schema(patients_cols, opts)
   assert_schema(patients, patients_cols, opts)
 
-  return(patients)
+  list(public = patients, internal_map = internal_map)
 }
