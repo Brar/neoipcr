@@ -251,3 +251,79 @@ test_that("get_gestational_age_figure_data location parameters match fixture", {
   expect_equal(lp$q2, as.integer(q[3]))
   expect_equal(lp$q3, as.integer(q[4]))
 })
+
+# --- Empty-data resilience ---
+
+empty_ds <- make_empty_calc_test_ds()
+
+# Without quartiles
+
+for (entry in table_fns) {
+  local({
+    nm <- entry$name
+    fn <- entry$fn
+    hq <- entry$has_q
+
+    test_that(paste0(nm, " survives empty data (no quartiles)"), {
+      if (hq)
+        result <- fn(empty_ds, use_cache = FALSE, include_quartiles = FALSE)
+      else
+        result <- fn(empty_ds, use_cache = FALSE)
+      expect_s3_class(result, "tbl_df")
+      expect_true("ci_lower" %in% names(result))
+      expect_true("ci_upper" %in% names(result))
+    })
+  })
+}
+
+# With quartiles
+
+for (entry in table_fns) {
+  local({
+    nm <- entry$name
+    fn <- entry$fn
+    hq <- entry$has_q
+
+    if (!hq) return()
+
+    test_that(paste0(nm, " survives empty data (with quartiles)"), {
+      result <- fn(empty_ds, use_cache = FALSE, include_quartiles = TRUE)
+      expect_s3_class(result, "tbl_df")
+      expect_true("q1" %in% names(result))
+    })
+  })
+}
+
+# Ref surgery (always with quartiles)
+
+test_that("get_ref_surgery_rate_table survives empty data", {
+  result <- get_ref_surgery_rate_table(empty_ds, use_cache = FALSE)
+  expect_s3_class(result, "tbl_df")
+  expect_true("q1" %in% names(result))
+})
+
+# Figure data
+
+test_that("get_birthweight_figure_data survives empty data", {
+  result <- neoipcr:::get_birthweight_figure_data(empty_ds)
+  expect_type(result, "list")
+  expect_named(result, c("density", "frequency", "location_parameters", "scale"))
+})
+
+test_that("get_gestational_age_figure_data survives empty data", {
+  result <- neoipcr:::get_gestational_age_figure_data(empty_ds)
+  expect_type(result, "list")
+  expect_named(result, c("density", "frequency", "location_parameters", "scale"))
+})
+
+# Orchestrators
+
+test_that("calculate_department_data survives empty data", {
+  result <- calculate_department_data(empty_ds, use_cache = FALSE)
+  expect_s3_class(result, "neoipcr_rep_ds")
+})
+
+test_that("calculate_reference_data survives empty data", {
+  result <- calculate_reference_data(empty_ds, use_cache = FALSE)
+  expect_s3_class(result, "neoipcr_ref_ds")
+})
