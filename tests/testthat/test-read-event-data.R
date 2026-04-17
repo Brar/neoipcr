@@ -514,15 +514,21 @@ test_that("gap 10: read_events works without trackedEntity on raw events", {
     .users_internal_map        = users_map
   )
 
-  result <- neoipcr:::read_events(
+  events_result <- neoipcr:::read_events(
     raw_events, enrollments, metadata, opts)
 
+  result <- events_result$public
   expected <- neoipcr:::compile_schema(neoipcr:::events_cols, opts)
   expect_identical(names(result), names(expected))
   expect_equal(nrow(result), 2L)
   # patient_key derived from enrollment chain.
   expect_true(all(result$patient_key == 1L))
   expect_true(all(result$enrollment_key == 1L))
+
+  # Internal map carries event_key + event for downstream readers.
+  imap <- events_result$internal_map
+  expect_true(all(c("event_key", "event") %in% names(imap)))
+  expect_equal(nrow(imap), 2L)
 })
 
 

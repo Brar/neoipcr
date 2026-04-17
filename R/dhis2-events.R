@@ -65,19 +65,21 @@ read_events <- function(events, enrollments, metadata, dataset_options)
 {
   opts <- dataset_options
 
+  .empty_result <- function()
+    list(
+      public       = compile_schema(events_cols, opts),
+      internal_map = tibble::tibble(
+        event_key = integer(),
+        event     = character()))
+
   if (opts$include_event == "no")
-    return(compile_schema(events_cols, opts))
+    return(.empty_result())
 
   if (nrow(events) == 0L)
-    return(compile_schema(events_cols, opts))
+    return(.empty_result())
 
-  # Preconditions: the enrollment and patient link substitution paths
-  # below require the internal maps. Under include_enrollment = "no"
-  # or include_patient = "no", the corresponding internal map is empty
-  # and the inner_join produces 0 rows — which is the correct behavior
-  # (no enrollments/patients → no events survive).
   if (opts$include_enrollment == "no" || opts$include_patient == "no")
-    return(compile_schema(events_cols, opts))
+    return(.empty_result())
 
   # Raw `programStage` → `event_type_key` + raw `enrollment` →
   # `enrollment_key` + `patient_key` substitution via internal maps.
@@ -210,7 +212,12 @@ read_events <- function(events, enrollments, metadata, dataset_options)
   # (via the separate `processed_events` argument) — they live on the
   # raw response but not on the public events tibble.
   events <- events |>
-    add_key_column("event_key") |>
+    add_key_column("event_key")
+
+  internal_map <- events |>
+    dplyr::select("event_key", "event")
+
+  events <- events |>
     finalize_to_schema(
       events_cols, opts,
       scratch = c(
@@ -219,7 +226,7 @@ read_events <- function(events, enrollments, metadata, dataset_options)
 
   assert_schema(events, events_cols, opts)
 
-  events
+  list(public = events, internal_map = internal_map)
 }
 
 read_event_notes <- function(events, processed_events, metadata, dataset_options)

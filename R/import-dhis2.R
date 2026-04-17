@@ -144,8 +144,12 @@ import_dhis2 <- function(
   enrollments <- enrollments_result$public
   metadata$.enrollments_internal_map <- enrollments_result$internal_map
 
-  events <- read_events(events_raw, enrollments, metadata, dataset_options)
-  admissionData <- read_event_data(events_raw, events, metadata, dataset_options, "adm")
+  events_result <- read_events(events_raw, enrollments, metadata, dataset_options)
+  events <- events_result$public
+  metadata$.events_internal_map <- events_result$internal_map
+
+  admissionData <- read_event_data(
+    events_raw, metadata$.events_internal_map, metadata, dataset_options, "adm")
 
   events <- events |>
     filter_surveillance_ends(
@@ -157,37 +161,31 @@ import_dhis2 <- function(
 
   metadata$dataset_options <- dataset_options
 
-  # read_enrollment_details — not yet implemented
   enrollment_notes <- read_enrollment_notes(
     enrollments_raw, enrollments, metadata, dataset_options)
-  # (Former `read_event_details()` merged into `read_events()` in
-  # phase-b-event-details; the `eventDetails` sidecar tibble no longer
-  # exists — entity-level user / timestamp / deleted / followup fields
-  # now live directly on `events`.)
-  eventNotes <- read_event_notes(events_raw, events, metadata, dataset_options)
-  surveillanceEndData <- read_event_data(events_raw, events, metadata, dataset_options, "end")
-  sepsisData <- read_event_data(events_raw, events, metadata, dataset_options, "bsi")
-  necData <- read_event_data(events_raw, events, metadata, dataset_options, "nec")
-  pneumoniaData <- read_event_data(events_raw, events, metadata, dataset_options, "hap")
-  surgeryData <- read_event_data(events_raw, events, metadata, dataset_options, "pro")
-  ssiData <- read_event_data(events_raw, events, metadata, dataset_options, "ssi")
+  eventNotes <- read_event_notes(
+    events_raw, metadata$.events_internal_map, metadata, dataset_options)
+  surveillanceEndData <- read_event_data(
+    events_raw, metadata$.events_internal_map, metadata, dataset_options, "end")
+  sepsisData <- read_event_data(
+    events_raw, metadata$.events_internal_map, metadata, dataset_options, "bsi")
+  necData <- read_event_data(
+    events_raw, metadata$.events_internal_map, metadata, dataset_options, "nec")
+  pneumoniaData <- read_event_data(
+    events_raw, metadata$.events_internal_map, metadata, dataset_options, "hap")
+  surgeryData <- read_event_data(
+    events_raw, metadata$.events_internal_map, metadata, dataset_options, "pro")
+  ssiData <- read_event_data(
+    events_raw, metadata$.events_internal_map, metadata, dataset_options, "ssi")
 
-  infectiousAgentFindings <- read_infectious_agent_findings(events_raw, events, metadata, dataset_options)
+  infectiousAgentFindings <- read_infectious_agent_findings(
+    events_raw, metadata$.events_internal_map, metadata, dataset_options)
 
-  # Split the sparse free-text `name` column off `infectiousAgentFindings`
-  # into its own `unknownPathogenNames` tibble. Under the schema contract
-  # `name` is always declared on findings (possibly all-NA), so the
-  # split runs unconditionally — the legacy `"name" %in% names(...)`
-  # guard is gone. See `unknownPathogenNames_cols` in
-  # `R/schema-event-data.R` for the schema.
   unknownPathogenNames <- read_unknown_pathogen_names(
     infectiousAgentFindings, dataset_options)
-  # The findings tibble's own schema does NOT declare `name` — it was
-  # in the reader output only as scratch for the split, then stripped
-  # by `finalize_to_schema()`'s scratch list. No further drop needed
-  # here.
 
-  substanceDays <- read_substance_days(events_raw, events, metadata, dataset_options)
+  substanceDays <- read_substance_days(
+    events_raw, metadata$.events_internal_map, metadata, dataset_options)
   # read_substance_days_details
 
   class(patients) <- c("neoipcr_pat", class(patients))
@@ -211,14 +209,16 @@ import_dhis2 <- function(
   # Strip orchestrator-internal lookups before stamping the final S3
   # class — they are not part of the public `neoipcr_metadata` shape.
   # See `read_metadata_reponses()` for where each is set.
-  metadata$.countries_internal_map    <- NULL
-  metadata$.hospitals_internal_map   <- NULL
-  metadata$.departments_internal_map  <- NULL
-  metadata$.enrollments_internal_map <- NULL
+  # Hierarchy order: metadata → fact entities
   metadata$.wb_country_map           <- NULL
+  metadata$.countries_internal_map   <- NULL
+  metadata$.hospitals_internal_map   <- NULL
+  metadata$.departments_internal_map <- NULL
   metadata$.users_internal_map       <- NULL
   metadata$.eventTypes_internal_map  <- NULL
   metadata$.patients_internal_map    <- NULL
+  metadata$.enrollments_internal_map <- NULL
+  metadata$.events_internal_map      <- NULL
   class(metadata) <- c("neoipcr_metadata", class(metadata))
 
   r <- structure(
