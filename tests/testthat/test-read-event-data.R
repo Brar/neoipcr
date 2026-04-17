@@ -473,14 +473,14 @@ test_that("gap 10: read_events works without trackedEntity on raw events", {
     notes        = list(list(), list())
   )
 
-  # Enrollments with patient_key (the enrollment chain).
-  enrollments <- tibble::tibble(
+  # Enrollments internal map (the enrollment chain with patient_key).
+  enrollments_internal_map <- tibble::tibble(
     enrollment_key = 1L,
     enrollment     = "ENR_1",
     patient_key    = 1L
   )
 
-  patients <- tibble::tibble(patient_key = 1L)
+  enrollments <- tibble::tibble(enrollment_key = 1L)
 
   departments <- tibble::tibble(
     department_key       = 1L,
@@ -509,12 +509,13 @@ test_that("gap 10: read_events works without trackedEntity on raw events", {
   metadata <- list(
     departments                = departments,
     .departments_internal_map  = departments_internal_map,
+    .enrollments_internal_map  = enrollments_internal_map,
     .eventTypes_internal_map   = event_types_map,
     .users_internal_map        = users_map
   )
 
   result <- neoipcr:::read_events(
-    raw_events, enrollments, patients, metadata, opts)
+    raw_events, enrollments, metadata, opts)
 
   expected <- neoipcr:::compile_schema(neoipcr:::events_cols, opts)
   expect_identical(names(result), names(expected))

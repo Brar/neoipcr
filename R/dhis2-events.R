@@ -61,67 +61,35 @@ get_events_request <- function(req_base, dataset_options, programId)
     httr2::req_url_query(fields = fields)
 }
 
-read_events <- function(events, enrollments, patients, metadata, dataset_options)
+read_events <- function(events, enrollments, metadata, dataset_options)
 {
   opts <- dataset_options
 
-  # Entity gate short-circuit: under `include_event = "no"` the public
-  # events tibble is 0×0. Downstream readers that consume events
-  # (read_event_notes, read_event_data, read_infectious_agent_findings,
-  # read_substance_days) must tolerate the empty shape. Matches the
-  # pattern in read_patients() / read_enrollments(). (read_event_details
-  # was folded into read_events in phase-b-event-details.)
   if (opts$include_event == "no")
     return(compile_schema(events_cols, opts))
 
-  # Empty-input guard: parse_resp returns a 0-col tibble when DHIS2
-  # returns no events. Without this guard the downstream joins crash
-  # on missing columns (e.g. `programStage`, `enrollment`).
   if (nrow(events) == 0L)
     return(compile_schema(events_cols, opts))
 
-  # Preconditions: the inner-join substitution path below requires
-  # `enrollment_key + enrollment` on enrollments and `patient_key +
-  # trackedEntity` on patients. Those are present under
-  # `include_enrollment != "no"` + `"enrollments" %in% include_dhis2_ids`
-  # and `include_patient != "no"` + `"patients" %in% include_dhis2_ids`
-  # respectively. The fully-decoupled matrix (e.g. `include_event =
-  # "full"` with `include_enrollment = "no"`) requires
-  # `.enrollments_internal_map` / `.patients_internal_map` on the
-  # metadata orchestrator; those land in a follow-up sub-task. For now
-  # the reader requires both link sides to be at least present as
-  # ids, matching the legacy reader's implicit dependency.
-  if (opts$include_enrollment == "no" ||
-      opts$include_patient    == "no" ||
-      !("enrollments" %in% opts$include_dhis2_ids) ||
-      !("patients"    %in% opts$include_dhis2_ids))
-    rlang::abort(c(
-      paste("`read_events()` requires enrollment and patient link",
-            "substitution to be available."),
-      "i" = paste(
-        "Set `include_enrollment` and `include_patient` to a non-\"no\"",
-        "value and include \"enrollments\" + \"patients\" in",
-        "`include_dhis2_ids`."),
-      "i" = paste(
-        "Full decoupling (e.g. include_event=\"full\" with",
-        "include_enrollment=\"no\") will land in a follow-up via",
-        "orchestrator-internal link maps.")))
+  # Preconditions: the enrollment and patient link substitution paths
+  # below require the internal maps. Under include_enrollment = "no"
+  # or include_patient = "no", the corresponding internal map is empty
+  # and the inner_join produces 0 rows — which is the correct behavior
+  # (no enrollments/patients → no events survive).
+  if (opts$include_enrollment == "no" || opts$include_patient == "no")
+    return(compile_schema(events_cols, opts))
 
-  # Raw `programStage` → `event_type_key` substitution uses the
-  # orchestrator-internal map (`.eventTypes_internal_map`), not
-  # `metadata$eventTypes`. The public tibble drops `programStage` when
-  # `"event_types"` isn't in `include_dhis2_ids`, so reading the raw id
-  # for this join must go through the internal map. Same pattern as
-  # the `.users_internal_map` redirects in this file and in
-  # `dhis2-trackedEntities.R` / `dhis2-enrollments.R`.
+  # Raw `programStage` → `event_type_key` + raw `enrollment` →
+  # `enrollment_key` + `patient_key` substitution via internal maps.
+  # `.enrollments_internal_map` carries enrollment_key + enrollment +
+  # patient_key (patient_key derived from the enrollment→patient chain
+  # inside read_enrollments, not from trackedEntity on the raw events).
   events <- events |>
     dplyr::inner_join(
       metadata$.eventTypes_internal_map,
       dplyr::join_by("programStage")) |>
     dplyr::inner_join(
-      enrollments |>
-        dplyr::select("enrollment_key", "enrollment",
-                      tidyselect::any_of("patient_key")),
+      metadata$.enrollments_internal_map,
       dplyr::join_by("enrollment")) |>
     dplyr::mutate(
       occurredAt = readr::parse_date(

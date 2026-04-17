@@ -45,14 +45,19 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
   # public enrollments tibble is 0×0, and downstream readers that
   # consume `enrollments` must tolerate the empty shape. Matches the
   # pattern in `read_patients()`.
-  if (opts$include_enrollment == "no")
-    return(compile_schema(enrollments_cols, opts))
+  .empty_result <- function()
+    list(
+      public       = compile_schema(enrollments_cols, opts),
+      internal_map = tibble::tibble(
+        enrollment_key = integer(),
+        enrollment     = character(),
+        patient_key    = integer()))
 
-  # Empty-input guard: parse_resp returns a 0-col tibble when DHIS2
-  # returns no enrollments. Without this guard the downstream joins
-  # crash on missing columns (e.g. `trackedEntity`).
+  if (opts$include_enrollment == "no")
+    return(.empty_result())
+
   if (nrow(enrollments) == 0L)
-    return(compile_schema(enrollments_cols, opts))
+    return(.empty_result())
 
   # Substitute raw DHIS2 `trackedEntity` UID with `patient_key` via
   # the orchestrator-internal patients map. The public patients tibble
@@ -158,13 +163,17 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
     dplyr::select(!tidyselect::any_of("orgUnit")) |>
     add_key_column("enrollment_key")
 
+  internal_map <- enrollments |>
+    dplyr::select("enrollment_key", "enrollment",
+                  tidyselect::any_of("patient_key"))
+
   # Narrow to the public schema + loud-assert.
   enrollments <- enrollments |>
     finalize_to_schema(enrollments_cols, opts,
                        scratch = c("trackedEntity", "notes"))
   assert_schema(enrollments, enrollments_cols, opts)
 
-  enrollments
+  list(public = enrollments, internal_map = internal_map)
 }
 
 # Enrollment-notes reader, mirroring `read_event_notes()`. The raw

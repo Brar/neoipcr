@@ -140,8 +140,11 @@ import_dhis2 <- function(
   patients <- patients_result$public
   metadata$.patients_internal_map <- patients_result$internal_map
 
-  enrollments <- read_enrollments(enrollments_raw, patients, metadata, dataset_options)
-  events <- read_events(events_raw, enrollments, patients, metadata, dataset_options)
+  enrollments_result <- read_enrollments(enrollments_raw, patients, metadata, dataset_options)
+  enrollments <- enrollments_result$public
+  metadata$.enrollments_internal_map <- enrollments_result$internal_map
+
+  events <- read_events(events_raw, enrollments, metadata, dataset_options)
   admissionData <- read_event_data(events_raw, events, metadata, dataset_options, "adm")
 
   events <- events |>
@@ -210,7 +213,8 @@ import_dhis2 <- function(
   # See `read_metadata_reponses()` for where each is set.
   metadata$.countries_internal_map    <- NULL
   metadata$.hospitals_internal_map   <- NULL
-  metadata$.departments_internal_map <- NULL
+  metadata$.departments_internal_map  <- NULL
+  metadata$.enrollments_internal_map <- NULL
   metadata$.wb_country_map           <- NULL
   metadata$.users_internal_map       <- NULL
   metadata$.eventTypes_internal_map  <- NULL
