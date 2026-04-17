@@ -48,10 +48,7 @@ get_trackedEntities_request <- function(
     attributeFields <- paste0(attributeFields,",storedBy")
   }
 
-  fields <- paste0(
-    fields,
-    ",attributes[", attributeFields, "]",
-    ",enrollments[enrollment]")
+  fields <- paste0(fields, ",attributes[", attributeFields, "]")
 
   req_base |>
     httr2::req_url_path_append("trackedEntities") |>
