@@ -48,7 +48,10 @@ get_trackedEntities_request <- function(
     attributeFields <- paste0(attributeFields,",storedBy")
   }
 
-  fields <- paste0(fields,",attributes[", attributeFields, "]")
+  fields <- paste0(
+    fields,
+    ",attributes[", attributeFields, "]",
+    ",enrollments[enrollment]")
 
   req_base |>
     httr2::req_url_path_append("trackedEntities") |>
@@ -65,7 +68,20 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
   # whole unnest / join / pivot pipeline on a dataset the caller has
   # explicitly opted out of.
   if (opts$include_patient == "no")
-    return(compile_schema(patients_cols, opts))
+    return(list(
+      public       = compile_schema(patients_cols, opts),
+      internal_map = tibble::tibble(
+        patient_key    = integer(),
+        trackedEntity  = character())))
+
+  # Empty-input guard: DHIS2 returned no tracked entities. Produce a
+  # valid empty dataset rather than crashing on missing columns.
+  if (nrow(trackedEntities) == 0L)
+    return(list(
+      public       = compile_schema(patients_cols, opts),
+      internal_map = tibble::tibble(
+        patient_key    = integer(),
+        trackedEntity  = character())))
 
   patients <- trackedEntities |>
     tidyr::unnest_longer("attributes") |>

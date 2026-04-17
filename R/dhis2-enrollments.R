@@ -48,6 +48,12 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
   if (opts$include_enrollment == "no")
     return(compile_schema(enrollments_cols, opts))
 
+  # Empty-input guard: parse_resp returns a 0-col tibble when DHIS2
+  # returns no enrollments. Without this guard the downstream joins
+  # crash on missing columns (e.g. `trackedEntity`).
+  if (nrow(enrollments) == 0L)
+    return(compile_schema(enrollments_cols, opts))
+
   # Substitute raw DHIS2 `trackedEntity` UID with `patient_key` via
   # the orchestrator-internal patients map. The public patients tibble
   # may not carry `trackedEntity` (it's gated on include_dhis2_ids),
@@ -175,6 +181,9 @@ read_enrollment_notes <- function(enrollments_raw, processed_enrollments,
   opts <- dataset_options
 
   if (!entity_exists(enrollment_notes_cols, opts))
+    return(compile_schema(enrollment_notes_cols, opts))
+
+  if (nrow(enrollments_raw) == 0L)
     return(compile_schema(enrollment_notes_cols, opts))
 
   notes <- enrollments_raw |>

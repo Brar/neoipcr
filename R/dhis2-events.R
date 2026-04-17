@@ -74,6 +74,12 @@ read_events <- function(events, enrollments, patients, metadata, dataset_options
   if (opts$include_event == "no")
     return(compile_schema(events_cols, opts))
 
+  # Empty-input guard: parse_resp returns a 0-col tibble when DHIS2
+  # returns no events. Without this guard the downstream joins crash
+  # on missing columns (e.g. `programStage`, `enrollment`).
+  if (nrow(events) == 0L)
+    return(compile_schema(events_cols, opts))
+
   # Preconditions: the inner-join substitution path below requires
   # `enrollment_key + enrollment` on enrollments and `patient_key +
   # trackedEntity` on patients. Those are present under
@@ -254,6 +260,9 @@ read_event_notes <- function(events, processed_events, metadata, dataset_options
   if (!entity_exists(event_notes_cols, opts))
     return(compile_schema(event_notes_cols, opts))
 
+  if (nrow(events) == 0L)
+    return(compile_schema(event_notes_cols, opts))
+
   events <- events |>
     dplyr::inner_join(
       processed_events |>
@@ -327,6 +336,12 @@ read_event_data <- function(events, processed_events, metadata, dataset_options,
   # Entity gate short-circuit: under `include_event = "no"` every
   # per-event-type tibble is 0×0.
   if (!entity_exists(cols, opts))
+    return(compile_schema(cols, opts))
+
+  # Empty-input guard: when DHIS2 returns no events, parse_resp
+  # produces a 0-col tibble — the select/unnest chain below would
+  # crash on missing columns.
+  if (nrow(events) == 0L)
     return(compile_schema(cols, opts))
 
   # Derive the set of declared DE codes for the pivot's `code`-factor
@@ -490,6 +505,9 @@ read_infectious_agent_findings <- function(events_raw, processed_events, metadat
   if (!entity_exists(findings_cols, opts))
     return(compile_schema(findings_cols, opts))
 
+  if (nrow(events_raw) == 0L)
+    return(compile_schema(findings_cols, opts))
+
   # Pre-pivot type levels: every DE-suffix this reader turns into a
   # column. `names_expand = TRUE` + this factor guarantees every
   # column exists regardless of data content — fixes failure pattern
@@ -623,6 +641,9 @@ read_substance_days <- function(events_raw, processed_events, metadata, dataset_
   opts <- dataset_options
 
   if (!entity_exists(substanceDays_cols, opts))
+    return(compile_schema(substanceDays_cols, opts))
+
+  if (nrow(events_raw) == 0L)
     return(compile_schema(substanceDays_cols, opts))
 
   pathogen_data <- events_raw |>

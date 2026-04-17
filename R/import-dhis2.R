@@ -130,12 +130,6 @@ import_dhis2 <- function(
   }
 
   trackedEntities_raw <- parse_resp(resps[[1]])
-  if (nrow(trackedEntities_raw) == 0)
-    rlang::abort(c(
-      "No tracked entities returned by DHIS2.",
-      "i" = "The selected organisation unit(s) may have no enrolled patients.",
-      "i" = paste0("Organisation unit(s): ",
-                   paste(connection_options$orgUnit, collapse = ", "))))
   enrollments_raw <- parse_resp(resps[[2]])
   events_raw <- resps[seq(3, length(resps))] |>
     purrr::map(parse_resp) |>
