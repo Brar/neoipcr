@@ -466,6 +466,36 @@ validation_rules <- list(
   )
 )
 
+# Join hierarchy context from `metadata$departments` onto a fact tibble.
+#
+# Under the schema contract's inheritance rule, enrollments and patients
+# carry `department_key` but not `hospital_key` when
+# `include_department = "full"` (departments already has it via
+# pre-join). Validation rules need `hospital_key` in their output
+# context so the renderer can resolve which hospital a problem belongs
+# to. This helper joins it from departments — called explicitly by each
+# rule at its fact-tibble entry point rather than silently relying on
+# `any_of("hospital_key")` finding the column on the fact tibble.
+.with_hierarchy_context <- function(fact_tibble, departments)
+{
+  if (!("department_key" %in% names(fact_tibble)) ||
+      !("department_key" %in% names(departments)))
+    return(fact_tibble)
+
+  join_cols <- intersect(
+    c("hospital_key", "country_key", "world_bank_class_key"),
+    setdiff(names(departments), names(fact_tibble)))
+
+  if (length(join_cols) == 0L)
+    return(fact_tibble)
+
+  fact_tibble |>
+    dplyr::left_join(
+      departments |>
+        dplyr::select("department_key", tidyselect::all_of(join_cols)),
+      dplyr::join_by("department_key"))
+}
+
 validate <- function(x, rules = NULL, exceptions = NULL)
 {
   check_neoipcr_ds(x)

@@ -40,7 +40,7 @@ validation_rule_22 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(22L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
         "enrollment_key","enrolledAt") |>
@@ -101,7 +101,7 @@ validation_rule_23 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(23L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
         "enrollment_key","enrolledAt") |>
@@ -167,7 +167,7 @@ validation_rule_24 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(24L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
         "enrollment_key","enrolledAt") |>

@@ -6,7 +6,7 @@ validation_rule_18 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(18L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
         "enrollment_key","enrolledAt") |>

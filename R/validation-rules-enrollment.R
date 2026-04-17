@@ -5,7 +5,7 @@ validation_rule_1 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(1L),
-    x$patients |>
+    .with_hierarchy_context(x$patients, x$metadata$departments) |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key", "department_key")),
         "patient_key") |>
@@ -43,7 +43,7 @@ validation_rule_2 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(2L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key", "department_key")),
         "patient_key",
@@ -80,7 +80,7 @@ validation_rule_17 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
 
-  intervals <- x$enrollments |>
+  intervals <- .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
     dplyr::select(
       tidyselect::any_of(
         c("hospital_key","department_key")),
@@ -146,7 +146,7 @@ validation_rule_25 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(25L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::filter(
         dplyr::if_all(
           tidyselect::any_of("status"),
@@ -177,7 +177,7 @@ validation_rule_26 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(26L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::filter(
         dplyr::if_all(
           tidyselect::any_of("status"),

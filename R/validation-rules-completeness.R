@@ -13,7 +13,7 @@ validation_rule_5 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(5L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
         "enrollment_key","enrolledAt") |>
@@ -58,7 +58,7 @@ validation_rule_6 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(6L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
         "enrollment_key","enrollment_status" = "status") |>
@@ -104,7 +104,7 @@ validation_rule_7 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(7L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
         "enrollment_key","enrollment_status" = "status") |>
@@ -150,7 +150,7 @@ validation_rule_8 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(8L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
         "enrollment_key","enrollment_status" = "status") |>
@@ -196,7 +196,7 @@ validation_rule_9 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(9L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
         "enrollment_key","enrollment_status" = "status") |>
@@ -242,7 +242,7 @@ validation_rule_10 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(10L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
         "enrollment_key","enrollment_status" = "status") |>
@@ -288,7 +288,7 @@ validation_rule_11 <- function(x, exceptions)
 
   r <- dplyr::bind_cols(
     rule_id = c(11L),
-    x$enrollments |>
+    .with_hierarchy_context(x$enrollments, x$metadata$departments) |>
       dplyr::select(
         tidyselect::any_of(c("hospital_key","department_key","patient_key")),
         "enrollment_key","enrollment_status" = "status") |>
