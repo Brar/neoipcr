@@ -223,7 +223,7 @@ test_that("get_countries_schema honors 0 -> 1 -> N progression across full cross
       } else if (cmode == "pseudo") {
         if (wbmode == "no") 1L else 2L  # country_key (+ wb FK if WB exists)
       } else {  # "full"
-        if (wbmode == "no") 5L else 6L  # + 4 display cols (+ wb FK)
+        if (wbmode == "no") 6L else 7L  # + name + 4 display cols (+ wb FK)
       }
 
       expect_equal(ncol(schema), expected_ncol,
@@ -281,12 +281,13 @@ test_that("get_countries_schema is full schema under include_country='full'", {
   schema <- neoipcr:::get_countries_schema(dhis2_dataset_options(
     include_country = "full", include_world_bank_class = "full"))
 
-  expect_equal(ncol(schema), 6L)
+  expect_equal(ncol(schema), 7L)
   expect_identical(
     names(schema),
-    c("country_key", "code", "displayName", "displayShortName",
+    c("country_key", "name", "code", "displayName", "displayShortName",
       "displayDescription", "world_bank_class_key"))
   expect_true(is.integer(schema$country_key))
+  expect_true(is.character(schema$name))
   expect_s3_class(schema$code, "ordered")
   expect_s3_class(schema$displayName, "ordered")
   expect_s3_class(schema$displayShortName, "ordered")
@@ -294,14 +295,14 @@ test_that("get_countries_schema is full schema under include_country='full'", {
   expect_true(is.integer(schema$world_bank_class_key))
 })
 
-test_that("get_countries_schema full - wb_no = 5 columns (no WB FK)", {
+test_that("get_countries_schema full - wb_no = 6 columns (no WB FK)", {
   schema <- neoipcr:::get_countries_schema(dhis2_dataset_options(
     include_country = "full", include_world_bank_class = "no"))
 
-  expect_equal(ncol(schema), 5L)
+  expect_equal(ncol(schema), 6L)
   expect_identical(
     names(schema),
-    c("country_key", "code", "displayName", "displayShortName",
+    c("country_key", "name", "code", "displayName", "displayShortName",
       "displayDescription"))
 })
 

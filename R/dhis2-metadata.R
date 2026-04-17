@@ -68,7 +68,7 @@ get_metadata_request <- function(req_base, user_info, dataset_options)
     if(dataset_options$include_country == "full")
       req <- req |>
         httr2::req_url_query(
-          `organisationUnitGroups:fields` = "code,organisationUnits[id,code,displayName,displayShortName,displayDescription]")
+          `organisationUnitGroups:fields` = "code,organisationUnits[id,name,code,displayName,displayShortName,displayDescription]")
     else if(length(dataset_options$country_filter) > 0)
       req <- req |>
         httr2::req_url_query(

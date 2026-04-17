@@ -79,12 +79,16 @@ get_worldBankClasses_schema <- function(opts)
 #   "no"     — 0×0 tibble (via the entity gate's short-circuit).
 #   "pseudo" — `country_key` only, plus `world_bank_class_key` when
 #              `include_world_bank_class != "no"` (direct link-FK).
-#   "full"   — adds `code`, `displayName`, `displayShortName`,
+#   "full"   — adds `name`, `code`, `displayName`, `displayShortName`,
 #              `displayDescription`.
 
 countries_cols <- with_entity_gate(
   list(
     col_country_key,
+    schema_col(
+      "name", character(),
+      include_when  = \(opts) opts$include_country == "full"
+    ),
     schema_col(
       "code", ordered(),
       include_when  = \(opts) opts$include_country == "full",
