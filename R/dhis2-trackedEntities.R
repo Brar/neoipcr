@@ -218,9 +218,16 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
      dataset_options$include_world_bank_class != "no" ||
      length(dataset_options$include_invalid_patients) > 1)
   {
+    # Select only the hierarchy columns the schema declares under
+    # the current opts, plus orgUnit for the join key.
+    hierarchy_cols <- intersect(
+      c("department_key", "hospital_key", "country_key",
+        "world_bank_class_key", "isTest"),
+      names(compile_schema(patients_cols, opts)))
     patients <- patients |>
       dplyr::left_join(
-        metadata$.departments_internal_map,
+        metadata$.departments_internal_map |>
+          dplyr::select(tidyselect::all_of(c("orgUnit", hierarchy_cols))),
         dplyr::join_by("orgUnit")) |>
       dplyr::select(!"orgUnit")
   }

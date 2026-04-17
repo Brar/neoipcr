@@ -502,8 +502,12 @@ test_that("gap 10: read_events works without trackedEntity on raw events", {
   )
 
   departments_internal_map <- tibble::tibble(
-    department_key = 1L,
-    orgUnit        = "OU_DEPT_1"
+    department_key       = 1L,
+    orgUnit              = "OU_DEPT_1",
+    hospital_key         = 1L,
+    country_key          = 1L,
+    world_bank_class_key = 1L,
+    isTest               = FALSE
   )
 
   metadata <- list(

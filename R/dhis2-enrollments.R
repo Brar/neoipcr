@@ -94,9 +94,14 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
      dataset_options$include_world_bank_class != "no" ||
      length(dataset_options$include_invalid_patients) > 1)
   {
+    hierarchy_cols <- intersect(
+      c("department_key", "hospital_key", "country_key",
+        "world_bank_class_key", "isTest"),
+      names(compile_schema(enrollments_cols, opts)))
     enrollments <- enrollments |>
       dplyr::left_join(
-        metadata$.departments_internal_map,
+        metadata$.departments_internal_map |>
+          dplyr::select(tidyselect::all_of(c("orgUnit", hierarchy_cols))),
         dplyr::join_by("orgUnit"))
   }
 

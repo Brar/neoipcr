@@ -112,9 +112,14 @@ read_events <- function(events, enrollments, metadata, dataset_options)
   needed   <- intersect(hierarchy_keys, expected)
 
   if (length(needed) > 0L || opts$include_test_data) {
+    hierarchy_cols <- intersect(
+      c("department_key", "hospital_key", "country_key",
+        "world_bank_class_key", "isTest"),
+      names(compile_schema(events_cols, opts)))
     events <- events |>
       dplyr::left_join(
-        metadata$.departments_internal_map,
+        metadata$.departments_internal_map |>
+          dplyr::select(tidyselect::all_of(c("orgUnit", hierarchy_cols))),
         dplyr::join_by("orgUnit"))
   }
 
