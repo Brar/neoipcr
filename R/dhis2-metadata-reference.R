@@ -380,7 +380,7 @@ read_metadata_countries <- function(metadata, dataset_options, wb_country_map)
     dplyr::select("organisationUnits") |>
     tidyr::unnest_longer(1) |>
     tidyr::unnest_wider(1) |>
-    dplyr::mutate(dplyr::across(!"id", ordered)) |>
+    dplyr::mutate(dplyr::across(!c("id", "name"), ordered)) |>
     dplyr::relocate("id", .before = 1) |>
     dplyr::rename(country = "id") |>
     add_key_column("country_key")
