@@ -69,8 +69,11 @@ read_events <- function(events, enrollments, metadata, dataset_options)
     list(
       public       = compile_schema(events_cols, opts),
       internal_map = tibble::tibble(
-        event_key = integer(),
-        event     = character()))
+        event_key      = integer(),
+        event          = character(),
+        event_type_key = factor(
+          character(),
+          levels = c("adm","pro","bsi","nec","ssi","hap","end"))))
 
   if (opts$include_event == "no")
     return(.empty_result())
@@ -215,7 +218,7 @@ read_events <- function(events, enrollments, metadata, dataset_options)
     add_key_column("event_key")
 
   internal_map <- events |>
-    dplyr::select("event_key", "event")
+    dplyr::select("event_key", "event", "event_type_key")
 
   events <- events |>
     finalize_to_schema(
