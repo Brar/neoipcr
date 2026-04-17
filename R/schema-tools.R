@@ -237,9 +237,25 @@ finalize_to_schema <- function(x, cols, opts, scratch = character())
   x <- x |>
     dplyr::select(tidyselect::all_of(exp_names))
 
+  # Coerce each column to the schema's declared type. Handles two
+  # cases that the pivot / unnest path can produce:
+  #   1. All-NA columns arrive as logical (R's default NA type) but
+  #      the schema declares integer / character / POSIXct / etc.
+  #   2. Factor columns need their declared levels applied.
+  expected <- if (exists("expected", inherits = FALSE)) expected
+              else compile_schema(cols, opts)
   for (c in included) {
-    if (!is.null(c$factor_levels))
-      x[[c$name]] <- factor(x[[c$name]], levels = c$factor_levels)
+    nm  <- c$name
+    act <- x[[nm]]
+    exp <- expected[[nm]]
+    # Factor levels (existing behaviour).
+    if (!is.null(c$factor_levels)) {
+      x[[nm]] <- factor(act, levels = c$factor_levels)
+    # Base-type coercion: when actual class differs from expected and
+    # all values are NA, coerce to the expected type.
+    } else if (!identical(class(act), class(exp)) && all(is.na(act))) {
+      x[[nm]] <- rep(exp[NA_integer_], length(act))
+    }
   }
 
   x
