@@ -283,15 +283,17 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
       "country" %in% names(metadata$.hospitals_internal_map))
   {
     # Build hospital_key → country_key relay via the raw country id.
-    if ("country_key" %in% names(metadata$countries)) {
+    # metadata$countries is already finalized (scratch "country"
+    # stripped), so the raw DHIS2 id lives on .countries_internal_map.
+    if (!is.null(metadata$.countries_internal_map) &&
+        "country_key" %in% names(metadata$.countries_internal_map)) {
       metadata$departments <- metadata$departments |>
         dplyr::left_join(
           metadata$.hospitals_internal_map |>
             dplyr::select("hospital_key", "country") |>
             dplyr::inner_join(
-              metadata$countries |>
-                dplyr::select("country_key",
-                              tidyselect::any_of("country")),
+              metadata$.countries_internal_map |>
+                dplyr::select("country_key", "country"),
               dplyr::join_by("country")) |>
             dplyr::select("hospital_key", "country_key"),
           dplyr::join_by("hospital_key"))
