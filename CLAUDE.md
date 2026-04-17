@@ -217,8 +217,10 @@ Test files mirror source files: `R/foo.R` -> `tests/testthat/test-foo.R`.
 | `tests/testthat/test-schema-events.R` | `events_cols` three-mode shape, compound link-FK gating on enrollment/patient, hierarchy-key direct materialization, status/event_type_key factor levels, `isTest` direct materialization. |
 | `tests/testthat/test-schema-event-data.R` | Per-event-type data schemas (all 7) + the three findings-family schemas (`findings_cols`, `substanceDays_cols`, `unknownPathogenNames_cols`): three-mode shape, inheritance-driven link/hierarchy key absence, per-type payload coverage + fixed factor levels, companion-column gating (3 per DE), `source` / resistance / `multiple` unconditional declaration under full mode, `read_unknown_pathogen_names()` split behaviour, fixture round-trip, dispatcher. |
 | `tests/testthat/test-schema-notes.R` | `event_notes_cols` + `enrollment_notes_cols`: compound entity-gate (include_event/include_enrollment AND include_notes), pseudo-parent inheritance-driven direct materialization, payload gating on include_dhis2_ids / include_user / include_timestamps, hierarchy-key inheritance absence under full parent, fixture round-trip. |
+| `tests/testthat/test-read-event-data.R` | Reader-level integration tests: sparse-data resilience for `read_event_data` (all 7 types), `read_substance_days`, `read_infectious_agent_findings`, `read_events`; pivot-volatility, absent-column materialization, type-drift, hierarchy-key inheritance, enrollment-chain patient_key derivation, companion columns. |
 | `tests/testthat/helper-fixtures.R` | `read_test_metadata()`, `make_test_ds()`, `make_populated_test_ds()`, `make_calc_test_ds()`, per-table builders |
 | `tests/testthat/helper-schema.R` | `expect_schema_matches(x, expected)`, `iter_dataset_options(fields)` |
+| `tests/testthat/helper-event-data.R` | Raw DHIS2-shaped fixture builders for reader integration tests: `build_raw_events()`, `build_processed_events()`, `build_reader_metadata()`, `build_raw_substance_events()`, `build_raw_pathogen_events()` |
 
 Planned (not yet created):
 
