@@ -222,7 +222,8 @@ read_patients <- function(trackedEntities, metadata, dataset_options)
     # hierarchy keys from the public departments tibble on department_key.
     patients <- patients |>
       dplyr::left_join(
-        metadata$.departments_internal_map,
+        metadata$.departments_internal_map |>
+          dplyr::select("department_key", "orgUnit"),
         dplyr::join_by("orgUnit")) |>
       dplyr::select(!"orgUnit")
 

@@ -114,7 +114,8 @@ read_events <- function(events, enrollments, metadata, dataset_options)
   if (length(needed) > 0L || opts$include_test_data) {
     events <- events |>
       dplyr::left_join(
-        metadata$.departments_internal_map,
+        metadata$.departments_internal_map |>
+          dplyr::select("department_key", "orgUnit"),
         dplyr::join_by("orgUnit"))
 
     dept_cols <- c("department_key")

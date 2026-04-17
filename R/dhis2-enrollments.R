@@ -96,7 +96,8 @@ read_enrollments <- function(enrollments, patients, metadata, dataset_options)
   {
     enrollments <- enrollments |>
       dplyr::left_join(
-        metadata$.departments_internal_map,
+        metadata$.departments_internal_map |>
+          dplyr::select("department_key", "orgUnit"),
         dplyr::join_by("orgUnit"))
 
     hierarchy_cols <- c("department_key")
