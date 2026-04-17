@@ -259,12 +259,16 @@ test_that("finalize_to_schema accepts mix of scratch and declared-gated-out", {
   expect_identical(names(out), "a")
 })
 
-test_that("finalize_to_schema errors when a declared column is missing", {
+test_that("finalize_to_schema materializes absent declared columns as NA", {
+  # DHIS2's API omits fields that have null/empty values for all rows.
+  # finalize_to_schema fills them with NA of the right type so the
+  # schema shape is guaranteed regardless of data content.
   cols <- make_cols()
   x <- tibble::tibble(id = 1:3, name = letters[1:3])   # missing `sex`
-  expect_error(
-    neoipcr:::finalize_to_schema(x, cols, dhis2_dataset_options()),
-    "sex")
+  out <- neoipcr:::finalize_to_schema(x, cols, dhis2_dataset_options())
+  expect_true("sex" %in% names(out))
+  expect_true(all(is.na(out$sex)))
+  expect_identical(names(out), c("id", "sex", "name"))
 })
 
 test_that("finalize_to_schema applies declared factor levels", {

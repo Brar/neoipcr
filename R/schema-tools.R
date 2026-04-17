@@ -221,6 +221,19 @@ finalize_to_schema <- function(x, cols, opts, scratch = character())
       "i" = "Declare them in the schema or list them in `scratch = ...`."
     ))
 
+  # Materialize absent-but-declared columns with NA of the right type.
+  # DHIS2's API omits fields that have null/empty values for all rows in
+  # a response; after unnest_wider() the column simply doesn't exist.
+  # The schema still declares it, so the select below would crash. This
+  # mirrors the pre-pivot `names_expand = TRUE` pattern but for non-
+  # pivoted columns.
+  missing <- setdiff(exp_names, names(x))
+  if (length(missing) > 0L) {
+    expected <- compile_schema(cols, opts)
+    for (m in missing)
+      x[[m]] <- rep(expected[[m]][NA_integer_], nrow(x))
+  }
+
   x <- x |>
     dplyr::select(tidyselect::all_of(exp_names))
 
