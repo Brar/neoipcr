@@ -300,7 +300,8 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
   # orgUnit (gated on include_dhis2_ids). Downstream readers need this
   # bridge for orgUnit-based joins against raw API responses.
   metadata$.departments_internal_map <- metadata$departments |>
-    dplyr::select("department_key", "orgUnit")
+    dplyr::select("department_key", "orgUnit",
+                  tidyselect::any_of("code"))
 
   metadata$departments <- metadata$departments |>
     finalize_to_schema(departments_cols, dataset_options)

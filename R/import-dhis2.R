@@ -206,19 +206,6 @@ import_dhis2 <- function(
   class(substanceDays) <- c("neoipcr_sbd", class(substanceDays))
   class(infectiousAgentFindings) <- c("neoipcr_iaf", class(infectiousAgentFindings))
 
-  # Strip orchestrator-internal lookups before stamping the final S3
-  # class — they are not part of the public `neoipcr_metadata` shape.
-  # See `read_metadata_reponses()` for where each is set.
-  # Hierarchy order: metadata → fact entities
-  metadata$.wb_country_map           <- NULL
-  metadata$.countries_internal_map   <- NULL
-  metadata$.hospitals_internal_map   <- NULL
-  metadata$.departments_internal_map <- NULL
-  metadata$.users_internal_map       <- NULL
-  metadata$.eventTypes_internal_map  <- NULL
-  metadata$.patients_internal_map    <- NULL
-  metadata$.enrollments_internal_map <- NULL
-  metadata$.events_internal_map      <- NULL
   class(metadata) <- c("neoipcr_metadata", class(metadata))
 
   r <- structure(
@@ -258,6 +245,21 @@ import_dhis2 <- function(
 
   r <- r |>
     apply_postfilter()
+
+  # Strip orchestrator-internal lookups — they are not part of the
+  # public `neoipcr_metadata` shape. Must happen after
+  # transform_user_exceptions (uses .departments_internal_map) and
+  # apply_postfilter.
+  # Hierarchy order: metadata → fact entities
+  r$metadata$.wb_country_map           <- NULL
+  r$metadata$.countries_internal_map   <- NULL
+  r$metadata$.hospitals_internal_map   <- NULL
+  r$metadata$.departments_internal_map <- NULL
+  r$metadata$.users_internal_map       <- NULL
+  r$metadata$.eventTypes_internal_map  <- NULL
+  r$metadata$.patients_internal_map    <- NULL
+  r$metadata$.enrollments_internal_map <- NULL
+  r$metadata$.events_internal_map      <- NULL
 
   r |>
     assert_data_protection(dataset_options)
@@ -306,8 +308,8 @@ transform_user_exceptions <- function(ex, ds)
   else
     ex <- ex |>
       dplyr::inner_join(
-        ds$metadata$departments |>
-          dplyr::select("department_key","code"),
+        ds$metadata$.departments_internal_map |>
+          dplyr::select("department_key", "code"),
         dplyr::join_by("DEPARTMENT_CODE" == "code")) |>
       dplyr::left_join(
         ds$patients |>
