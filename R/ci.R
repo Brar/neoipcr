@@ -117,6 +117,8 @@ neoipc_wilson_ci <- function(x, n, conf.level = 0.95) {
 #' @returns A tibble with columns `ci_lower` and `ci_upper`.
 #' @noRd
 poisson_ci_cols <- function(events, exposure, multiplier) {
+  if (length(events) == 0L)
+    return(tibble::tibble(ci_lower = numeric(), ci_upper = numeric()))
   purrr::pmap(
     list(events = events, exposure = exposure),
     function(events, exposure) {
@@ -142,6 +144,8 @@ poisson_ci_cols <- function(events, exposure, multiplier) {
 #' @returns A tibble with columns `ci_lower` and `ci_upper`.
 #' @noRd
 wilson_ci_cols <- function(x, n, scale = 1) {
+  if (length(x) == 0L)
+    return(tibble::tibble(ci_lower = numeric(), ci_upper = numeric()))
   purrr::pmap(
     list(x = x, n = n),
     function(x, n) {
