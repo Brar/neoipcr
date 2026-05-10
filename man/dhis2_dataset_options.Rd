@@ -87,7 +87,7 @@ tibble also carries the columns selected by \code{patient_columns}.}
 \item{patient_columns}{Character vector selecting which patient-specific
 columns beyond \code{patient_key} are included when \code{include_patient = "full"}.
 Choices: "id", "birth_weight", "sex", "delivery_mode", "siblings",
-"gest_age", "inactive", "potentialDuplicate". Empty (the default) means
+"gestational_age", "inactive", "potentialDuplicate". Empty (the default) means
 all columns allowed by the gate. Ignored when \code{include_patient} is
 "no" or "pseudo".}
 
