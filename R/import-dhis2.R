@@ -255,11 +255,25 @@ import_dhis2 <- function(
 
   # Validation removes patients, so it has nothing to do when the caller
   # imported none: a metadata-only import must not trip the validation
-  # pass's own option preconditions.
-  if(dataset_options$include_patient != "no" &&
-     (!rlang::is_bool(dataset_options$include_invalid_patients) ||
-      dataset_options$include_invalid_patients == FALSE))
+  # pass's own option preconditions. With patients but without the
+  # enrollments and events to check them against it cannot run either, and
+  # keeping unvalidated patients quietly would contradict the option, so that
+  # case aborts naming both ways out.
+  validation_requested <-
+    !rlang::is_bool(dataset_options$include_invalid_patients) ||
+    dataset_options$include_invalid_patients == FALSE
+  if(dataset_options$include_patient != "no" && validation_requested)
   {
+    if(dataset_options$include_enrollment == "no" ||
+       dataset_options$include_event == "no")
+      rlang::abort(c(
+        "Validating patients needs the enrollments and events to check them against.",
+        x = sprintf(
+          "`include_enrollment` is \"%s\" and `include_event` is \"%s\", while `include_invalid_patients` asks for validation.",
+          dataset_options$include_enrollment, dataset_options$include_event),
+        i = "Import both (\"pseudo\" or \"full\"), or set `include_invalid_patients = TRUE` to keep every patient unvalidated."),
+        class = "neoipcr_validation_needs_facts")
+
     if(!rlang::is_bool(dataset_options$include_invalid_patients))
       exceptions <- dataset_options$include_invalid_patients |>
         transform_user_exceptions(r)

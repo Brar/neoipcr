@@ -31,7 +31,9 @@ section above it for the next changes.
   where it used to stop at 31+0.
 * A metadata-only import (`include_patient`, `include_enrollment` and `include_event` all `"no"`) no
   longer aborts: the eligibility filter used to look for admission data such an import does not
-  carry, and the validation pass ran with no patients to validate.
+  carry, and the validation pass ran with no patients to validate. An import that asks for
+  validated patients without the enrollments and events to check them against now says so and
+  names both ways out (import them, or `include_invalid_patients = TRUE`).
 
 # neoipcr 0.0.0.9001
 

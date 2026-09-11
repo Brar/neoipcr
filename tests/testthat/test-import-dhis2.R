@@ -650,3 +650,22 @@ test_that("import_dhis2 reads the org-unit metadata alone when every fact entity
   expect_setequal(ds$metadata$departments$code, c("DEPT_01", "DEPT_02"))
   expect_equal(nrow(ds$metadata$departmentAttributeValues), 4L)
 })
+
+test_that("import_dhis2 refuses to validate patients without the enrollments and events to check them against", {
+  m <- new_dhis2_mock(import_test_fixtures())
+  httr2::local_mocked_responses(m$mock)
+
+  expect_error(
+    import_dhis2(test_conn(), import_test_opts(
+      include_enrollment       = "no",
+      include_event            = "no",
+      include_invalid_patients = FALSE)),
+    class = "neoipcr_validation_needs_facts")
+
+  # Opting out of validation is the way to a patient-only import.
+  ds <- import_dhis2(test_conn(), import_test_opts(
+    include_enrollment = "no",
+    include_event      = "no"))
+  expect_equal(ncol(ds$enrollments), 0L)
+  expect_setequal(as.character(ds$patients$patient_id), c("PAT_1", "PAT_2"))
+})
