@@ -294,12 +294,13 @@ get_departments_schema <- function(opts)
 # entity contributes only when it is present at all (`include_<entity>` not
 # "no"), because a value row is keyed on that entity's key.
 #
-# Each value row carries exactly one non-NA typed column, chosen by the
-# attribute's DHIS2 value type through the families DHIS2 itself declares
-# (see `value_type_family()`): integer types → `value_integer`, decimal types
-# → `value_number`, boolean types → `value_logical`, DATE and AGE →
+# Each value row fills at most one typed column — the one of its attribute's
+# value-type family, through the families DHIS2 itself declares (see
+# `value_type_family()`): integer types → `value_integer`, decimal types →
+# `value_number`, boolean types → `value_logical`, DATE and AGE →
 # `value_date`, DATETIME → `value_datetime`, everything else → `value_text`.
-# The raw string is not kept. `valueType` on the definitions stays the DHIS2
+# A missing or unparseable value leaves every typed column NA (the latter
+# with a warning). The raw string is not kept. `valueType` on the definitions stays the DHIS2
 # enum name as character: the enum grows upstream, and fixed factor levels
 # would turn a value type added later into a schema violation.
 #

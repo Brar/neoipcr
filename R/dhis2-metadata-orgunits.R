@@ -330,3 +330,105 @@ resolve_organisationUnit_attribute_values <- function(
       tidyselect::all_of(c(key_col, "attribute_code")),
       tidyselect::starts_with("value_"))
 }
+
+# Map a DHIS2 value type to the typed column that stores it, following the
+# families DHIS2 itself declares in `ValueType.java` (2.40 and 2.41):
+#   INTEGER_TYPES  INTEGER, INTEGER_POSITIVE, INTEGER_NEGATIVE,
+#                  INTEGER_ZERO_OR_POSITIVE                    → "integer"
+#   DECIMAL_TYPES  NUMBER, UNIT_INTERVAL, PERCENTAGE            → "number"
+#   BOOLEAN_TYPES  BOOLEAN, TRUE_ONLY                           → "logical"
+#   DATE_TYPES     DATE, AGE (a date of birth)                  → "date"
+#                  DATETIME                                     → "datetime"
+# Every other type — the text types (TEXT, LONG_TEXT, LETTER, TIME, USERNAME,
+# EMAIL, PHONE_NUMBER, URL), MULTI_TEXT, and the file, geo, reference and
+# tracker kinds — keeps the string, and so does any value type this package
+# does not know: a value type added upstream degrades to text, not to an
+# error.
+value_type_family <- function(value_type)
+{
+  dplyr::case_when(
+    value_type %in% c("INTEGER", "INTEGER_POSITIVE", "INTEGER_NEGATIVE",
+                      "INTEGER_ZERO_OR_POSITIVE") ~ "integer",
+    value_type %in% c("NUMBER", "UNIT_INTERVAL", "PERCENTAGE") ~ "number",
+    value_type %in% c("BOOLEAN", "TRUE_ONLY") ~ "logical",
+    value_type %in% c("DATE", "AGE") ~ "date",
+    value_type == "DATETIME" ~ "datetime",
+    .default = "text")
+}
+
+# Spread string values into one typed column per value-type family —
+# `value_text`, `value_logical`, `value_integer`, `value_number`, `value_date`
+# and `value_datetime` — replacing `value_col` and `type_col`. Each row fills
+# at most the column of its family and is NA elsewhere.
+#
+# A value that does not parse under its family becomes NA in every typed
+# column and is reported once, by count per `code_col` (or in total when the
+# tibble has no such column) — never by value, which may be a person's name.
+# `parse_date()` reads only the date part, since DHIS2 stores a DATE either
+# bare or with a midnight time suffix; `parse_datetime()` reads ISO 8601 as
+# UTC.
+spread_typed_values <- function(
+    tbl, value_col = "value", type_col = "valueType", code_col = NULL)
+{
+  value  <- as.character(tbl[[value_col]])
+  family <- value_type_family(as.character(tbl[[type_col]]))
+  n      <- length(value)
+
+  is_text <- family == "text"
+  is_lgl  <- family == "logical"
+  is_int  <- family == "integer"
+  is_num  <- family == "number"
+  is_date <- family == "date"
+  is_dt   <- family == "datetime"
+
+  value_text <- rep(NA_character_, n)
+  value_text[is_text] <- value[is_text]
+
+  value_logical <- rep(NA, n)
+  lgl_raw <- tolower(value[is_lgl])
+  value_logical[is_lgl] <- ifelse(
+    lgl_raw == "true", TRUE, ifelse(lgl_raw == "false", FALSE, NA))
+
+  value_integer <- rep(NA_integer_, n)
+  value_integer[is_int] <- suppressWarnings(readr::parse_integer(value[is_int]))
+
+  value_number <- rep(NA_real_, n)
+  value_number[is_num] <- suppressWarnings(readr::parse_double(value[is_num]))
+
+  value_date <- rep(as.Date(NA), n)
+  value_date[is_date] <- suppressWarnings(
+    readr::parse_date(stringr::str_sub(value[is_date], end = 10)))
+
+  value_datetime <- rep(as.POSIXct(NA_real_, tz = "UTC"), n)
+  value_datetime[is_dt] <- suppressWarnings(readr::parse_datetime(value[is_dt]))
+
+  failed <- !is.na(value) & (
+    (is_lgl  & is.na(value_logical)) |
+    (is_int  & is.na(value_integer)) |
+    (is_num  & is.na(value_number)) |
+    (is_date & is.na(value_date)) |
+    (is_dt   & is.na(value_datetime)))
+
+  if (any(failed)) {
+    if (!is.null(code_col) && code_col %in% names(tbl)) {
+      counts <- table(tbl[[code_col]][failed])
+      detail <- sprintf("%s (%d)", names(counts), as.integer(counts))
+    } else
+      detail <- sprintf("%d value(s)", sum(failed))
+    rlang::warn(c(
+      "Custom attribute value(s) that do not parse under their attribute's value type were set to NA:",
+      rlang::set_names(detail, rep("x", length(detail)))),
+      class = "neoipcr_attribute_value_parse_failure")
+  }
+
+  tbl |>
+    dplyr::select(!tidyselect::all_of(c(value_col, type_col))) |>
+    dplyr::bind_cols(
+      tibble::tibble(
+        value_text     = value_text,
+        value_logical  = value_logical,
+        value_integer  = value_integer,
+        value_number   = value_number,
+        value_date     = value_date,
+        value_datetime = value_datetime))
+}

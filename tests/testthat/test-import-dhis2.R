@@ -369,98 +369,6 @@ test_that("import_dhis2 runs parameterless from NEOIPC_DHIS2_HOST + env auth", {
 })
 
 # ---------------------------------------------------------------------------
-# Typed attribute values — DHIS2's value-type families and the spread into
-# one typed column per family.
-# ---------------------------------------------------------------------------
-
-test_that("value_type_family follows DHIS2's ValueType families and degrades unknown types to text", {
-  family <- neoipcr:::value_type_family
-  expect_equal(
-    family(c("INTEGER", "INTEGER_POSITIVE", "INTEGER_NEGATIVE",
-             "INTEGER_ZERO_OR_POSITIVE")),
-    rep("integer", 4))
-  expect_equal(family(c("NUMBER", "UNIT_INTERVAL", "PERCENTAGE")), rep("number", 3))
-  expect_equal(family(c("BOOLEAN", "TRUE_ONLY")), rep("logical", 2))
-  expect_equal(family(c("DATE", "AGE")), rep("date", 2))
-  expect_equal(family("DATETIME"), "datetime")
-  expect_equal(
-    family(c("TEXT", "LONG_TEXT", "LETTER", "TIME", "USERNAME", "EMAIL",
-             "PHONE_NUMBER", "URL", "MULTI_TEXT", "FILE_RESOURCE", "IMAGE",
-             "COORDINATE", "GEOJSON", "ORGANISATION_UNIT", "REFERENCE",
-             "TRACKER_ASSOCIATE")),
-    rep("text", 16))
-  expect_equal(family(c("SOMETHING_NEW", NA)), c("text", "text"))
-  expect_equal(family(character()), character())
-})
-
-test_that("spread_typed_values fills exactly the column of each value's family", {
-  tbl <- tibble::tibble(
-    attribute_code = c("T", "L", "L2", "I", "N", "D", "D2", "DT"),
-    valueType = c("TEXT", "TRUE_ONLY", "BOOLEAN", "INTEGER", "PERCENTAGE",
-                  "DATE", "AGE", "DATETIME"),
-    value = c("hello", "true", "false", "12", "12.5",
-              "2024-08-03T00:00:00.000", "2020-02-29",
-              "2024-08-03T10:30:00.000"))
-  result <- neoipcr:::spread_typed_values(tbl, code_col = "attribute_code")
-
-  typed <- c("value_text", "value_logical", "value_integer", "value_number",
-             "value_date", "value_datetime")
-  expect_named(result, c("attribute_code", typed))
-  expect_equal(
-    rowSums(!is.na(result[, typed])), rep(1, 8), ignore_attr = TRUE)
-  expect_equal(result$value_text[1], "hello")
-  expect_equal(result$value_logical[2:3], c(TRUE, FALSE))
-  expect_identical(result$value_integer[4], 12L)
-  expect_equal(result$value_number[5], 12.5)
-  expect_equal(result$value_date[6:7], as.Date(c("2024-08-03", "2020-02-29")))
-  expect_equal(
-    result$value_datetime[8], as.POSIXct("2024-08-03 10:30:00", tz = "UTC"))
-  expect_equal(attr(result$value_datetime, "tzone"), "UTC")
-})
-
-test_that("spread_typed_values sets an unparseable value to NA and warns once, by attribute code and count", {
-  tbl <- tibble::tibble(
-    attribute_code = c("D", "D", "I", "T", "L", "N"),
-    valueType      = c("DATE", "DATE", "INTEGER", "TEXT", "TRUE_ONLY", "DATE"),
-    value          = c("not a date", "2024-01-01", "twelve", "fine", "yes",
-                       NA_character_))
-
-  expect_warning(
-    result <- neoipcr:::spread_typed_values(tbl, code_col = "attribute_code"),
-    class = "neoipcr_attribute_value_parse_failure")
-  expect_true(is.na(result$value_date[1]))
-  expect_equal(result$value_date[2], as.Date("2024-01-01"))
-  expect_true(is.na(result$value_integer[3]))
-  expect_equal(result$value_text[4], "fine")
-  # A boolean that is neither "true" nor "false" fails like any other family.
-  expect_true(is.na(result$value_logical[5]))
-  # An absent value is NA without being a failure.
-  expect_true(is.na(result$value_date[6]))
-
-  msg <- conditionMessage(tryCatch(
-    neoipcr:::spread_typed_values(tbl, code_col = "attribute_code"),
-    warning = identity))
-  expect_match(msg, "D (1)", fixed = TRUE)
-  expect_match(msg, "I (1)", fixed = TRUE)
-  expect_match(msg, "L (1)", fixed = TRUE)
-  expect_false(grepl("N (", msg, fixed = TRUE))
-  # Never the value itself — it may be a person's name.
-  expect_false(grepl("not a date", msg, fixed = TRUE))
-})
-
-test_that("spread_typed_values keeps the six typed columns on a 0-row input", {
-  result <- neoipcr:::spread_typed_values(tibble::tibble(
-    attribute_code = character(), valueType = character(), value = character()))
-  expect_equal(nrow(result), 0L)
-  expect_true(is.character(result$value_text))
-  expect_true(is.logical(result$value_logical))
-  expect_true(is.integer(result$value_integer))
-  expect_true(is.double(result$value_number))
-  expect_s3_class(result$value_date, "Date")
-  expect_s3_class(result$value_datetime, "POSIXct")
-})
-
-# ---------------------------------------------------------------------------
 # Org-unit attribute values end to end — the opt-in import and the always-on
 # IsTestunit test-unit source. The attribute fixture carries three departments
 # under one hospital: DEPT_01 with typed values (one of them unparseable, one
@@ -470,8 +378,9 @@ test_that("spread_typed_values keeps the six typed columns on a 0-row input", {
 # matching tracker fixtures put PAT_3 in DEPT_03.
 # ---------------------------------------------------------------------------
 
-attribute_fixtures <- function() {
-  fx <- import_test_fixtures(org_unit_attributes = TRUE)
+attribute_fixtures <- function(version = "2.40.12.0") {
+  fx <- import_test_fixtures(
+    version, me_fixture_for(version), org_unit_attributes = TRUE)
   fx$organisationUnits <- read_fixture_text("orgunits-departments-attributes.json")
   fx$trackedEntities   <- read_fixture_text("tracker-trackedEntities-attributes.json")
   fx$enrollments       <- read_fixture_text("tracker-enrollments-attributes.json")
@@ -555,6 +464,44 @@ test_that("import_dhis2 imports typed org-unit attribute values for the opted-in
     httr2::url_parse(md_url)$query[["attributes:filter"]],
     "organisationUnitAttribute:eq:true")
 })
+
+# The same import on every supported line, in outline: the request shapes
+# above are version-independent, but a line-specific regression anywhere in
+# the pipeline would otherwise pass unseen.
+for (v in matrix_supported_versions) {
+  local({
+    version <- v
+    test_that(sprintf("import_dhis2 imports typed attribute values and the IsTestunit flag at DHIS2 %s", version), {
+      m <- new_dhis2_mock(attribute_fixtures(version))
+      httr2::local_mocked_responses(m$mock)
+
+      expect_warning(
+        ds <- import_dhis2(test_conn(), import_test_opts(
+          include_department        = "full",
+          include_hospital          = "full",
+          include_custom_attributes = c("departments", "hospitals"))),
+        class = "neoipcr_attribute_value_parse_failure")
+
+      expect_equal(as.character(ds$metadata$system$version), version)
+      expect_setequal(as.character(ds$patients$patient_id), c("PAT_1", "PAT_2"))
+      expect_false("DEPT_03" %in% ds$metadata$departments$code)
+
+      dept_values <- ds$metadata$departmentAttributeValues
+      expect_setequal(
+        dept_values$attribute_code,
+        c("TEST_ATTR_TEXT", "TEST_ATTR_DATE", "TEST_ATTR_INT", "TEST_ATTR_NUMBER"))
+      expect_equal(
+        dept_values$value_date[dept_values$attribute_code == "TEST_ATTR_DATE"],
+        as.Date("2024-08-03"))
+      expect_equal(ds$metadata$hospitalAttributeValues$attribute_code, "TEST_ATTR_TEXT")
+
+      requests <- orgunit_requests(m$urls())
+      expect_length(requests$test_units, 1L)
+      flag_query <- requests$test_units[[1]]$query
+      expect_true("ATTR_FLAG_01:eq:true" %in% unlist(flag_query[names(flag_query) == "filter"]))
+    })
+  })
+}
 
 test_that("import_dhis2 excludes a department flagged IsTestunit like a TEST_UNITS member", {
   # Under the pseudonymized department default no attribute value is

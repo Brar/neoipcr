@@ -251,6 +251,93 @@ test_that("resolve_organisationUnit_attribute_values keeps every org unit when n
   expect_named(empty, c("hospital_key", "attribute_code", typed_columns))
 })
 
+# --- value_type_family / spread_typed_values ---
+
+test_that("value_type_family follows DHIS2's ValueType families and degrades unknown types to text", {
+  family <- neoipcr:::value_type_family
+  expect_equal(
+    family(c("INTEGER", "INTEGER_POSITIVE", "INTEGER_NEGATIVE",
+             "INTEGER_ZERO_OR_POSITIVE")),
+    rep("integer", 4))
+  expect_equal(family(c("NUMBER", "UNIT_INTERVAL", "PERCENTAGE")), rep("number", 3))
+  expect_equal(family(c("BOOLEAN", "TRUE_ONLY")), rep("logical", 2))
+  expect_equal(family(c("DATE", "AGE")), rep("date", 2))
+  expect_equal(family("DATETIME"), "datetime")
+  expect_equal(
+    family(c("TEXT", "LONG_TEXT", "LETTER", "TIME", "USERNAME", "EMAIL",
+             "PHONE_NUMBER", "URL", "MULTI_TEXT", "FILE_RESOURCE", "IMAGE",
+             "COORDINATE", "GEOJSON", "ORGANISATION_UNIT", "REFERENCE",
+             "TRACKER_ASSOCIATE")),
+    rep("text", 16))
+  expect_equal(family(c("SOMETHING_NEW", NA)), c("text", "text"))
+  expect_equal(family(character()), character())
+})
+
+test_that("spread_typed_values fills exactly the column of each value's family", {
+  tbl <- tibble::tibble(
+    attribute_code = c("T", "L", "L2", "I", "N", "D", "D2", "DT"),
+    valueType = c("TEXT", "TRUE_ONLY", "BOOLEAN", "INTEGER", "PERCENTAGE",
+                  "DATE", "AGE", "DATETIME"),
+    value = c("hello", "true", "false", "12", "12.5",
+              "2024-08-03T00:00:00.000", "2020-02-29",
+              "2024-08-03T10:30:00.000"))
+  result <- neoipcr:::spread_typed_values(tbl, code_col = "attribute_code")
+
+  expect_named(result, c("attribute_code", typed_columns))
+  expect_equal(
+    rowSums(!is.na(result[, typed_columns])), rep(1, 8), ignore_attr = TRUE)
+  expect_equal(result$value_text[1], "hello")
+  expect_equal(result$value_logical[2:3], c(TRUE, FALSE))
+  expect_identical(result$value_integer[4], 12L)
+  expect_equal(result$value_number[5], 12.5)
+  expect_equal(result$value_date[6:7], as.Date(c("2024-08-03", "2020-02-29")))
+  expect_equal(
+    result$value_datetime[8], as.POSIXct("2024-08-03 10:30:00", tz = "UTC"))
+  expect_equal(attr(result$value_datetime, "tzone"), "UTC")
+})
+
+test_that("spread_typed_values sets an unparseable value to NA and warns once, by attribute code and count", {
+  tbl <- tibble::tibble(
+    attribute_code = c("D", "D", "I", "T", "L", "N"),
+    valueType      = c("DATE", "DATE", "INTEGER", "TEXT", "TRUE_ONLY", "DATE"),
+    value          = c("not a date", "2024-01-01", "twelve", "fine", "yes",
+                       NA_character_))
+
+  expect_warning(
+    result <- neoipcr:::spread_typed_values(tbl, code_col = "attribute_code"),
+    class = "neoipcr_attribute_value_parse_failure")
+  expect_true(is.na(result$value_date[1]))
+  expect_equal(result$value_date[2], as.Date("2024-01-01"))
+  expect_true(is.na(result$value_integer[3]))
+  expect_equal(result$value_text[4], "fine")
+  # A boolean that is neither "true" nor "false" fails like any other family.
+  expect_true(is.na(result$value_logical[5]))
+  # An absent value is NA without being a failure.
+  expect_true(is.na(result$value_date[6]))
+
+  msg <- conditionMessage(tryCatch(
+    neoipcr:::spread_typed_values(tbl, code_col = "attribute_code"),
+    warning = identity))
+  expect_match(msg, "D (1)", fixed = TRUE)
+  expect_match(msg, "I (1)", fixed = TRUE)
+  expect_match(msg, "L (1)", fixed = TRUE)
+  expect_false(grepl("N (", msg, fixed = TRUE))
+  # Never the value itself — it may be a person's name.
+  expect_false(grepl("not a date", msg, fixed = TRUE))
+})
+
+test_that("spread_typed_values keeps the six typed columns on a 0-row input", {
+  result <- neoipcr:::spread_typed_values(tibble::tibble(
+    attribute_code = character(), valueType = character(), value = character()))
+  expect_equal(nrow(result), 0L)
+  expect_true(is.character(result$value_text))
+  expect_true(is.logical(result$value_logical))
+  expect_true(is.integer(result$value_integer))
+  expect_true(is.double(result$value_number))
+  expect_s3_class(result$value_date, "Date")
+  expect_s3_class(result$value_datetime, "POSIXct")
+})
+
 # --- read_metadata_orgUnitAttributes ---
 
 test_that("read_metadata_orgUnitAttributes reads the definitions when an entity is opted in", {
