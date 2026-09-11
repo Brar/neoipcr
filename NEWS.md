@@ -18,8 +18,9 @@ section above it for the next changes.
   `include_custom_attributes` option of `dhis2_dataset_options()` names the entities whose values to
   import (`"departments"`, `"hospitals"`); their values land typed by the attribute's DHIS2 value type
   in `metadata$departmentAttributeValues` / `metadata$hospitalAttributeValues`, with the definitions in
-  `metadata$orgUnitAttributes`. The `IsTestunit` attribute is read on every import and now marks a
-  department as a test unit alongside `TEST_UNITS` group membership.
+  `metadata$orgUnitAttributes`. Departments flagged by the `IsTestunit` attribute are fetched on every
+  import through a narrowed request and now count as test units alongside `TEST_UNITS` group
+  membership.
 * New export `get_cumulative_incidence_table()`: the share of patients (or admissions) admitted to a
   department within a calendar window who acquired an infection within that same window, with a
   Wilson interval; the default outcome is the severe-infection composite (primary sepsis/BSI plus
@@ -28,8 +29,9 @@ section above it for the next changes.
   flags them.
 * `gestational_age_to` now covers the whole completed week it names: `31` keeps 31+0 through 31+6,
   where it used to stop at 31+0.
-* A metadata-only import (`include_event = "no"`) no longer aborts under the default eligibility
-  filter, which used to look for admission data that such an import does not carry.
+* A metadata-only import (`include_patient`, `include_enrollment` and `include_event` all `"no"`) no
+  longer aborts: the eligibility filter used to look for admission data such an import does not
+  carry, and the validation pass ran with no patients to validate.
 
 # neoipcr 0.0.0.9001
 

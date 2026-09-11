@@ -69,7 +69,20 @@ import_test_fixtures <- function(version = "2.40.12.0", me = "me-nested.json")
     organisationUnits = read_fixture_text("orgunits-departments.json"),
     trackedEntities   = read_fixture_text("tracker-trackedEntities.json"),
     enrollments       = read_fixture_text("tracker-enrollments.json"),
-    events            = read_fixture_text("tracker-events.json"))
+    events            = read_fixture_text("tracker-events.json"),
+    testUnits         = '{"organisationUnits":[]}')
+
+# The org-unit requests an import issued, parsed: the department request and,
+# when the instance defines `IsTestunit`, the test-unit follow-up.
+orgunit_requests <- function(urls) {
+  parsed <- urls |>
+    Filter(f = function(u) grepl("/organisationUnits", u, fixed = TRUE)) |>
+    lapply(httr2::url_parse)
+  is_flag <- vapply(parsed, function(u)
+    any(grepl("^[^.]+:eq:true$", unlist(u$query[names(u$query) == "filter"]))),
+    logical(1))
+  list(departments = parsed[!is_flag], test_units = parsed[is_flag])
+}
 
 test_that("import_dhis2 reads a full dataset from mocked 2.40 responses", {
   m <- new_dhis2_mock(import_test_fixtures())
@@ -456,6 +469,8 @@ attribute_fixtures <- function() {
   fx$trackedEntities   <- read_fixture_text("tracker-trackedEntities-attributes.json")
   fx$enrollments       <- read_fixture_text("tracker-enrollments-attributes.json")
   fx$events            <- read_fixture_text("tracker-events-attributes.json")
+  # What the IsTestunit follow-up request returns for this org-unit fixture.
+  fx$testUnits         <- '{"organisationUnits":[{"id":"OU_DEPT_3"}]}'
   fx
 }
 
@@ -514,10 +529,20 @@ test_that("import_dhis2 imports typed org-unit attribute values for the opted-in
   expect_false("attributeValues" %in% names(ds$metadata$departments))
   expect_false("attributeValues" %in% names(ds$metadata$hospitals))
 
-  ou_url <- Find(function(u) grepl("/organisationUnits", u, fixed = TRUE), m$urls())
+  requests <- orgunit_requests(m$urls())
+  expect_length(requests$departments, 1L)
   expect_match(
-    httr2::url_parse(ou_url)$query$fields,
+    requests$departments[[1]]$query$fields,
     "attributeValues[attribute[id],value]", fixed = TRUE)
+  # The IsTestunit follow-up: ids only, filtered by the attribute's value,
+  # with the uid resolved from the definitions by code.
+  expect_length(requests$test_units, 1L)
+  flag_query <- requests$test_units[[1]]$query
+  expect_equal(flag_query$fields, "id")
+  expect_equal(flag_query$withinUserHierarchy, "true")
+  expect_setequal(
+    unlist(flag_query[names(flag_query) == "filter"]),
+    c("organisationUnitGroups.code:eq:NEO_DEPARTMENT", "ATTR_FLAG_01:eq:true"))
   md_url <- Find(function(u) grepl("/metadata", u, fixed = TRUE), m$urls())
   expect_equal(
     httr2::url_parse(md_url)$query[["attributes:filter"]],
@@ -525,10 +550,9 @@ test_that("import_dhis2 imports typed org-unit attribute values for the opted-in
 })
 
 test_that("import_dhis2 excludes a department flagged IsTestunit like a TEST_UNITS member", {
-  # Under the pseudonymized department default the request carries nothing
-  # but `id` and the attribute fragment, so this is the leanest path through
-  # the test-unit step; the unparseable value on DEPT_01 must not warn, since
-  # nobody opted into the values.
+  # Under the pseudonymized department default no attribute value is
+  # requested at all: the flag arrives from the follow-up request, and the
+  # unparseable value on DEPT_01 never reaches the client.
   m <- new_dhis2_mock(attribute_fixtures())
   httr2::local_mocked_responses(m$mock)
 
@@ -539,6 +563,27 @@ test_that("import_dhis2 excludes a department flagged IsTestunit like a TEST_UNI
   expect_setequal(as.character(ds$patients$patient_id), c("PAT_1", "PAT_2"))
   # DEPT_01 survives; DEPT_03 is a test unit and DEPT_02 has no patients.
   expect_equal(nrow(ds$metadata$departments), 1L)
+
+  requests <- orgunit_requests(m$urls())
+  expect_equal(requests$departments[[1]]$query$fields, "id")
+  expect_length(requests$test_units, 1L)
+})
+
+test_that("import_dhis2 issues no test-unit follow-up when the instance defines no IsTestunit attribute", {
+  fx <- import_test_fixtures()
+  md <- jsonlite::fromJSON(fx$metadata, simplifyVector = FALSE)
+  md$attributes <- NULL
+  fx$metadata <- jsonlite::toJSON(md, auto_unbox = TRUE, null = "null")
+  # Without the key the mock aborts on the request, so an unwanted follow-up
+  # cannot pass unnoticed.
+  fx$testUnits <- NULL
+  m <- new_dhis2_mock(fx)
+  httr2::local_mocked_responses(m$mock)
+
+  ds <- import_dhis2(test_conn(), import_test_opts())
+
+  expect_length(orgunit_requests(m$urls())$test_units, 0L)
+  expect_setequal(as.character(ds$patients$patient_id), c("PAT_1", "PAT_2"))
 })
 
 test_that("import_dhis2 marks a department flagged IsTestunit as isTest under include_test_data", {
@@ -581,7 +626,8 @@ test_that("import_dhis2 yields empty, schema-shaped attribute tables when the re
 test_that("import_dhis2 reads the org-unit metadata alone when every fact entity is switched off", {
   # A site list: the departments with their attribute values, but no
   # patients, enrollments or events — under the default eligibility filter,
-  # which has no admission data to act on.
+  # which has no admission data to act on, and the default validation pass,
+  # which has no patients to validate.
   m <- new_dhis2_mock(attribute_fixtures())
   httr2::local_mocked_responses(m$mock)
 
@@ -592,7 +638,8 @@ test_that("import_dhis2 reads the org-unit metadata alone when every fact entity
       include_event               = "no",
       include_department          = "full",
       include_custom_attributes   = "departments",
-      include_ineligible_patients = FALSE)),
+      include_ineligible_patients = FALSE,
+      include_invalid_patients    = FALSE)),
     class = "neoipcr_attribute_value_parse_failure")
 
   expect_equal(ncol(ds$patients), 0L)

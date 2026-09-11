@@ -29,26 +29,33 @@ raw_values <- function(id, value)
 
 # --- get_organisationUnit_request ---
 
-test_that("the department block always requests attribute values (IsTestunit feeds test-unit detection)", {
+test_that("the department block requests attribute values only when departments are opted in and present", {
   for (opts in iter_dataset_options(c(
-    "include_department", "include_hospital", "include_country"))) {
+    "include_department", "include_custom_attributes"))) {
     fields <- ou_request_fields(opts)
-    expect_true(
-      startsWith(fields, paste0("id,", attribute_fragment)),
+    dept_opted <-
+      "departments" %in% opts$include_custom_attributes &&
+      opts$include_department != "no"
+    expect_equal(
+      startsWith(fields, paste0("id,", attribute_fragment)), dept_opted,
       info = opts_label(opts))
   }
 })
 
 test_that("the hospital block requests attribute values only when opted in and hospitals are present", {
   for (opts in iter_dataset_options(c(
-    "include_hospital", "include_country", "include_custom_attributes"))) {
+    "include_department", "include_hospital", "include_country",
+    "include_custom_attributes"))) {
     fields <- ou_request_fields(opts)
+    dept_opted <-
+      "departments" %in% opts$include_custom_attributes &&
+      opts$include_department != "no"
     hospital_opted <-
       "hospitals" %in% opts$include_custom_attributes &&
       opts$include_hospital != "no"
 
     expect_equal(
-      count_fragment(fields), if (hospital_opted) 2L else 1L,
+      count_fragment(fields), sum(dept_opted, hospital_opted),
       info = opts_label(opts))
     if (hospital_opted)
       expect_match(
@@ -58,6 +65,30 @@ test_that("the hospital block requests attribute values only when opted in and h
     chars <- strsplit(fields, "", fixed = TRUE)[[1]]
     expect_equal(sum(chars == "["), sum(chars == "]"), info = opts_label(opts))
   }
+})
+
+test_that("get_test_unit_attribute_request asks for ids only, within the user's hierarchy, filtered by the attribute's value", {
+  req <- neoipcr:::get_test_unit_attribute_request(
+    httr2::request("https://dhis2.example.org/api"), "ATTR_FLAG_01")
+  url <- httr2::url_parse(req$url)
+
+  expect_true(endsWith(url$path, "/organisationUnits"))
+  expect_equal(url$query$fields, "id")
+  expect_equal(url$query$withinUserHierarchy, "true")
+  expect_setequal(
+    unlist(url$query[names(url$query) == "filter"]),
+    c("organisationUnitGroups.code:eq:NEO_DEPARTMENT", "ATTR_FLAG_01:eq:true"))
+})
+
+test_that("read_test_unit_attribute_ids yields the ids, or nothing", {
+  expect_equal(
+    neoipcr:::read_test_unit_attribute_ids(
+      list(organisationUnits = list(list(id = "OU_1"), list(id = "OU_2")))),
+    c("OU_1", "OU_2"))
+  expect_equal(
+    neoipcr:::read_test_unit_attribute_ids(list(organisationUnits = list())),
+    character())
+  expect_equal(neoipcr:::read_test_unit_attribute_ids(list()), character())
 })
 
 test_that("get_metadata_request always requests the org-unit attribute definitions", {

@@ -2,11 +2,14 @@
 # withinUserHierarchy filter
 get_organisationUnit_request <- function(req_base, user_info, dataset_options)
 {
-  # Attribute values travel on every department request: the `IsTestunit`
-  # attribute feeds test-unit detection whether or not the caller opted into
-  # custom attributes (see `read_metadata_reponses()`).
+  # Attribute values travel only for an opted-in entity that is present. The
+  # `IsTestunit` flag does not need them: it arrives as org-unit ids from its
+  # own narrowed request (see `get_test_unit_attribute_request()`).
   attribute_fields <- ",attributeValues[attribute[id],value]"
-  fields <- paste0("id", attribute_fields)
+  fields <- "id"
+  if ("departments" %in% dataset_options$include_custom_attributes &&
+      dataset_options$include_department != "no")
+    fields <- paste0(fields, attribute_fields)
 
   if(dataset_options$include_department == "full")
     fields <- paste0(fields, ",code,displayName,displayShortName,displayDescription,openingDate,comment,geometry")
@@ -45,6 +48,32 @@ get_organisationUnit_request <- function(req_base, user_info, dataset_options)
       withinUserHierarchy = "true",
       fields = fields,
       filter = "organisationUnitGroups.code:eq:NEO_DEPARTMENT")
+}
+
+# The departments flagged by the `IsTestunit` custom attribute, ids only: the
+# same scope as `get_organisationUnit_request()` plus DHIS2's filter on one
+# attribute's value, `<attribute uid>:eq:true` (see
+# `get_test_unit_attribute_ids()`).
+get_test_unit_attribute_request <- function(req_base, attribute_uid)
+{
+  req_base |>
+    httr2::req_url_path_append("organisationUnits") |>
+    httr2::req_url_query(
+      withinUserHierarchy = "true",
+      fields = "id",
+      filter = c(
+        "organisationUnitGroups.code:eq:NEO_DEPARTMENT",
+        paste0(attribute_uid, ":eq:true")),
+      .multi = "explode")
+}
+
+# The org-unit ids of a `get_test_unit_attribute_request()` response body.
+read_test_unit_attribute_ids <- function(body)
+{
+  units <- body$organisationUnits
+  if (length(units) == 0L)
+    return(character())
+  vapply(units, \(unit) as.character(unit$id), character(1))
 }
 
 read_organisationUnits <- function(organisationUnits, dataset_options)
@@ -89,13 +118,13 @@ read_organisationUnits <- function(organisationUnits, dataset_options)
 #                      country_key join). `metadata$hospitals` starts as
 #                      this tibble and is narrowed to
 #                      `compile_schema(hospitals_cols, opts)` in
-#                      `read_metadata_reponses()` once the country_key
+#                      `assemble_metadata()` once the country_key
 #                      join has added its column.
 #   * `internal_map` — lookup subset with `hospital_key`, `orgUnit`, and
 #                      `country` (when available). Used by
 #                      `read_organisationUnits_departments()` for the
 #                      dept→hospital join, and by
-#                      `read_metadata_reponses()` for the country_key
+#                      `assemble_metadata()` for the country_key
 #                      lookup and the WB-class inheritance path under
 #                      `include_country = "no"`. Threaded through
 #                      `metadata$.hospitals_internal_map` and stripped at
@@ -269,12 +298,9 @@ read_organisationUnit_attribute_values <- function(processed, key_col)
 # A value without a definition is not an error: DHIS2 serializes a value even
 # when the caller cannot read the attribute's definition (the contact-person
 # attributes are shared privately), and such a value has no code to be
-# addressed by. Only counts are logged — the value may be a person's name —
-# and `log_unmatched = FALSE` silences even that for a caller that resolves
-# against a deliberately narrowed map.
+# addressed by. Only counts are logged — the value may be a person's name.
 resolve_organisationUnit_attribute_values <- function(
-    values, definitions_map, key_col, parents, entity_name,
-    log_unmatched = TRUE)
+    values, definitions_map, key_col, parents, entity_name)
 {
   if (is.null(values))
     values <- empty_attribute_values(key_col)
@@ -284,7 +310,7 @@ resolve_organisationUnit_attribute_values <- function(
 
   unmatched <- values |>
     dplyr::anti_join(definitions_map, dplyr::join_by("attribute"))
-  if (log_unmatched && nrow(unmatched) > 0L)
+  if (nrow(unmatched) > 0L)
     logger::log_debug(
       "{entity_name}: dropped {nrow(unmatched)} attribute value(s) on {dplyr::n_distinct(unmatched$attribute)} attribute(s) without a readable definition",
       namespace = "neoipcr")

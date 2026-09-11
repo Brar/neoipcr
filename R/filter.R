@@ -93,8 +93,9 @@ filter_admissions <- function(
     include_ineligible_patients = FALSE)
 {
   # An `include_event = "no"` import carries a 0×0 admission tibble, which has
-  # nothing to filter on.
-  if(include_ineligible_patients || !("dol" %in% names(admission_data)))
+  # nothing to filter on. A populated tibble without `dol` is a schema breach
+  # and fails below.
+  if(include_ineligible_patients || ncol(admission_data) == 0L)
     return(admission_data)
 
   admission_data |>

@@ -253,8 +253,12 @@ import_dhis2 <- function(
       `.cache` = new.env(parent = emptyenv())),
     class = c("neoipcr_ds", "list"))
 
-  if(!rlang::is_bool(dataset_options$include_invalid_patients) ||
-     dataset_options$include_invalid_patients == FALSE)
+  # Validation removes patients, so it has nothing to do when the caller
+  # imported none: a metadata-only import must not trip the validation
+  # pass's own option preconditions.
+  if(dataset_options$include_patient != "no" &&
+     (!rlang::is_bool(dataset_options$include_invalid_patients) ||
+      dataset_options$include_invalid_patients == FALSE))
   {
     if(!rlang::is_bool(dataset_options$include_invalid_patients))
       exceptions <- dataset_options$include_invalid_patients |>

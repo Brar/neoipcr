@@ -19,7 +19,41 @@ get_metadata <- function(d2_req_base, user_info, dataset_options)
   endpoints <- c("metadata", "organisationUnits")
   purrr::iwalk(resps, \(resp, i) log_dhis2_request(resp, endpoints[[i]]))
 
-  read_metadata_reponses(resps, user_info, dataset_options)
+  metadata <- resps |>
+    lapply(read_metadata_reponse, dataset_options) |>
+    unlist(recursive = FALSE)
+
+  # The second test-unit source needs the `IsTestunit` definition from the
+  # metadata response, so it is a follow-up request.
+  metadata$testUnitIds <- union(
+    metadata$testUnitIds,
+    get_test_unit_attribute_ids(
+      md_req_base, metadata$.orgUnitAttributes_internal_map))
+
+  assemble_metadata(metadata, user_info, dataset_options)
+}
+
+# The departments flagged by the `IsTestunit` custom attribute, as org-unit
+# ids. DHIS2 filters metadata objects by the value of one attribute through
+# `filter=<attribute uid>:eq:<value>` (dhis2-core `DefaultQueryPlanner`
+# `isFilterByAttributeId()`, evaluated in memory on the org units
+# `withinUserHierarchy` preselects; identical on 2.40 and 2.41), so the flag
+# is fetched as ids alone and no other attribute value travels on behalf of a
+# caller who did not opt into custom attributes. The uid is resolved by code
+# from the definitions of the same import; a caller who cannot read the
+# definition gets no flag from this source and falls back to group membership.
+get_test_unit_attribute_ids <- function(req_base, definitions_map)
+{
+  if (is.null(definitions_map))
+    return(character())
+  uid <- definitions_map$attribute[definitions_map$code %in% "IsTestunit"]
+  if (length(uid) != 1L)
+    return(character())
+
+  resp <- get_test_unit_attribute_request(req_base, uid) |>
+    httr2::req_perform()
+  log_dhis2_request(resp, "organisationUnits")
+  read_test_unit_attribute_ids(httr2::resp_body_json(resp))
 }
 
 # Creates the overall query to get most of the NeoIPC-related metadata that
@@ -92,8 +126,9 @@ get_metadata_request <- function(req_base, user_info, dataset_options)
         `organisationUnitGroups:filter` = "code:eq:TEST_UNITS")
 
   # Custom-attribute definitions travel on every import: values are resolved
-  # to codes through them, and the `IsTestunit` value is read whether or not
-  # the caller opted into custom attributes (see `read_metadata_reponses()`).
+  # to codes through them, and the `IsTestunit` uid drives the test-unit
+  # follow-up request whether or not the caller opted into custom attributes
+  # (see `get_test_unit_attribute_ids()`).
   req <- req |>
     httr2::req_url_query(
       `attributes:fields` = "id,code,name,valueType",
@@ -126,12 +161,11 @@ get_metadata_request <- function(req_base, user_info, dataset_options)
   req
 }
 
-read_metadata_reponses <- function(resps, user_info, dataset_options)
+# Assemble the public `neoipcr_metadata` shape from the parsed metadata and
+# org-unit responses: users, test units, the department / country filters,
+# the hierarchy joins and the schema narrowing of every org-unit tibble.
+assemble_metadata <- function(metadata, user_info, dataset_options)
 {
-  metadata <- resps |>
-    lapply(read_metadata_reponse, dataset_options) |>
-    unlist(recursive = FALSE)
-
   # `metadata$.countries_internal_map` is the orchestrator-internal
   # countries lookup — it carries the raw DHIS2 `country` id + `code` +
   # `country_key` used by every post-read country/hospital/department
@@ -160,41 +194,15 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
 
   assert_schema(metadata$users, users_cols, dataset_options)
 
-  # Test-unit detection draws on two sources: membership in the TEST_UNITS
-  # org-unit group and the department's own `IsTestunit` attribute value.
-  # Only that one attribute is resolved here, before any narrowing, so the
-  # flag is known for every department the request returned while no other
-  # value is parsed on behalf of a caller who did not opt into attributes.
-  test_unit_definition <- metadata$.orgUnitAttributes_internal_map
-  if (!is.null(test_unit_definition))
-    test_unit_definition <- test_unit_definition |>
-      dplyr::filter(.data$code == "IsTestunit")
-
-  test_unit_attribute_keys <- resolve_organisationUnit_attribute_values(
-      metadata$departmentAttributeValues,
-      test_unit_definition,
-      "department_key",
-      NULL,
-      "departmentAttributeValues",
-      log_unmatched = FALSE) |>
-    dplyr::filter(.data$value_logical %in% TRUE) |>
-    dplyr::pull("department_key")
-
-  metadata$departments <- metadata$departments |>
-    dplyr::mutate(
-      .is_test_unit =
-        .data$orgUnit %in% metadata$testUnitIds |
-        .data$department_key %in% test_unit_attribute_keys)
-
+  # Test-unit detection draws on two sources, both reduced to org-unit ids by
+  # `get_metadata()`: membership in the TEST_UNITS org-unit group and the
+  # department's own `IsTestunit` attribute value.
   if(dataset_options$include_test_data)
     metadata$departments <- metadata$departments |>
-      dplyr::mutate(isTest = .data$.is_test_unit)
+      dplyr::mutate(isTest = .data$orgUnit %in% metadata$testUnitIds)
   else
     metadata$departments <- metadata$departments |>
-      dplyr::filter(!.data$.is_test_unit)
-
-  metadata$departments <- metadata$departments |>
-    dplyr::select(!".is_test_unit")
+      dplyr::filter(!(.data$orgUnit %in% metadata$testUnitIds))
 
   # Filter departments by department_filter
   if (length(dataset_options$department_filter) > 0)
@@ -464,7 +472,7 @@ read_metadata <- function(metadata, dataset_options)
   # `read_metadata_users()` now returns `list(public, internal_map)`.
   # Under `include_user = "no"` or when the response lacks a `users`
   # payload, `internal_map` is NULL and the caller falls back to
-  # `read_user_info_table()` in `read_metadata_reponses()`.
+  # `read_user_info_table()` in `assemble_metadata()`.
   users_result <- read_metadata_users(metadata, dataset_options)
 
   trials <- read_metadata_trials(
@@ -520,7 +528,7 @@ read_metadata <- function(metadata, dataset_options)
   # supplied a payload (`internal_map != NULL`). Otherwise leave the
   # orchestrator's fallback path (`read_user_info_table`) to fill in
   # from the `/me` response. `.users_result` carries the whole
-  # `list(public, internal_map)` up to `read_metadata_reponses()`
+  # `list(public, internal_map)` up to `assemble_metadata()`
   # where it is unpacked into `metadata$users` and
   # `metadata$.users_internal_map`.
   if (!is.null(users_result$internal_map))
@@ -548,7 +556,7 @@ read_metadata <- function(metadata, dataset_options)
     orgUnitAttributes = orgUnitAttributes_result$public,
     .orgUnitAttributes_internal_map = orgUnitAttributes_result$internal_map))
   # `.wb_country_map` is the raw WB-class → country-id membership
-  # lookup. Threaded through so `read_metadata_reponses()` can populate
+  # lookup. Threaded through so `assemble_metadata()` can populate
   # `world_bank_class_key` on hospitals under the inheritance case
   # (`include_country = "no"` + `include_world_bank_class != "no"`)
   # where the countries tibble is empty and can't serve as a join

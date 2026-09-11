@@ -81,6 +81,11 @@ test_that("filter_admissions passes a 0x0 admission tibble through under the def
   expect_equal(nrow(result), 0L)
 })
 
+test_that("filter_admissions still requires `dol` on a populated admission tibble", {
+  expect_error(neoipcr:::filter_admissions(
+    tibble::tibble(event_key = 1L), include_ineligible_patients = FALSE))
+})
+
 # --- filter_patients (internal, called on patients tibble directly) ---
 
 test_that("filter_patients with all NULL and include_ineligible=TRUE returns all", {
