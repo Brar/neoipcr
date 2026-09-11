@@ -91,6 +91,14 @@ get_metadata_request <- function(req_base, user_info, dataset_options)
         `organisationUnitGroups:fields` = "code,organisationUnits[id]",
         `organisationUnitGroups:filter` = "code:eq:TEST_UNITS")
 
+  # Custom-attribute definitions travel on every import: values are resolved
+  # to codes through them, and the `IsTestunit` value is read whether or not
+  # the caller opted into custom attributes (see `read_metadata_reponses()`).
+  req <- req |>
+    httr2::req_url_query(
+      `attributes:fields` = "id,code,name,valueType",
+      `attributes:filter` = "organisationUnitAttribute:eq:true")
+
   req <- req |>
     httr2::req_url_query(
       `programs:fields` = "id,programTrackedEntityAttributes[trackedEntityAttribute[id,valueType,code,displayName,displayShortName,displayFormName,displayDescription,optionSet[code]]],programStages[id,code,name,displayName,displayFormName,displayDescription,programStageDataElements[dataElement[id,valueType,code,displayName,displayShortName,displayFormName,displayDescription,optionSet[code]]]]",
@@ -152,12 +160,41 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
 
   assert_schema(metadata$users, users_cols, dataset_options)
 
+  # Test-unit detection draws on two sources: membership in the TEST_UNITS
+  # org-unit group and the department's own `IsTestunit` attribute value.
+  # Only that one attribute is resolved here, before any narrowing, so the
+  # flag is known for every department the request returned while no other
+  # value is parsed on behalf of a caller who did not opt into attributes.
+  test_unit_definition <- metadata$.orgUnitAttributes_internal_map
+  if (!is.null(test_unit_definition))
+    test_unit_definition <- test_unit_definition |>
+      dplyr::filter(.data$code == "IsTestunit")
+
+  test_unit_attribute_keys <- resolve_organisationUnit_attribute_values(
+      metadata$departmentAttributeValues,
+      test_unit_definition,
+      "department_key",
+      NULL,
+      "departmentAttributeValues",
+      log_unmatched = FALSE) |>
+    dplyr::filter(.data$value_logical %in% TRUE) |>
+    dplyr::pull("department_key")
+
+  metadata$departments <- metadata$departments |>
+    dplyr::mutate(
+      .is_test_unit =
+        .data$orgUnit %in% metadata$testUnitIds |
+        .data$department_key %in% test_unit_attribute_keys)
+
   if(dataset_options$include_test_data)
     metadata$departments <- metadata$departments |>
-      dplyr::mutate(isTest = .data$orgUnit %in% metadata$testUnitIds)
+      dplyr::mutate(isTest = .data$.is_test_unit)
   else
     metadata$departments <- metadata$departments |>
-      dplyr::filter(!(.data$orgUnit %in% metadata$testUnitIds))
+      dplyr::filter(!.data$.is_test_unit)
+
+  metadata$departments <- metadata$departments |>
+    dplyr::select(!".is_test_unit")
 
   # Filter departments by department_filter
   if (length(dataset_options$department_filter) > 0)
@@ -272,6 +309,30 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
     finalize_to_schema(hospitals_cols, dataset_options, scratch = "country")
   assert_schema(metadata$hospitals, hospitals_cols, dataset_options)
 
+  # Hospital attribute values, for callers that opted in: resolved against the
+  # full definitions for the hospitals that survived the department pruning
+  # above. A hospital's `IsTestunit` value is dropped like the department's —
+  # the flag lives in `isTest` only — but it is not consulted for `isTest`,
+  # so the flag is identical across option sets. Without the opt-in nothing
+  # is resolved, so a malformed value is only ever reported to a caller who
+  # receives the values.
+  metadata$hospitalAttributeValues <-
+    if (.attr_entity_on(dataset_options, "hospitals", "include_hospital"))
+      resolve_organisationUnit_attribute_values(
+          metadata$hospitalAttributeValues,
+          metadata$.orgUnitAttributes_internal_map,
+          "hospital_key",
+          metadata$hospitals,
+          "hospitalAttributeValues") |>
+        dplyr::filter(.data$attribute_code != "IsTestunit")
+    else
+      tibble::tibble()
+  metadata$hospitalAttributeValues <- metadata$hospitalAttributeValues |>
+    finalize_to_schema(hospitalAttributeValues_cols, dataset_options)
+  assert_schema(
+    metadata$hospitalAttributeValues, hospitalAttributeValues_cols,
+    dataset_options)
+
   # Pre-join hierarchy into departments so that the internal map carries
   # the full chain (department → hospital → country → WB class).
   # `read_organisationUnits_departments` already joined hospital_key
@@ -324,6 +385,27 @@ read_metadata_reponses <- function(resps, user_info, dataset_options)
   metadata$departments <- metadata$departments |>
     finalize_to_schema(departments_cols, dataset_options)
   assert_schema(metadata$departments, departments_cols, dataset_options)
+
+  # Department attribute values, for callers that opted in: resolved against
+  # the full definitions for the departments that survived every filter above
+  # (the internal map is that set). The `IsTestunit` rows are dropped — the
+  # flag is represented by `isTest`, never as a value.
+  metadata$departmentAttributeValues <-
+    if (.attr_entity_on(dataset_options, "departments", "include_department"))
+      resolve_organisationUnit_attribute_values(
+          metadata$departmentAttributeValues,
+          metadata$.orgUnitAttributes_internal_map,
+          "department_key",
+          metadata$.departments_internal_map,
+          "departmentAttributeValues") |>
+        dplyr::filter(.data$attribute_code != "IsTestunit")
+    else
+      tibble::tibble()
+  metadata$departmentAttributeValues <- metadata$departmentAttributeValues |>
+    finalize_to_schema(departmentAttributeValues_cols, dataset_options)
+  assert_schema(
+    metadata$departmentAttributeValues, departmentAttributeValues_cols,
+    dataset_options)
 
   metadata$testUnitIds <- NULL
 
@@ -398,6 +480,9 @@ read_metadata <- function(metadata, dataset_options)
   countries              <- countries_result$public
   countries_internal_map <- countries_result$internal_map
 
+  orgUnitAttributes_result <- read_metadata_orgUnitAttributes(
+    metadata, dataset_options)
+
   ret <- list(
     system = system,
     programId = programId,
@@ -455,6 +540,13 @@ read_metadata <- function(metadata, dataset_options)
   ret <- c(ret, list(countries = countries))
   if (!is.null(countries_internal_map))
     ret <- c(ret, list(.countries_internal_map = countries_internal_map))
+  # Custom-attribute definitions: the public tibble follows the
+  # `include_custom_attributes` opt-in, while the internal UID → code map is
+  # always present because the orchestrator resolves the always-fetched
+  # `IsTestunit` value through it. Stripped at `import_dhis2()` exit.
+  ret <- c(ret, list(
+    orgUnitAttributes = orgUnitAttributes_result$public,
+    .orgUnitAttributes_internal_map = orgUnitAttributes_result$internal_map))
   # `.wb_country_map` is the raw WB-class → country-id membership
   # lookup. Threaded through so `read_metadata_reponses()` can populate
   # `world_bank_class_key` on hospitals under the inheritance case

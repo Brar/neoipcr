@@ -37,3 +37,13 @@ test_that("validate result has expected columns", {
                      "event_key", "context")
   expect_true(all(names(result) %in% possible_cols))
 })
+
+test_that("validate is exported and returns its result visibly", {
+  # Read the NAMESPACE file rather than getNamespaceExports(): under
+  # devtools::load_all() every object is exported, which would make the
+  # check pass whether or not the roxygen `@export` tag is present.
+  namespace <- readLines(system.file("NAMESPACE", package = "neoipcr"))
+  expect_true("export(validate)" %in% namespace)
+  ds <- make_populated_test_ds()
+  expect_true(withVisible(neoipcr::validate(ds))$visible)
+})

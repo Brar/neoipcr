@@ -48,16 +48,18 @@ test_that("dhis2_ou_dialect switches dialect exactly at 2.41.0", {
 # Dataset options for the offline pipeline tests: fetch the patient/enrollment/
 # event tibbles, and bypass eligibility + validation filtering so the read
 # path is exercised on its own (validation is covered by test-validation*).
-import_test_opts <- function(...)
-  dhis2_dataset_options(
+import_test_opts <- function(...) {
+  defaults <- list(
     include_patient             = "full",
     patient_columns             = "id",
     include_enrollment          = "full",
     include_event               = "full",
     include_department          = "pseudo",
     include_ineligible_patients = TRUE,
-    include_invalid_patients    = TRUE,
-    ...)
+    include_invalid_patients    = TRUE)
+  # Overrides replace a default rather than duplicating its argument.
+  do.call(dhis2_dataset_options, utils::modifyList(defaults, list(...)))
+}
 
 # Fixture set for the default no-filter (ACCESSIBLE) path at a given version.
 import_test_fixtures <- function(version = "2.40.12.0", me = "me-nested.json")
@@ -344,4 +346,260 @@ test_that("import_dhis2 runs parameterless from NEOIPC_DHIS2_HOST + env auth", {
 
   expect_equal(nrow(ds$patients), 2L)
   expect_true(any(grepl("dhis2.example.org", m$urls(), fixed = TRUE)))
+})
+
+# ---------------------------------------------------------------------------
+# Typed attribute values — DHIS2's value-type families and the spread into
+# one typed column per family.
+# ---------------------------------------------------------------------------
+
+test_that("value_type_family follows DHIS2's ValueType families and degrades unknown types to text", {
+  family <- neoipcr:::value_type_family
+  expect_equal(
+    family(c("INTEGER", "INTEGER_POSITIVE", "INTEGER_NEGATIVE",
+             "INTEGER_ZERO_OR_POSITIVE")),
+    rep("integer", 4))
+  expect_equal(family(c("NUMBER", "UNIT_INTERVAL", "PERCENTAGE")), rep("number", 3))
+  expect_equal(family(c("BOOLEAN", "TRUE_ONLY")), rep("logical", 2))
+  expect_equal(family(c("DATE", "AGE")), rep("date", 2))
+  expect_equal(family("DATETIME"), "datetime")
+  expect_equal(
+    family(c("TEXT", "LONG_TEXT", "LETTER", "TIME", "USERNAME", "EMAIL",
+             "PHONE_NUMBER", "URL", "MULTI_TEXT", "FILE_RESOURCE", "IMAGE",
+             "COORDINATE", "GEOJSON", "ORGANISATION_UNIT", "REFERENCE",
+             "TRACKER_ASSOCIATE")),
+    rep("text", 16))
+  expect_equal(family(c("SOMETHING_NEW", NA)), c("text", "text"))
+  expect_equal(family(character()), character())
+})
+
+test_that("spread_typed_values fills exactly the column of each value's family", {
+  tbl <- tibble::tibble(
+    attribute_code = c("T", "L", "L2", "I", "N", "D", "D2", "DT"),
+    valueType = c("TEXT", "TRUE_ONLY", "BOOLEAN", "INTEGER", "PERCENTAGE",
+                  "DATE", "AGE", "DATETIME"),
+    value = c("hello", "true", "false", "12", "12.5",
+              "2024-08-03T00:00:00.000", "2020-02-29",
+              "2024-08-03T10:30:00.000"))
+  result <- neoipcr:::spread_typed_values(tbl, code_col = "attribute_code")
+
+  typed <- c("value_text", "value_logical", "value_integer", "value_number",
+             "value_date", "value_datetime")
+  expect_named(result, c("attribute_code", typed))
+  expect_equal(
+    rowSums(!is.na(result[, typed])), rep(1, 8), ignore_attr = TRUE)
+  expect_equal(result$value_text[1], "hello")
+  expect_equal(result$value_logical[2:3], c(TRUE, FALSE))
+  expect_identical(result$value_integer[4], 12L)
+  expect_equal(result$value_number[5], 12.5)
+  expect_equal(result$value_date[6:7], as.Date(c("2024-08-03", "2020-02-29")))
+  expect_equal(
+    result$value_datetime[8], as.POSIXct("2024-08-03 10:30:00", tz = "UTC"))
+  expect_equal(attr(result$value_datetime, "tzone"), "UTC")
+})
+
+test_that("spread_typed_values sets an unparseable value to NA and warns once, by attribute code and count", {
+  tbl <- tibble::tibble(
+    attribute_code = c("D", "D", "I", "T", "L", "N"),
+    valueType      = c("DATE", "DATE", "INTEGER", "TEXT", "TRUE_ONLY", "DATE"),
+    value          = c("not a date", "2024-01-01", "twelve", "fine", "yes",
+                       NA_character_))
+
+  expect_warning(
+    result <- neoipcr:::spread_typed_values(tbl, code_col = "attribute_code"),
+    class = "neoipcr_attribute_value_parse_failure")
+  expect_true(is.na(result$value_date[1]))
+  expect_equal(result$value_date[2], as.Date("2024-01-01"))
+  expect_true(is.na(result$value_integer[3]))
+  expect_equal(result$value_text[4], "fine")
+  # A boolean that is neither "true" nor "false" fails like any other family.
+  expect_true(is.na(result$value_logical[5]))
+  # An absent value is NA without being a failure.
+  expect_true(is.na(result$value_date[6]))
+
+  msg <- conditionMessage(tryCatch(
+    neoipcr:::spread_typed_values(tbl, code_col = "attribute_code"),
+    warning = identity))
+  expect_match(msg, "D (1)", fixed = TRUE)
+  expect_match(msg, "I (1)", fixed = TRUE)
+  expect_match(msg, "L (1)", fixed = TRUE)
+  expect_false(grepl("N (", msg, fixed = TRUE))
+  # Never the value itself — it may be a person's name.
+  expect_false(grepl("not a date", msg, fixed = TRUE))
+})
+
+test_that("spread_typed_values keeps the six typed columns on a 0-row input", {
+  result <- neoipcr:::spread_typed_values(tibble::tibble(
+    attribute_code = character(), valueType = character(), value = character()))
+  expect_equal(nrow(result), 0L)
+  expect_true(is.character(result$value_text))
+  expect_true(is.logical(result$value_logical))
+  expect_true(is.integer(result$value_integer))
+  expect_true(is.double(result$value_number))
+  expect_s3_class(result$value_date, "Date")
+  expect_s3_class(result$value_datetime, "POSIXct")
+})
+
+# ---------------------------------------------------------------------------
+# Org-unit attribute values end to end — the opt-in import and the always-on
+# IsTestunit test-unit source. The attribute fixture carries three departments
+# under one hospital: DEPT_01 with typed values (one of them unparseable, one
+# on an attribute without a definition, and IsTestunit "false"), DEPT_02 with
+# none, DEPT_03 flagged IsTestunit "true"; the hospital carries a text value
+# and IsTestunit "true", which must never reach isTest or the values; the
+# matching tracker fixtures put PAT_3 in DEPT_03.
+# ---------------------------------------------------------------------------
+
+attribute_fixtures <- function() {
+  fx <- import_test_fixtures()
+  fx$organisationUnits <- read_fixture_text("orgunits-departments-attributes.json")
+  fx$trackedEntities   <- read_fixture_text("tracker-trackedEntities-attributes.json")
+  fx$enrollments       <- read_fixture_text("tracker-enrollments-attributes.json")
+  fx$events            <- read_fixture_text("tracker-events-attributes.json")
+  fx
+}
+
+typed_value_columns <- c(
+  "value_text", "value_logical", "value_integer", "value_number",
+  "value_date", "value_datetime")
+
+test_that("import_dhis2 imports typed org-unit attribute values for the opted-in entities", {
+  m <- new_dhis2_mock(attribute_fixtures())
+  httr2::local_mocked_responses(m$mock)
+
+  # DEPT_01's unparseable NUMBER value is reported to the caller who opted
+  # into the values — and only then (the tests below assert the silence).
+  expect_warning(
+    ds <- import_dhis2(test_conn(), import_test_opts(
+      include_department        = "full",
+      include_hospital          = "full",
+      include_custom_attributes = c("departments", "hospitals"))),
+    class = "neoipcr_attribute_value_parse_failure")
+
+  defs <- ds$metadata$orgUnitAttributes
+  expect_named(defs, c("code", "name", "valueType"))
+  expect_true(all(c("IsTestunit", "TEST_ATTR_TEXT", "TEST_ATTR_DATE",
+                    "TEST_ATTR_INT", "TEST_ATTR_NUMBER") %in% defs$code))
+
+  dept_values <- ds$metadata$departmentAttributeValues
+  expect_named(dept_values, c("department_key", "attribute_code", typed_value_columns))
+  dept_1 <- ds$metadata$departments$department_key[
+    ds$metadata$departments$code == "DEPT_01"]
+  rows <- dept_values[dept_values$department_key == dept_1, ]
+  expect_setequal(
+    rows$attribute_code,
+    c("TEST_ATTR_TEXT", "TEST_ATTR_DATE", "TEST_ATTR_INT", "TEST_ATTR_NUMBER"))
+  expect_equal(
+    rows$value_date[rows$attribute_code == "TEST_ATTR_DATE"],
+    as.Date("2024-08-03"))
+  expect_true(is.na(rows$value_text[rows$attribute_code == "TEST_ATTR_DATE"]))
+  expect_identical(rows$value_integer[rows$attribute_code == "TEST_ATTR_INT"], 12L)
+  expect_equal(rows$value_text[rows$attribute_code == "TEST_ATTR_TEXT"], "A text value")
+  expect_true(is.na(rows$value_number[rows$attribute_code == "TEST_ATTR_NUMBER"]))
+  # The undefined attribute's value is dropped, IsTestunit never surfaces as
+  # a value, and DEPT_02 (no values) / DEPT_03 (test unit, excluded)
+  # contribute nothing.
+  expect_equal(nrow(dept_values), 4L)
+  expect_false("IsTestunit" %in% dept_values$attribute_code)
+
+  hosp_values <- ds$metadata$hospitalAttributeValues
+  expect_named(hosp_values, c("hospital_key", "attribute_code", typed_value_columns))
+  # The hospital's own IsTestunit flag is dropped like a department's.
+  expect_equal(nrow(hosp_values), 1L)
+  expect_equal(hosp_values$attribute_code, "TEST_ATTR_TEXT")
+  expect_equal(hosp_values$value_text, "Hospital text")
+  expect_equal(hosp_values$hospital_key, ds$metadata$hospitals$hospital_key)
+
+  expect_null(ds$metadata$.orgUnitAttributes_internal_map)
+  expect_false("attributeValues" %in% names(ds$metadata$departments))
+  expect_false("attributeValues" %in% names(ds$metadata$hospitals))
+
+  ou_url <- Find(function(u) grepl("/organisationUnits", u, fixed = TRUE), m$urls())
+  expect_match(
+    httr2::url_parse(ou_url)$query$fields,
+    "attributeValues[attribute[id],value]", fixed = TRUE)
+  md_url <- Find(function(u) grepl("/metadata", u, fixed = TRUE), m$urls())
+  expect_equal(
+    httr2::url_parse(md_url)$query[["attributes:filter"]],
+    "organisationUnitAttribute:eq:true")
+})
+
+test_that("import_dhis2 excludes a department flagged IsTestunit like a TEST_UNITS member", {
+  # Under the pseudonymized department default the request carries nothing
+  # but `id` and the attribute fragment, so this is the leanest path through
+  # the test-unit step; the unparseable value on DEPT_01 must not warn, since
+  # nobody opted into the values.
+  m <- new_dhis2_mock(attribute_fixtures())
+  httr2::local_mocked_responses(m$mock)
+
+  expect_no_warning(
+    ds <- import_dhis2(test_conn(), import_test_opts()),
+    class = "neoipcr_attribute_value_parse_failure")
+
+  expect_setequal(as.character(ds$patients$patient_id), c("PAT_1", "PAT_2"))
+  # DEPT_01 survives; DEPT_03 is a test unit and DEPT_02 has no patients.
+  expect_equal(nrow(ds$metadata$departments), 1L)
+})
+
+test_that("import_dhis2 marks a department flagged IsTestunit as isTest under include_test_data", {
+  m <- new_dhis2_mock(attribute_fixtures())
+  httr2::local_mocked_responses(m$mock)
+
+  expect_no_warning(
+    ds <- import_dhis2(test_conn(), import_test_opts(
+      include_department = "full", include_test_data = TRUE)),
+    class = "neoipcr_attribute_value_parse_failure")
+
+  expect_setequal(as.character(ds$patients$patient_id), c("PAT_1", "PAT_2", "PAT_3"))
+  depts <- ds$metadata$departments
+  expect_true(depts$isTest[depts$code == "DEPT_03"])
+  # DEPT_01 carries IsTestunit "false", and its hospital's "true" is not
+  # consulted.
+  expect_false(depts$isTest[depts$code == "DEPT_01"])
+  # Without the opt-in the values tables and the definitions stay 0x0.
+  expect_equal(ncol(ds$metadata$departmentAttributeValues), 0L)
+  expect_equal(ncol(ds$metadata$hospitalAttributeValues), 0L)
+  expect_equal(ncol(ds$metadata$orgUnitAttributes), 0L)
+})
+
+test_that("import_dhis2 yields empty, schema-shaped attribute tables when the response carries no attribute values", {
+  # orgunits-departments.json carries `id` only — no `attributeValues` key.
+  m <- new_dhis2_mock(import_test_fixtures())
+  httr2::local_mocked_responses(m$mock)
+
+  ds <- import_dhis2(test_conn(), import_test_opts(
+    include_department = "full", include_custom_attributes = "departments"))
+
+  expect_named(
+    ds$metadata$departmentAttributeValues,
+    c("department_key", "attribute_code", typed_value_columns))
+  expect_equal(nrow(ds$metadata$departmentAttributeValues), 0L)
+  expect_equal(ncol(ds$metadata$hospitalAttributeValues), 0L)
+  expect_equal(nrow(ds$metadata$orgUnitAttributes), 6L)
+})
+
+test_that("import_dhis2 reads the org-unit metadata alone when every fact entity is switched off", {
+  # A site list: the departments with their attribute values, but no
+  # patients, enrollments or events — under the default eligibility filter,
+  # which has no admission data to act on.
+  m <- new_dhis2_mock(attribute_fixtures())
+  httr2::local_mocked_responses(m$mock)
+
+  expect_warning(
+    ds <- import_dhis2(test_conn(), import_test_opts(
+      include_patient             = "no",
+      include_enrollment          = "no",
+      include_event               = "no",
+      include_department          = "full",
+      include_custom_attributes   = "departments",
+      include_ineligible_patients = FALSE)),
+    class = "neoipcr_attribute_value_parse_failure")
+
+  expect_equal(ncol(ds$patients), 0L)
+  expect_equal(ncol(ds$enrollments), 0L)
+  expect_equal(ncol(ds$admissionData), 0L)
+  # No fact tibble anchors the post-filter, so every non-test department
+  # stays listed, whether or not it has patients.
+  expect_setequal(ds$metadata$departments$code, c("DEPT_01", "DEPT_02"))
+  expect_equal(nrow(ds$metadata$departmentAttributeValues), 4L)
 })

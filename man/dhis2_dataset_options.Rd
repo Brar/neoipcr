@@ -23,6 +23,7 @@ dhis2_dataset_options(
   include_enrollment = c("no", "pseudo", "full"),
   include_event = c("no", "pseudo", "full"),
   include_dhis2_ids = character(),
+  include_custom_attributes = character(),
   include_timestamps = FALSE,
   include_test_data = FALSE,
   include_ineligible_patients = FALSE,
@@ -53,7 +54,8 @@ records to include into the dataset.}
 of patient records to include into the dataset.}
 
 \item{gestational_age_to}{The highest gestational age (in completed weeks) of
-patient records to include into the dataset}
+patient records to include into the dataset. The bound covers the whole
+completed week: \code{31} keeps 31+0 through 31+6.}
 
 \item{country_filter}{ISO 3166 country codes    of the countries the enrolling
 departments are located in to include into the dataset.}
@@ -102,6 +104,18 @@ notes, unknown pathogen names). Same three-mode semantics as
 \code{include_patient}.}
 
 \item{include_dhis2_ids}{Include the DHIS2 ids into the dataset.}
+
+\item{include_custom_attributes}{Include the values of the DHIS2 custom
+attributes set on organisation units into the dataset, as
+\code{metadata$departmentAttributeValues} and \code{metadata$hospitalAttributeValues},
+with the attribute definitions in \code{metadata$orgUnitAttributes}. Possible
+values are "departments" and "hospitals"; an entity whose \verb{include_*}
+option is "no" contributes nothing. Each value arrives typed by its
+attribute's DHIS2 value type. Custom attributes can hold personal data (a
+site's contact person), so requesting them under "pseudo" re-identifies the
+entity — the caller's explicit choice, as with \code{include_dhis2_ids}. The
+\code{IsTestunit} attribute is evaluated for test-unit detection regardless of
+this option and never appears in the values tables.}
 
 \item{include_timestamps}{Include the createdAt and modifiedAt timestamps
 into the dataset.}

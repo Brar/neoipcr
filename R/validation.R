@@ -496,6 +496,28 @@ validation_rules <- list(
       dplyr::join_by("department_key"))
 }
 
+#' Validate a NeoIPC dataset against the protocol's validation rules
+#'
+#' Runs every registered validation rule, or the subset named in `rules`, over
+#' the dataset and returns the records each rule flags. [import_dhis2()] runs
+#' it by default and removes the flagged patients from the dataset; call it
+#' directly on a dataset imported with `include_invalid_patients = TRUE` to see
+#' which records would be removed and why.
+#'
+#' @param x A `neoipcr_ds` object imported with `include_patient`,
+#'  `include_enrollment` and `include_event` each set to `"pseudo"` or `"full"`.
+#' @param rules Integer vector of rule ids to run; `NULL` (the default) runs all
+#'  of them.
+#' @param exceptions A tibble of records to exempt, with the columns `rule_id`,
+#'  `patient_key`, `enrollment_key` and `event_key` — the shape [import_dhis2()]
+#'  derives from a user-supplied exception list.
+#'
+#' @returns A tibble with one row per flagged record: `rule_id`, the keys that
+#'  identify the record (`patient_key`, `enrollment_key`, `event_key`; `NA`
+#'  where a rule does not operate at that level) and `context`, the
+#'  rule-specific values the finding refers to. Zero rows when nothing is
+#'  flagged.
+#' @export
 validate <- function(x, rules = NULL, exceptions = NULL)
 {
   check_neoipcr_ds(x)
@@ -516,5 +538,5 @@ validate <- function(x, rules = NULL, exceptions = NULL)
       tidyselect::any_of(
         c("rule_id","patient_key","enrollment_key","event_key","context")))
 
-  invisible(r)
+  r
 }
