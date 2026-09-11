@@ -255,6 +255,7 @@ test_that("resolve_organisationUnit_attribute_values keeps every org unit when n
 
 test_that("read_metadata_orgUnitAttributes reads the definitions when an entity is opted in", {
   md <- read_test_metadata(
+    include = "org_unit_attributes",
     dataset_options = dhis2_dataset_options(
       include_department = "full", include_custom_attributes = "departments"))
 
@@ -271,14 +272,14 @@ test_that("read_metadata_orgUnitAttributes reads the definitions when an entity 
 })
 
 test_that("read_metadata_orgUnitAttributes keeps the code map while the public tibble is gated off", {
-  md <- read_test_metadata()
+  md <- read_test_metadata(include = "org_unit_attributes")
   expect_equal(ncol(md$orgUnitAttributes), 0L)
   expect_equal(nrow(md$.orgUnitAttributes_internal_map), 5L)
 })
 
 test_that("read_metadata_orgUnitAttributes yields empty shapes when the payload carries no definitions", {
+  # The baseline metadata fixture carries no definitions.
   md <- read_test_metadata(
-    exclude = "org_unit_attributes",
     dataset_options = dhis2_dataset_options(
       include_department = "full", include_custom_attributes = "departments"))
   expect_named(md$orgUnitAttributes, c("code", "name", "valueType"))

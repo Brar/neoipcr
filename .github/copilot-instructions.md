@@ -338,7 +338,8 @@ Static JSON fixtures live under `tests/testthat/fixtures/`. The `system`/`progra
 |------|-----------------|
 | `system.json` | `system` |
 | `program.json` | `programs`, `trackedEntityTypes` |
-| `org-units.json` | `organisationUnitGroups`, `attributes` (the org-unit custom-attribute definitions: `IsTestunit`, a text, a date, an integer and a number attribute, plus one without a code) |
+| `org-units.json` | `organisationUnitGroups` |
+| `org-unit-attributes.json` | `attributes` — the org-unit custom-attribute definitions (`IsTestunit`, a text, a date, an integer and a number attribute, plus one without a code). Merged only on request (`read_test_metadata(include = "org_unit_attributes")`, `build_metadata_response(org_unit_attributes = TRUE)`, `import_test_fixtures(org_unit_attributes = TRUE)`), so the baseline metadata graph the other tests assume carries no definitions and issues no `IsTestunit` follow-up |
 | `antimicrobials.json` | `options` (antimicrobials), `optionGroupSets` |
 | `me-nested.json` / `me-no-lastlogin.json` | `/me` responses: `lastLogin` nested under `userCredentials` (2.40/2.41), and absent (2.42+ drop it / never-logged-in) |
 | `orgunits-departments.json` / `orgunits-departments-2.json` | `/organisationUnits` — one department (ACCESSIBLE path) and two coded departments (the `department_filter` request-shape path) |

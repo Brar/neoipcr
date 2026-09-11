@@ -5,8 +5,13 @@
 .valid_exclusions <- c(
   "system", "program", "program_id", "program_stages",
   "stage_data_elements", "tracked_entity_attributes",
-  "countries", "test_units", "org_unit_attributes", "antimicrobials"
+  "countries", "test_units", "antimicrobials"
 )
+
+# Valid values for the `include` parameter of read_test_metadata(): fixtures
+# merged only on request, so the baseline metadata graph stays what the
+# existing tests assume.
+.valid_inclusions <- c("org_unit_attributes")
 
 #' Read static JSON fixtures and return processed metadata.
 #'
@@ -16,15 +21,22 @@
 #' @param exclude Character vector of components to omit. See .valid_exclusions
 #'   for allowed values.
 #' @param dataset_options A neoipcr_dhis2_dsopt object (default: all defaults).
+#' @param include Character vector of optional components to merge in. See
+#'   .valid_inclusions for allowed values.
 #' @return A neoipcr_metadata object.
 read_test_metadata <- function(
     exclude = character(),
-    dataset_options = dhis2_dataset_options())
+    dataset_options = dhis2_dataset_options(),
+    include = character())
 {
   bad <- setdiff(exclude, .valid_exclusions)
   if (length(bad) > 0L)
     stop("Unknown exclusion(s): ", paste(bad, collapse = ", "),
          "\nValid values: ", paste(.valid_exclusions, collapse = ", "))
+  bad <- setdiff(include, .valid_inclusions)
+  if (length(bad) > 0L)
+    stop("Unknown inclusion(s): ", paste(bad, collapse = ", "),
+         "\nValid values: ", paste(.valid_inclusions, collapse = ", "))
 
   fixture_path <- testthat::test_path("fixtures")
   read_fixture <- function(name) {
@@ -74,11 +86,13 @@ read_test_metadata <- function(
         function(g) g$code != "TEST_UNITS",
         ou$organisationUnitGroups)
 
-    if ("org_unit_attributes" %in% exclude)
-      ou$attributes <- NULL
-
     metadata <- utils::modifyList(metadata, ou)
   }
+
+  # --- org-unit custom-attribute definitions (opt-in) ---
+  if ("org_unit_attributes" %in% include)
+    metadata <- utils::modifyList(
+      metadata, read_fixture("org-unit-attributes.json"))
 
   # --- antimicrobials (options + optionGroupSets) ---
   if (!("antimicrobials" %in% exclude)) {

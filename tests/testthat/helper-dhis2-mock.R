@@ -31,14 +31,18 @@ read_fixture_text <- function(name) {
 # Assemble a synthetic /api/metadata response body from the shared metadata
 # fixtures (the same merge read_test_metadata() feeds to read_metadata()), so
 # the version matrix reuses one metadata graph and varies only the reported
-# `system.version`.
-build_metadata_response <- function(version = "2.40.3.2") {
+# `system.version`. `org_unit_attributes` merges the custom-attribute
+# definitions in on request; the baseline graph carries none.
+build_metadata_response <- function(version = "2.40.3.2",
+                                    org_unit_attributes = FALSE) {
   read_fx <- function(name)
     jsonlite::fromJSON(
       testthat::test_path("fixtures", name), simplifyVector = FALSE)
 
   md <- utils::modifyList(read_fx("system.json"), read_fx("program.json"))
   md <- utils::modifyList(md, read_fx("org-units.json"))
+  if (org_unit_attributes)
+    md <- utils::modifyList(md, read_fx("org-unit-attributes.json"))
   am <- read_fx("antimicrobials.json")
   md$options        <- c(md$options, am$options)
   md$optionGroupSets <- c(md$optionGroupSets, am$optionGroupSets)

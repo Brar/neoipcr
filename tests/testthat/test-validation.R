@@ -42,6 +42,10 @@ test_that("validate is exported and returns its result visibly", {
   # Read the NAMESPACE file rather than getNamespaceExports(): under
   # devtools::load_all() every object is exported, which would make the
   # check pass whether or not the roxygen `@export` tag is present.
+  # `system.file()` resolves the right copy in both workflows: pkgload's shim
+  # points it at this checkout under load_all(), and R CMD check at the copy
+  # installed from it (the checkout is not present there, so a path relative
+  # to the test tree would not be either).
   namespace <- readLines(system.file("NAMESPACE", package = "neoipcr"))
   expect_true("export(validate)" %in% namespace)
   ds <- make_populated_test_ds()

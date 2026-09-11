@@ -62,15 +62,22 @@ import_test_opts <- function(...) {
 }
 
 # Fixture set for the default no-filter (ACCESSIBLE) path at a given version.
-import_test_fixtures <- function(version = "2.40.12.0", me = "me-nested.json")
-  list(
+# `org_unit_attributes` merges the custom-attribute definitions into the
+# metadata response and mocks the IsTestunit follow-up they trigger; without
+# them no follow-up is mocked, so an unwanted one aborts in the mock.
+import_test_fixtures <- function(version = "2.40.12.0", me = "me-nested.json",
+                                 org_unit_attributes = FALSE) {
+  fx <- list(
     me                = read_fixture_text(me),
-    metadata          = build_metadata_response(version),
+    metadata          = build_metadata_response(version, org_unit_attributes),
     organisationUnits = read_fixture_text("orgunits-departments.json"),
     trackedEntities   = read_fixture_text("tracker-trackedEntities.json"),
     enrollments       = read_fixture_text("tracker-enrollments.json"),
-    events            = read_fixture_text("tracker-events.json"),
-    testUnits         = '{"organisationUnits":[]}')
+    events            = read_fixture_text("tracker-events.json"))
+  if (org_unit_attributes)
+    fx$testUnits <- '{"organisationUnits":[]}'
+  fx
+}
 
 # The org-unit requests an import issued, parsed: the department request and,
 # when the instance defines `IsTestunit`, the test-unit follow-up.
@@ -464,7 +471,7 @@ test_that("spread_typed_values keeps the six typed columns on a 0-row input", {
 # ---------------------------------------------------------------------------
 
 attribute_fixtures <- function() {
-  fx <- import_test_fixtures()
+  fx <- import_test_fixtures(org_unit_attributes = TRUE)
   fx$organisationUnits <- read_fixture_text("orgunits-departments-attributes.json")
   fx$trackedEntities   <- read_fixture_text("tracker-trackedEntities-attributes.json")
   fx$enrollments       <- read_fixture_text("tracker-enrollments-attributes.json")
@@ -570,14 +577,9 @@ test_that("import_dhis2 excludes a department flagged IsTestunit like a TEST_UNI
 })
 
 test_that("import_dhis2 issues no test-unit follow-up when the instance defines no IsTestunit attribute", {
-  fx <- import_test_fixtures()
-  md <- jsonlite::fromJSON(fx$metadata, simplifyVector = FALSE)
-  md$attributes <- NULL
-  fx$metadata <- jsonlite::toJSON(md, auto_unbox = TRUE, null = "null")
-  # Without the key the mock aborts on the request, so an unwanted follow-up
-  # cannot pass unnoticed.
-  fx$testUnits <- NULL
-  m <- new_dhis2_mock(fx)
+  # The baseline metadata fixture carries no attribute definitions and the
+  # fixture set mocks no follow-up, so an unwanted one aborts in the mock.
+  m <- new_dhis2_mock(import_test_fixtures())
   httr2::local_mocked_responses(m$mock)
 
   ds <- import_dhis2(test_conn(), import_test_opts())
@@ -609,7 +611,7 @@ test_that("import_dhis2 marks a department flagged IsTestunit as isTest under in
 
 test_that("import_dhis2 yields empty, schema-shaped attribute tables when the response carries no attribute values", {
   # orgunits-departments.json carries `id` only — no `attributeValues` key.
-  m <- new_dhis2_mock(import_test_fixtures())
+  m <- new_dhis2_mock(import_test_fixtures(org_unit_attributes = TRUE))
   httr2::local_mocked_responses(m$mock)
 
   ds <- import_dhis2(test_conn(), import_test_opts(
@@ -649,6 +651,24 @@ test_that("import_dhis2 reads the org-unit metadata alone when every fact entity
   # stays listed, whether or not it has patients.
   expect_setequal(ds$metadata$departments$code, c("DEPT_01", "DEPT_02"))
   expect_equal(nrow(ds$metadata$departmentAttributeValues), 4L)
+})
+
+test_that("import_dhis2 completes a metadata-only import under the public defaults", {
+  # `dhis2_dataset_options()` itself, not the test helper's overrides: the
+  # default eligibility filter and validation pass must both stand aside.
+  # Departments default to "no" as well, so the pseudonymized tier is asked
+  # for to have something to observe.
+  m <- new_dhis2_mock(import_test_fixtures())
+  httr2::local_mocked_responses(m$mock)
+
+  ds <- import_dhis2(test_conn(), dhis2_dataset_options(
+    include_patient    = "no",
+    include_enrollment = "no",
+    include_event      = "no",
+    include_department = "pseudo"))
+
+  expect_equal(ncol(ds$patients), 0L)
+  expect_gt(nrow(ds$metadata$departments), 0L)
 })
 
 test_that("import_dhis2 refuses to validate patients without the enrollments and events to check them against", {
