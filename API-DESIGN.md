@@ -1451,9 +1451,12 @@ Both warn once where the findings hold codes the list lacks.
 1. **A finding names an infectious agent** where its slot holds an infectious-agent code. A slot holding only a
    companion value, such as a resistance category, the source, or a free-text name, names none and makes no infection
    one with an infectious agent.
-2. **A slot counts only where the form shows it:** an infection's own slots where its form records a positive culture
-   or test, and its secondary-BSI slots where its follow-up for a secondary BSI is answered Yes, so that every
-   infection a numerator counts is in its denominator.
+2. **A slot counts only where the form asks for it:** an infection's own slots where its form records a positive
+   culture or test, and its secondary-BSI slots where its follow-up for a secondary BSI is answered Yes, the answer
+   that records a secondary BSI, so that every infection a numerator counts is in its denominator. The program rules
+   hide a pneumonia's or NEC's secondary-BSI slots field by field, so Tracker Capture blanks a value there, with a
+   notice, when the answer changes on a form the user can edit, but shows one that a completed form keeps; such a
+   slot does not count either.
 3. **An infection is microbiologically confirmed** where at least 1 slot that counts names an infectious agent, for the
    infection itself or for a secondary BSI following it. "Not listed" (`Id` 0), "Unidentifiable" (`Id` 3561), and a
    code the list lacks confirm an infection as any other code does.
@@ -1545,7 +1548,7 @@ with their intervals, and the number of departments that enter the row's quartil
 
 The denominators hold the infections that could have an infectious agent recorded: a pneumonia recorded "Not tested",
 or an SSI whose culture at its depth is recorded "Not tested" or left blank, and that was not followed up for a
-secondary BSI, or an NEC not followed up, has no slot the form shows, and would dilute the share. Every primary
+secondary BSI, or an NEC not followed up, has no slot the form asks for, and would dilute the share. Every primary
 sepsis/BSI stays, since the form's single item "No positive blood culture" does not tell a culture never taken from a
 negative one. An NEC's infectious agents are recorded only for a secondary BSI, so its share is expected to be lower.
 
