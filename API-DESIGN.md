@@ -1470,12 +1470,13 @@ released infectious-agent list and its reporting classification:
    infectious agent of the list but `Id`s 0 and 3561 belongs to exactly 1 leaf group, so this version has no residual
    rows. Above its tree, a summary block gives 1 row per value of the bacteria's Gram reaction and of their oxygen
    requirement, counted as the group rows are; the 2 attributes overlap the groups rather than nest in them.
-2. **Over the full ontology:** the orders, families, genera, groups of the ontology's own (such as the
-   coagulase-negative staphylococci), and species on each infectious agent's path; a subspecies or serotype counts in
-   its species, and a synonym as its concept. Where findings are recorded at a node that also has rows beneath it, a
-   residual "n.o.s." (not otherwise specified) row, last among that node's children, counts them, at an order, a
-   family, or a group of the ontology as at a genus. A finding recorded at a node above the rank of order, such as a
-   class, has no row in this version and counts in its Total only.
+2. **Over the full ontology:** every level of each infectious agent's path, from its top-level node (Bacteria, Fungi,
+   Viruses, and the others) through every concept beneath it, those without an `Id` and the ontology's own groups
+   (such as the coagulase-negative staphylococci) included, to its species; a subspecies or serotype counts in its
+   species, and a synonym as its concept. Where findings are recorded at a node that also has rows beneath it, a
+   residual "n.o.s." (not otherwise specified) row, last among that node's children, counts them, at any level, so
+   that every finding the tree holds has a row. No node is collapsed into its only child, since a department's
+   dataset and the reference would then collapse differently and their rows would not match.
 
 The infectious agents detected open with a "Total" row, and the density of infections with resistant infectious agents
 opens each category's block with one; the resistance rates per infectious agent have none. In both versions:
@@ -1487,9 +1488,8 @@ opens each category's block with one; the resistance rates per infectious agent 
   gives a department the reference's rows, at 0 where the department has the row's denominator but none of its
   infections (§13.1.3), and orders them as the reference orders them.
 - **Order:** each row's children follow it, siblings by rate, descending; `level` gives the depth.
-- **Outside the tree:** "Not listed", "Unidentifiable", codes the list lacks, and, in the ontology version, findings
-  above the rank of order count in a table's Total only, and in no row of a table without one; each Total carries
-  their number for its footnote.
+- **Outside the tree:** "Not listed", "Unidentifiable", and codes the list lacks count in a table's Total only, and in
+  no row of a table without one; each Total carries their number for its footnote.
 - **Nothing is hard-coded:** a group appears wherever the classification places it, and a resistance category applies
   wherever the list applies it.
 
@@ -1519,7 +1519,7 @@ each row has a column for each type: primary sepsis/BSI, pneumonia, NEC, and SSI
 | Measure | Counted | Over | Scale | Interval | Flag | Quartiles |
 | --- | --- | --- | --- | --- | --- | --- |
 | Total | infectious agents recorded, each once per infection, primary and secondary-BSI slots together, `Id`s 0 and 3561 and codes the list lacks included | microbiologically confirmed infections, those confirmed by `Id`s 0 and 3561 or codes the list lacks included | per 100 infections | exact Poisson | count < 16 | ≥ 5 confirmed infections |
-| Group or taxon | confirmed infections with at least 1 infectious agent of the row's node | confirmed infections with at least 1 infectious agent that has a row in the table's version, which leaves out an infection confirmed only by `Id`s 0 or 3561, codes the list lacks, or, in the ontology version, findings above the rank of order | % | Wilson | denominator < 16 | ≥ 5 such infections, at 0 without the row's infectious agents |
+| Group or taxon | confirmed infections with at least 1 infectious agent of the row's node | confirmed infections with at least 1 infectious agent in the tree, which leaves out an infection confirmed only by `Id`s 0 or 3561 or codes the list lacks | % | Wilson | denominator < 16 | ≥ 5 such infections, at 0 without the row's infectious agents |
 | Type columns | as the row, among the type's infections; in the Total row, infectious agents per 100 confirmed infections of the type | as the row, among the type's infections | % (Total: per 100 infections) | Wilson (Total: exact Poisson) | denominator < 16 (Total: count < 16) | none; the column for all types keeps them |
 
 Each row counts infections, as NEO-KISS, the neonatal component of the German hospital infection surveillance system
