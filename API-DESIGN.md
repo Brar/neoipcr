@@ -1436,7 +1436,7 @@ classification. All 5 count findings by the same rules.
 | Table | Built by | Reports |
 | --- | --- | --- |
 | Infectious agents detected in nosocomial infections | `get_infectious_agent_detection_rate_per_agent_table()` | on by default |
-| Microbiologically confirmed nosocomial infections by infection type | `get_infectious_agent_detection_rate_per_inf_type_table()` | on by default |
+| Microbiological testing of nosocomial infections by infection type | `get_infectious_agent_detection_rate_per_inf_type_table()` | on by default |
 | Nosocomial infections with resistant infectious agents | `get_abr_infection_rate_table()` | off by default; on in the "full" preset |
 | Resistance rates per infectious agent | `get_infectious_agent_resistance_rate_table()` | off by default; on in the "full" preset |
 | Completeness of antimicrobial susceptibility testing | `get_resistance_test_rate_table()` | off by default; on in the "full" preset |
@@ -1531,26 +1531,37 @@ an infectious agent of its node was found. An infection confirmed only by infect
 of the rows' denominators, since it can hold no infectious agent of any row, and counts in the Total, which counts every
 recorded infectious agent and exceeds 100 where infections are polymicrobial.
 
-#### §13.8.4. Microbiologically Confirmed Nosocomial Infections by Infection Type
+#### §13.8.4. Microbiological Testing of Nosocomial Infections by Infection Type
 
-Built by `get_infectious_agent_detection_rate_per_inf_type_table()`, with 1 row per infection type and none for all
-types together, whose share would depend on each department's mix of infection types; NEO-KISS gives this share per
-type only. Its result columns are `inf` (the type), `n` (the confirmed infections), `total` (the row's denominator, on
-which the reports flag the share without printing it), `pooled` with `ci_lower` and `ci_upper`, `q1`, `q2`, and `q3`
-with their intervals, and the number of departments that enter the row's quartiles (§13.1.6).
+Built by `get_infectious_agent_detection_rate_per_inf_type_table()`, with a row for primary sepsis/BSI, pneumonia, and
+SSI, and none for all types together, whose share would depend on each department's mix of infection types. Each row
+gives 2 shares that answer 2 questions: how often the infection's site was tested microbiologically, which the treating
+team decides and the laboratory available to it allows; and how often a test recorded an infectious agent, the yield
+of the testing. Neither tells a true from a false result; a department sets its shares beside the reference's to judge
+whether a deviation is explained, and by what. The follow-up for a secondary BSI, a matter of surveillance capacity,
+enters neither share, so that a lack of it cannot move them: §13.5 gives it beside the secondary-BSI rate, which
+counts the infections with an infectious agent found in the blood.
+
+Its result columns are `inf` (the type); `n` (the positive infections), `tested` (the positive share's denominator),
+`pooled` with `ci_lower` and `ci_upper`, and `q1`, `q2`, and `q3` with their intervals; `total` (every infection of the
+type, the tested share's denominator), `tested_pooled` with `tested_ci_lower` and `tested_ci_upper`, and `tested_q1`,
+`tested_q2`, and `tested_q3` with their intervals; and, for each share, the number of departments that enter its
+quartiles (§13.1.6). The reports flag each share on its denominator without printing it.
 
 | Measure | Counted | Over | Scale | Interval | Flag | Quartiles |
 | --- | --- | --- | --- | --- | --- | --- |
-| Primary sepsis/BSI | confirmed episodes of the denominator | every episode, clinical sepsis included, with or without a blood culture | % | Wilson | denominator < 16 | ≥ 5 episodes, at 0 without a confirmed one |
-| Pneumonia | confirmed pneumonias of the denominator | pneumonias whose microbiological test is recorded positive or negative, or that were followed up for a secondary BSI | % | Wilson | denominator < 16 | ≥ 5 pneumonias in the denominator, at 0 without a confirmed one |
-| NEC | NECs of the denominator whose follow-up is answered Yes with a slot naming an infectious agent | NECs followed up for a secondary BSI, answered Yes or No | % | Wilson | denominator < 16 | ≥ 5 NECs in the denominator, at 0 without a confirmed one |
-| SSI | confirmed SSIs of the denominator | SSIs with a culture recorded positive or negative at their depth, or that were followed up for a secondary BSI | % | Wilson | denominator < 16 | ≥ 5 SSIs in the denominator, at 0 without a confirmed one |
+| Tested: pneumonia | pneumonias whose microbiological test is recorded positive or negative | every pneumonia | % | Wilson | denominator < 16 | ≥ 5 pneumonias, at 0 without a tested one |
+| Tested: SSI | SSIs whose culture at the depth their infection type records is recorded positive or negative | every SSI | % | Wilson | denominator < 16 | ≥ 5 SSIs, at 0 without a tested one |
+| Positive: primary sepsis/BSI | episodes with at least 1 slot that counts naming an infectious agent | every episode, clinical sepsis included, with or without a blood culture | % | Wilson | denominator < 16 | ≥ 5 episodes, at 0 without a positive one |
+| Positive: pneumonia | pneumonias tested positive with at least 1 own slot naming an infectious agent | the tested pneumonias | % | Wilson | denominator < 16 | ≥ 5 tested pneumonias, at 0 without a positive one |
+| Positive: SSI | SSIs tested positive at that depth with at least 1 own slot naming an infectious agent | the SSIs tested at that depth | % | Wilson | denominator < 16 | ≥ 5 tested SSIs, at 0 without a positive one |
 
-The denominators hold the infections that could have an infectious agent recorded: a pneumonia recorded "Not tested",
-or an SSI whose culture at its depth is recorded "Not tested" or left blank, and that was not followed up for a
-secondary BSI, or an NEC not followed up, has no slot the form asks for, and would dilute the share. Every primary
-sepsis/BSI stays, since the form's single item "No positive blood culture" does not tell a culture never taken from a
-negative one. An NEC's infectious agents are recorded only for a secondary BSI, so its share is expected to be lower.
+A blank test or culture counts as not tested; the pneumonia stage makes its test compulsory and the program rules make
+the culture at the SSI's depth mandatory, so a blank arises only on a form not completed or one stored without the
+client. Primary sepsis/BSI has no tested share, since the form's single item
+"No positive blood culture" does not tell a culture never taken from a negative one; every episode stays in its
+positive share. A secondary-BSI slot counts in neither share, and NEC, which has no test of its own and whose
+infectious agents are recorded only for a secondary BSI, has no row: §13.5 gives both.
 
 #### §13.8.5. Nosocomial Infections With Resistant Infectious Agents
 
