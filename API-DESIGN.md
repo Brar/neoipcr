@@ -1248,12 +1248,19 @@ definition of a table's rates changes that table's version and no other. A datas
 versions counts, for every table, as calculated under different definitions, so that `get_benchmark_data()` joins none
 of its tables with a versioned dataset's.
 
-A table that reads the infectious-agent list compares, beside its version, a digest of what it reads from the list:
-the incidence densities (§13.3), the common-commensal flags their sepsis kinds split on; the infectious-agent tables
-(§13.8), their tree and layout (§13.8.2); and the resistance tables, also the flags that say to which infectious agents
-each resistance category applies. A release of the list that changes what a table reads makes stored datasets
-incomparable for that table until they are recomputed, and one that changes nothing a table reads leaves it
-comparable.
+A table that reads the infectious-agent list compares, beside its version, a digest of each part of the list it reads:
+the incidence densities (§13.3), the common-commensal flags their sepsis kinds split on; the tables whose rows are
+infectious agents (§13.8.2), the tree of their version (over the reporting groups, what places an infectious agent
+among the group and summary rows and labels them; over the full ontology, its nodes and paths) and the concept each
+code names, by which they count an infectious agent once per infection; the resistance tables, also the flags that say
+to which infectious agents each resistance category applies; and the completeness of antimicrobial susceptibility
+testing (§13.8.7), the concept each code names and those flags. The tables whose rows are infectious agents also
+compare the version of the layout of their rows (their order, levels, residual and summary rows, keys, and labels). A
+release of the list that changes what a table reads makes stored datasets incomparable for that table until they are
+recomputed, and one that changes nothing a table reads leaves it comparable: a release that changes only the full
+ontology leaves the versions over the reporting groups comparable, and one that changes only the reporting groups
+leaves those over the full ontology comparable. A stored dataset lacking a digest that a later release of neoipcr adds
+counts as calculated under different definitions only for the tables that compare it.
 
 ### §13.2. Overview of the Dataset
 
@@ -1451,12 +1458,16 @@ Both warn once where the findings hold codes the list lacks.
 1. **A finding names an infectious agent** where its slot holds an infectious-agent code. A slot holding only a
    companion value, such as a resistance category, the source, or a free-text name, names none and makes no infection
    one with an infectious agent.
-2. **A slot counts only where the form asks for it:** an infection's own slots where its form records a positive
-   culture or test, and its secondary-BSI slots where its follow-up for a secondary BSI is answered Yes, the answer
-   that records a secondary BSI, so that every infection a numerator counts is in its denominator. The program rules
-   hide a pneumonia's or NEC's secondary-BSI slots field by field, so Tracker Capture blanks a value there, with a
-   notice, when the answer changes on a form the user can edit, but shows one that a completed form keeps; such a
-   slot does not count either.
+2. **A slot counts only where the form asks for it:** a primary sepsis/BSI form's slots unless it is recorded as
+   "No positive blood culture" (`NEOIPC_BSI_NO_POS_CULTURE`); a pneumonia's own slots where its microbiological test
+   is recorded positive; an SSI's own slots where a culture at any depth is recorded positive, whatever the depth its
+   infection type records and whatever its follow-up for a secondary BSI, since the form shows them then (the program
+   rule `NEOIPC_SSI_SET_AGENTS_IDENTIFIED_FROM_ANY_SITE` sets whether any depth's culture is positive, and the rule
+   `NEOIPC_SSI_NO_MIBI_RESULT_AVAILABLE` hides the slots' section where none is); and the secondary-BSI slots of an
+   NEC, a pneumonia, or an SSI where its follow-up for a secondary BSI is answered Yes, the answer that records a
+   secondary BSI. Every infection a numerator counts is thus in its denominator. The program rules hide a pneumonia's
+   or NEC's secondary-BSI slots field by field, so Tracker Capture blanks a value there, with a notice, when the answer
+   changes on a form the user can edit, but shows one that a completed form keeps; such a slot does not count either.
 3. **An infection is microbiologically confirmed** where at least 1 slot that counts names an infectious agent, for the
    infection itself or for a secondary BSI following it. "Not listed" (`Id` 0), "Unidentifiable" (`Id` 3561), and a
    code the list lacks confirm an infection as any other code does.
@@ -1473,13 +1484,16 @@ released infectious-agent list and its reporting classification:
    infectious agent of the list but `Id`s 0 and 3561 belongs to exactly 1 leaf group, so this version has no residual
    rows. Above its tree, a summary block gives 1 row per value of the bacteria's Gram reaction and of their oxygen
    requirement, counted as the group rows are; the 2 attributes overlap the groups rather than nest in them.
-2. **Over the full ontology:** every level of each infectious agent's path, from its top-level node (Bacteria, Fungi,
-   Viruses, and the others) through every concept beneath it, those without an `Id` and the ontology's own groups
-   (such as the coagulase-negative staphylococci) included, to its species; a subspecies or serotype counts in its
-   species, and a synonym as its concept. Where findings are recorded at a node that also has rows beneath it, a
-   residual "n.o.s." (not otherwise specified) row, last among that node's children, counts them, at any level, so
-   that every finding the tree holds has a row. No node is collapsed into its only child, since a department's
-   dataset and the reference would then collapse differently and their rows would not match.
+2. **Over the full ontology:** every level of each infectious agent's path, from its top-level node, Bacteria, Fungi,
+   Protozoa, or Viruses, through every concept beneath it, those without an `Id` and the ontology's own groups (such as
+   the coagulase-negative staphylococci) included, to the node at which it is recorded; a subspecies or serotype
+   counts in its species, and a synonym as its concept. The list's Eukaryota, which holds the fungi and the protozoa
+   and at which no infectious agent is recorded, has no row. Where infectious agents are recorded at a node that has
+   nodes beneath it in the full ontology (a species has none, its subspecies and serotypes counting in it), a residual
+   "n.o.s." (not otherwise specified) row, last among that node's children, counts them, whatever rows a dataset holds
+   beneath the node, so that a department's rows match the reference's; in a resistance category's block, there is
+   one only where the node has a node of the block beneath it. No node is collapsed into its only child, since a
+   department's dataset and the reference would then collapse differently and their rows would not match.
 
 The infectious agents detected open with a "Total" row, and the density of infections with resistant infectious agents
 opens each category's block with one; the resistance rates per infectious agent have none. In both versions:
@@ -1487,10 +1501,18 @@ opens each category's block with one; the resistance rates per infectious agent 
 - **A row other than a Total counts infections, a parent's included:** an infection counts once in the row of each node
   at or above an infectious agent found in it. Children therefore need not add up to their parent, and the share rows
   can add up to more than 100%, since an infection can hold infectious agents of several nodes.
-- **Rows:** a dataset has a row for each node at or above an infectious agent found in it. `get_benchmark_data()`
-  gives a department the reference's rows, at 0 where the department has the row's denominator but none of its
-  infections (§13.1.3), and orders them as the reference orders them.
-- **Order:** each row's children follow it, siblings by rate, descending; `level` gives the depth.
+- **Rows:** a dataset has a row for each node at or above an infectious agent found in it, and the residual and
+  summary rows its infectious agents give it (items 1 and 2). In a resistance category's block, the possible rows are
+  the nodes on the paths of the infectious agents to which the list applies the category (over the reporting groups,
+  with the summary rows of their attribute values), and a dataset has each that lies at or above an infectious agent
+  found in it to which the list applies the category or that has a result for it. Whether a dataset has a row thus
+  depends only on its infectious agents at or beneath it. `get_benchmark_data()` gives a department the reference's
+  rows, at 0 where the department has the row's denominator but none of its infections (§13.1.3).
+- **Order:** each row's children follow it, siblings by rate, descending, then by label, those without a rate after
+  those with one, and a residual row last; over the reporting groups, the summary block stands above the tree, in the
+  classification's order of the attributes and their values. `level` gives the depth. `get_benchmark_data()` orders
+  the rows as the reference orders them, a row the reference lacks after its siblings but before a residual row, and a
+  summary row the reference lacks by the classification's order.
 - **Outside the tree:** "Not listed", "Unidentifiable", and codes the list lacks count in a table's Total only, and in
   no row of a table without one; each Total carries their number for its footnote.
 - **Nothing is hard-coded:** a group appears wherever the classification places it, and a resistance category applies
@@ -1501,15 +1523,24 @@ Every calculated dataset carries both versions of each table. Each function retu
 default is the reporting groups, which the reports show unless a parameter asks for the full ontology. The result
 columns are `level`, `rank` (the node's concept type), `node_id`, `parent_id`, `group` (the row's label), and the
 measures, each share with its numerator and denominator, and the number of departments that enter the row's quartiles
-(§13.1.6). The reports find the rows their interpretation texts quote by `node_id`, the group rows in the groups version
-and the ontology rows in the ontology version.
+(§13.1.6). Over the full ontology, `node_id` is the node's source and its record there (`<ConceptSource>|<ConceptId>`),
+a node whose source is the International Committee on Taxonomy of Viruses (ICTV) taking its ICTV identifier
+(`IctvId`) in place of its record, so that a row keeps its key across the releases of the ICTV's Master Species List
+that the list adopts; over the reporting groups, it is the group's key, and a summary row's is its attribute and value
+(such as `gram_reaction|positive`); a residual row's is its node's followed by `~n.o.s.`. The reports find the rows
+their interpretation texts quote by `node_id`, the group rows in the groups version and the ontology rows in the
+ontology version.
 
-For these tables, every calculated dataset also carries the version and commit of the infectious-agent list it was
-built from, a digest of their tree (each infectious agent's ranks, coagulase group, reporting group, and 2 attributes,
-and the group tree), a digest of the flags that say to which infectious agents each resistance category applies, and
-the layout of the tables. `get_benchmark_data()` joins such a table of 2 datasets only where the version of its rate
-definitions, the tree digest, and the layout match, and for a resistance table also the digest of those flags
-(§13.1.7).
+Every calculated dataset also carries the version and commit of the infectious-agent list it was built from; beside
+each table's version, the digests of the parts of the list the table reads (§13.1.7): of the tree of each version (the
+tree digests), of the concept each code names (the concept digest), of the common-commensal flags, and of the flags
+that say to which infectious agents each resistance category applies (the applicability digest); and the version of
+the layout of these tables' rows. The tree digest over the reporting groups covers that version's nodes and paths,
+each infectious agent's reporting group and 2 attributes, and the keys and names of the attribute values, but not a
+group's category of the European Centre for Disease Prevention and Control or an attribute's name, which no table
+reads; the one over the full ontology covers that version's nodes and paths. `get_benchmark_data()` joins one of these
+tables of 2 datasets only where the version of its rate definitions, the tree digest of its version, the concept
+digest, and the layout match, and for a resistance table also the applicability digest (§13.1.7).
 
 The rules of §13.1 apply; a department enters a row's quartiles with at least 5 of the row's infections or detections,
 or 50 patient-days for the density over patient-days.
@@ -1558,20 +1589,22 @@ quartiles (§13.1.6). The reports flag each share on its denominator without pri
 
 A blank test or culture counts as not tested; the pneumonia stage makes its test compulsory and the program rules make
 the culture at the SSI's depth mandatory, so a blank arises only on a form not completed or one stored without the
-client. Primary sepsis/BSI has no tested share, since the form's single item
-"No positive blood culture" does not tell a culture never taken from a negative one; every episode stays in its
-positive share. A secondary-BSI slot counts in neither share, and NEC, which has no test of its own and whose
-infectious agents are recorded only for a secondary BSI, has no row: §13.5 gives both.
+client. Primary sepsis/BSI has no tested share, since the form's single item "No positive blood culture" does not tell
+a culture never taken from a negative one: the tested share's columns are `NA` in its row, its number of departments
+that enter the quartiles included, and `tested`, its positive share's denominator, counts every episode, as `total`
+does. A secondary-BSI slot counts in neither share, and NEC, which has no test of its own and whose infectious agents
+are recorded only for a secondary BSI, has no row: §13.5 gives both.
 
 #### §13.8.5. Nosocomial Infections With Resistant Infectious Agents
 
 Built by `get_abr_infection_rate_table()`. Each resistance category, third-generation cephalosporin resistance (3GCR),
 carbapenem resistance, colistin resistance, methicillin-resistant *Staphylococcus aureus* (MRSA), and
-vancomycin-resistant *Enterococcus* (VRE), heads a block: its Total, then the rows, in either version, on the paths of
-the infectious agents to which the list applies it. MRSA thus covers the *Staphylococcus aureus* complex,
-*Staphylococcus argenteus* included, where NEO-KISS, the European Centre for Disease Prevention and Control (ECDC), and
-its European Antimicrobial Resistance Surveillance Network (EARS-Net) count it within *S. aureus* alone, and the methods
-say so; VRE covers *Enterococcus* and its species. The categories overlap: an infectious agent can meet more than 1.
+vancomycin-resistant *Enterococcus* (VRE), heads a block: its Total, then its rows of either version, as §13.8.2 derives
+them from the infectious agents to which the list applies the category. MRSA thus covers the *Staphylococcus aureus*
+complex, *Staphylococcus argenteus* included, where NEO-KISS, the European Centre for Disease Prevention and Control
+(ECDC), and its European Antimicrobial Resistance Surveillance Network (EARS-Net) count it within *S. aureus* alone,
+and the methods say so; VRE covers *Enterococcus* and its species. The categories overlap: an infectious agent can meet
+more than 1.
 
 | Measure | Counted | Over | Scale | Interval | Flag | Quartiles |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1585,10 +1618,9 @@ pooled rate.
 
 #### §13.8.6. Resistance Rates per Infectious Agent
 
-Built by `get_infectious_agent_resistance_rate_table()`. Each resistance category heads a block of the rows, in either
-version, on the paths of the infectious agents to which the list applies it. An infection counts once per row: tested
-where an infectious agent of the row's node has a result for the category in any of its slots, resistant where one is
-recorded resistant.
+Built by `get_infectious_agent_resistance_rate_table()`. Each resistance category heads a block of its rows of either
+version, as §13.8.2 derives them. An infection counts once per row: tested where an infectious agent of the row's node
+has a result for the category in any of its slots, resistant where one is recorded resistant.
 
 | Measure | Counted | Over | Scale | Interval | Flag | Quartiles |
 | --- | --- | --- | --- | --- | --- | --- |
