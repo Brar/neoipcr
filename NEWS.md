@@ -14,6 +14,46 @@ section above it for the next changes.
 
 # neoipcr (development version)
 
+* An infection counts as one with an infectious agent only where one of its findings names one, "Not
+  listed" (`Id` 0), "Unidentifiable" (`Id` 3561), and a code the infectious-agent list lacks included.
+  A slot that holds only a companion value (the source, the "recovered multiple times" item, a
+  resistance category, or a free-text name) yields a finding without `pathogen_key`, and such a
+  finding no longer makes its infection one with an infectious agent. This holds for the share of
+  infections with an infectious agent, the share per infection type, the denominators of the
+  detection rates per infectious agent and of the infection rates with antibiotic-resistant
+  infectious agents, and the secondary-BSI rate; the resistance test rates no longer count such a slot
+  as a tested detection either.
+* The secondary-BSI rate counts a NEC, pneumonia, or SSI as one with a secondary BSI only where its
+  follow-up is answered Yes and one of its secondary-BSI findings names an infectious agent. An
+  infectious agent left in the secondary-BSI slots under another answer, which only a validation
+  exception or `include_invalid_patients = TRUE` lets through, no longer counts, so the rate is a
+  share of the infections followed up by construction.
+* `get_infectious_agent_detection_rate_per_inf_type_table()` gives each infection type two shares:
+  the share tested (`tested_pooled`, with `tested_ci_lower` and `tested_ci_upper`), the pneumonias
+  whose microbiological test, and the SSIs whose culture at the depth their infection type records,
+  is recorded positive or negative, over every infection of the type (`total`); and the share
+  positive (`pooled`), the tested infections whose test is positive (for an SSI, at its own depth)
+  with an infectious agent in an own slot (`n`), over the tested ones (`tested`). A test recorded
+  "Not tested" or left blank counts as not tested. Primary sepsis/BSI keeps one share, over every
+  episode, since its form cannot tell a blood culture never taken from a negative one; an episode
+  recorded culture-negative counts as not positive whatever its slots hold. Secondary-BSI slots count
+  in neither share, and the follow-up for a secondary BSI moves neither; the secondary-BSI table
+  gives both. NEC has no row: it has no test of its own, and its infectious agents are recorded only
+  for a secondary BSI. The reference table gives the departments' quartiles of each share over the
+  departments with the share's denominator above 0 (`tested_q1` to `tested_q3`, with their bootstrap
+  intervals, for the share tested). The row of all types stays the share of every infection, NEC
+  included, in which a slot names an infectious agent, with no share tested.
+* `get_secondary_bsi_rate_table()` shows beside each rate the share of the type's infections
+  followed up for a secondary BSI (`followup_pooled`), with its counts (`followup_n`, the infections
+  followed up, answered Yes or No; `total_n`, all infections of the type), and the reference table
+  the quartiles of the departments' shares (`followup_q1`, `followup_q2`, `followup_q3`) over the
+  departments with at least 5 infections of the type, `NA` with fewer than 5 such departments.
+* `calculate_department_data()` and `calculate_reference_data()` require `include_event = "full"`
+  and refuse a dataset imported with `"pseudo"`: its findings carry no `pathogen_key` or
+  `secondary_bsi`, since a rare infectious agent can single out a patient in a pseudonymized
+  dataset, and the infectious-agent figures need them. The refusal of these and every other import
+  option a function requires has the class `neoipcr_unmet_import_options`.
+
 # neoipcr 0.0.0.9008
 
 * Validation rules have a severity, which the new `validation_rule_severities()` lists. An error flags
