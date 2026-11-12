@@ -1252,6 +1252,39 @@ department's figure, and a zero's upper limit (§13.1.3), while its quartiles ta
    (item 3), and any other figure a design effect of 1.
 5. **Scope:** the intervals describe neonatal departments like the participating ones.
 
+The pooled interval of item 2 takes 7 steps, over the G departments that contribute to it, department i having yᵢ events
+over its denominator wᵢ (days or counted entities), with S = Σwᵢ, Y = Σyᵢ, the pooled figure R = Y/S, the residuals
+uᵢ = yᵢ − Rwᵢ, and b = R for a rate or ratio (Poisson) or R(1 − R) for a share (binomial):
+
+1. The variance between departments is a moment estimator of the form of DerSimonian and Laird's:
+   τ² = max{0, [Σwᵢ(yᵢ/wᵢ − R)² − (G − 1)b]/(S − Σwᵢ²/S)}.
+2. Department i's own figure yᵢ/wᵢ has the working variance φᵢ = b/wᵢ + τ², Poisson or binomial noise plus the variance
+   between departments.
+3. The ratio estimator's leverage is H = 1wᵀ/S, 1 being a vector of ones and w that of the wᵢ, so that every row of H is
+   wᵀ/S; with Φ = diag(φᵢ) and I the identity matrix, M = (I − H)Φ(I − H)ᵀ.
+4. The CR2 variance of Bell and McCaffrey is v = Σuᵢ²(φᵢ/Mᵢᵢ)/S².
+5. Its Bell-McCaffrey degrees of freedom are ν = (tr P)²/tr(P²), tr being the trace, with
+   P = diag(√φᵢ)(I − H)ᵀ diag[wᵢ²φᵢ/(MᵢᵢS²)](I − H) diag(√φᵢ).
+6. The design effect is d = max{1, vS²/Y}(t/1.96)² for a rate or ratio and d = max{1, vS/[R(1 − R)]}(t/1.96)² for a
+   share, t being the 97.5th percentile of the t distribution on ν degrees of freedom, so that the effective counts
+   shrink for the degrees of freedom as Korn and Graubard's effective sample size does.
+7. The interval is the row's exact interval on the effective counts Y/d and S/d: for a rate or ratio, the gamma interval
+   of Fay and Feuer, [F⁻¹(0.025; Y/d), F⁻¹(0.975; Y/d + 1)]/(S/d), F⁻¹(p; a) being the p quantile of the gamma
+   distribution with shape a and scale 1 (`stats::qgamma()`); for a share, the Clopper-Pearson interval on Y/d of S/d
+   (`stats::qbeta()`), as Korn and Graubard propose for survey proportions.
+
+The pooled interval's degrees of freedom, which the reference stores and the flag below 8 tests (§13.1.2), are ν. The
+steps follow these sources:
+
+- DerSimonian R, Laird N. Meta-analysis in clinical trials. *Control Clin Trials*. 1986;7(3):177-188.
+  doi:10.1016/0197-2456(86)90046-2
+- Bell RM, McCaffrey DF. Bias reduction in standard errors for linear regression with multi-stage samples. *Surv
+  Methodol*. 2002;28(2):169-181.
+- Fay MP, Feuer EJ. Confidence intervals for directly standardized rates: a method based on the gamma distribution.
+  *Stat Med*. 1997;16(7):791-801. doi:10.1002/(SICI)1097-0258(19970415)16:7\<791::AID-SIM500\>3.0.CO;2-#
+- Korn EL, Graubard BI. Confidence intervals for proportions with small expected number of positive counts estimated
+  from survey data. *Surv Methodol*. 1998;24(2):193-201.
+
 The Interval columns below name each row's method, the gamma interval or Clopper-Pearson's, as items 2 to 4 apply it,
 the row's quartiles taking the interval of item 1. Beside a table's figures, a reference dataset stores what these
 intervals need: for each quartile's interval, which of its sides are open; for each row, the network's design effect
@@ -1320,7 +1353,10 @@ neoipcr adds counts as calculated under different definitions only for the table
 The exposure rates (§13.6.1) and the antibiotic use (§13.7) compare, beside their version, a digest of the category of
 the World Health Organization's Access, Watch, Reserve (AWaRe) classification that the DHIS2 metadata a dataset was
 imported from gives each antimicrobial substance, so that datasets whose metadata carry different editions of the
-classification, or give a substance different categories, are compared for neither table.
+classification, or give a substance different categories, are compared for neither table. The antibiotic use also
+compares a digest of the group of the 4th level of the Anatomical Therapeutic Chemical (ATC) classification that the
+same metadata gives each substance (its option group set `ATC5`), since its group rows sum their substances, so that
+datasets whose metadata place a substance in different groups are not compared for it.
 
 ### §13.2. Overview of the Dataset
 
@@ -1481,11 +1517,11 @@ and the duration of exposure, which the days per 100 patient-days cannot tell ap
 ### §13.7. Antibiotic Use by Anatomical Therapeutic Chemical Group and Substance
 
 `get_antibiotic_utilization_table()` builds the table, 1 row per group of the 4th level of the Anatomical Therapeutic
-Chemical (ATC) classification, a 5-character code such as J01CA, and 1 per substance used beneath it (`row_id`,
-`atc5_group`, `row_type`, `display_name`, and `aware`, the code naming the 4th level `atc5`), with `n`, `pooled`,
-`ci_lower`, `ci_upper`, and the quartile columns, and beside them, for each row, the patients receiving it, the patients
-given any antibiotic, and the share of the patients given any antibiotic who receive it. No totals of the 1st or 2nd
-ATC level are given.
+Chemical (ATC) classification, a 5-character code such as J01CA, in which the DHIS2 metadata's option group set `ATC5`
+places each substance (§13.1.7), and 1 per substance used beneath it (`row_id`, `atc5_group`, `row_type`,
+`display_name`, and `aware`, the code naming the 4th level `atc5`), with `n`, `pooled`, `ci_lower`, `ci_upper`, and the
+quartile columns, and beside them, for each row, the patients receiving it, the patients given any antibiotic, and the
+share of the patients given any antibiotic who receive it. No totals of the 1st or 2nd ATC level are given.
 
 | Measure | Counted | Over | Scale | Interval | Flag | Quartiles |
 | --- | --- | --- | --- | --- | --- | --- |
