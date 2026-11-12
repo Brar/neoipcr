@@ -1922,9 +1922,10 @@ unprinted, since every openly published cell holds at least 16 of them.
 #### §13.10.4. Minimum Cell
 
 An openly published cell holds at least 16 procedures from at least 3 departments, none contributing more than half of
-them. A cell below the minimum is suppressed, its counts with its rate, and a second cell is suppressed wherever a
-total would give a suppressed one back; the groups below the minimum are pooled, and strata appear only where they
-reach it. Each department sees its own counts, unsuppressed, in its Partner Report.
+them. A cell below the minimum is suppressed, its counts with its rate, and a second cell is suppressed wherever a total
+would give a suppressed one back, the overall report's cell across the per-class reports included (§13.11.2); the groups
+below the minimum are pooled, and strata appear only where they reach it. Each department sees its own counts,
+unsuppressed, in its Partner Report.
 
 ### §13.11. Case-Mix Figures and Birth-Weight Ranges
 
@@ -1970,3 +1971,11 @@ report, and the overall report states their number. A report's header names its 
 class more quartiles fail the display test and more rows carry the flag. A per-class report prints a row's pooled
 figures only where at least 3 departments contribute to its denominator, none contributing more than half of it,
 since a pooled figure from 1 or 2 departments can show which department had a rare infectious agent or resistance.
+
+The classes that withhold a row, or a cell of the SSI rate below its minimum (§13.10.4), must together meet the rule
+that withholds it, since the overall report's row or cell, less the other classes', gives back their sum: exactly where
+no patient lacks a recorded birth weight, and as a bound where some do. A single withheld class therefore never stands
+alone: where the withheld classes do not meet the rule together, a further class withholds the row or cell, the one with
+the smallest denominator among those with which they would, or, where none would, the one with the smallest denominator,
+until they meet it or every class withholds it. The overall report withholds nothing for this, so the withheld rows and
+cells of all 4 classes are decided together, before any per-class report renders.
