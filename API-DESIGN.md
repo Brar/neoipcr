@@ -1198,10 +1198,11 @@ days per exposed patient is the one ratio flagged on its effective number of exp
 count of exposed patients, who are its clusters and so independent, and for a pooled figure that count divided by a
 design effect for the clustering of the patients within departments: the bias-reduced cluster-robust (CR2) variance of
 the pooled mean, with the departments as clusters (§13.1.4, item 2), over its variance with the patients as clusters, at
-least 1 and widened for the Bell-McCaffrey degrees of freedom of the CR2 variance, as item 2's design effect is. The
-threshold is configurable, 16 being its default. A pooled interval that rests on fewer than 8 degrees of freedom carries
-a flag of its own (§13.1.4). Every share carries its denominator, and every figure the effective number its flag tests,
-in the table neoipcr returns, so that a report can flag it.
+least 1 and widened for the Bell-McCaffrey degrees of freedom of the CR2 variance, as item 2's design effect is, and 1
+where both variances are 0, as when every exposed patient has the same days. The threshold is configurable, 16 being its
+default. A pooled interval that rests on fewer than 8 degrees of freedom carries a flag of its own (§13.1.4). Every
+share carries its denominator, and every figure the effective number its flag tests, in the table neoipcr returns, so
+that a report can flag it.
 
 #### §13.1.3. Zeros
 
@@ -1360,12 +1361,13 @@ department show how far the largest departments carry the pooled rates.
 
 Patient-days include days of life 1 to 3 and days 1 and 2 after a transfer or readmission, whose risk is lower but not
 nil, and the 13 days after an infection, in which the NeoIPC Core Protocol registers no new infection of the same type;
-the protocol's formula counts every patient-day, and the dilution these days bring grows with the rate itself, so
-departments keep their order against the reference. A patient with a sepsis/BSI and a pneumonia counts once for each in
-severe infection, and a further episode of the same type counts where it begins 14 days or more after the previous one
-and after a period without symptoms of infection. A patient record with an infection before day of life 4, or before
-day 3 of its stay whatever the type of admission, or with a repeat of the same type within 14 days fails the onset
-rules, a validation error. Primary sepsis/BSI leaves out secondary BSI, which its own table shows.
+the protocol's formula counts every patient-day, which the methods say. Since departments differ in how many of these
+days their stays hold, a rate over every patient-day can order 2 departments otherwise than one over the days at risk
+alone. A patient with a sepsis/BSI and a pneumonia counts once for each in severe infection, and a further episode of
+the same type counts where it begins 14 days or more after the previous one and after a period without symptoms of
+infection. A patient record with an infection before day of life 4, or before day 3 of its stay whatever the type of
+admission, or with a repeat of the same type within 14 days fails the onset rules, a validation error. Primary
+sepsis/BSI leaves out secondary BSI, which its own table shows.
 
 The 3 kinds of primary sepsis/BSI add up to it, and the 2 kinds of NEC to NEC. A BSI with both a recognized pathogen and
 a common commensal counts with the recognized pathogen; the common commensals are those the released NeoIPC
