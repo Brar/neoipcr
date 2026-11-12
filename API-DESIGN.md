@@ -1191,26 +1191,26 @@ A share is flagged where its effective denominator, the denominator divided by t
 below 16, the denominator itself not printed; the days with a device, a ventilatory support, an antibiotic, or a
 protective factor per 100 patient-days, and a single substance's days of therapy per 1000 patient-days (§13.7), are
 shares of patient-days. A count, a density, or a ratio is flagged where its effective count, the count divided by its
-design effect, is below 16. A figure without a design effect of its own tests the counts its interval takes (§13.1.4),
-so that a pooled count of 0 is always flagged, and the share followed up for a secondary BSI (§13.5), which has no
-interval, tests its denominator. The mean days per exposed patient is the one ratio flagged on its effective number of
-exposed patients instead: a department's count of exposed patients, who are its clusters and so independent, and for a
-pooled figure that count divided by a design effect for the clustering of the patients within departments: the
-bias-reduced cluster-robust (CR2) variance of the pooled mean, with the departments as clusters (§13.1.4, item 2), over
-its variance with the patients as clusters, at least 1 and widened for the Bell-McCaffrey degrees of freedom of the CR2
-variance, as item 2's design effect is. The threshold is configurable, 16 being its default. A pooled interval that
-rests on fewer than 8 degrees of freedom carries a flag of its own (§13.1.4). Every share carries its denominator, and
-every figure the effective number its flag tests, in the table neoipcr returns, so that a report can flag it.
+design effect, is below 16. A figure without a design effect of its own tests the counts its interval takes (§13.1.4); a
+pooled 0 or share of 100% and a share whose days exceed its denominator, which have no interval (§13.1.4), are always
+flagged; and the share followed up for a secondary BSI (§13.5), which has no interval, tests its denominator. The mean
+days per exposed patient is the one ratio flagged on its effective number of exposed patients instead: a department's
+count of exposed patients, who are its clusters and so independent, and for a pooled figure that count divided by a
+design effect for the clustering of the patients within departments: the bias-reduced cluster-robust (CR2) variance of
+the pooled mean, with the departments as clusters (§13.1.4, item 2), over its variance with the patients as clusters, at
+least 1 and widened for the Bell-McCaffrey degrees of freedom of the CR2 variance, as item 2's design effect is. The
+threshold is configurable, 16 being its default. A pooled interval that rests on fewer than 8 degrees of freedom carries
+a flag of its own (§13.1.4). Every share carries its denominator, and every figure the effective number its flag tests,
+in the table neoipcr returns, so that a report can flag it.
 
 #### §13.1.3. Zeros
 
 Where a department has a row's denominator but none of its events, its rate is 0, given, where the row has an
 interval, with the upper limit of the row's own 95% interval (§13.1.4), Clopper-Pearson's for a share and the gamma
-interval for a rate over days or a ratio, on the counts divided by the network's design effect for the row and
-birth-weight class (§13.1.4, item 4), so that every value of a row comes from a single method; without a reference, and
-for a pooled 0, §13.1.4 gives the counts the interval takes. Where the department lacks the denominator, the row has no
-rate, and the Partner Report prints "No data." The reports' interpretation texts keep their note that a 0 may mean
-incomplete data capture.
+interval for a rate over days or a ratio, on the counts divided by the design effect that §13.1.4 gives it (item 4), so
+that every value of a row comes from a single method; a pooled 0 has no interval (§13.1.4, item 2). Where the
+department lacks the denominator, the row has no rate, and the Partner Report prints "No data." The reports'
+interpretation texts keep their note that a 0 may mean incomplete data capture.
 
 #### §13.1.4. Intervals
 
@@ -1232,26 +1232,31 @@ department's figure, and a zero's upper limit (§13.1.3), while its quartiles ta
    the Bell-McCaffrey degrees of freedom of the CR2 variance. The exact interval is the gamma interval for a rate over
    days and for a ratio, which at a design effect of 1 is the exact Poisson interval on the counts, and
    Clopper-Pearson's for every share, a share of days included (item 3). A pooled interval is given from 2 departments,
-   and one that rests on fewer than 8 degrees of freedom is flagged. A pooled 0 and a pooled share of 100%, which leave
-   no variance to estimate a design effect from, take the exact interval on the full denominator, and a share of days
-   the interval of item 3.
+   and one that rests on fewer than 8 degrees of freedom is flagged. A pooled 0 and a pooled share of 100% leave no
+   variance to estimate a design effect from, and so have no interval: such a figure is flagged (§13.1.2), and a note
+   says that its uncertainty cannot be estimated from the data.
 3. **Shares of days:** a share of patient-days (§13.6.1, §13.7) and the Access share of substance-days (§13.6.1) take
    Clopper-Pearson's interval on an effective number of days, the days divided by the design effect, so that their
-   interval never passes 100%. At a pooled 0 or 100%, such a share takes it on Kish's effective number of patients,
-   from each patient's patient-days, or for the Access share from its substance-days.
+   interval never passes 100%. Kish's effective number of patients, which a department's such share of 0 or 100%, or
+   from a single patient, takes without a reference (item 4), comes from each patient's patient-days, or for the Access
+   share from its substance-days. A share whose days exceed its denominator, which validation flags as an error
+   (§13.1.5) but which an exception or an import without the validation pass lets through, has no interval and is
+   flagged (§13.1.2).
 4. **A department's own figure** takes its row's method on effective counts, with a design effect of at least 1
    estimated from how its counts vary between its patients. A figure of 0, a share of 100%, and a figure from a single
    patient, which leave nothing to estimate it from, take instead the network's design effect for the row and the
    department dataset's birth-weight class (§13.11.2), at least 1 and estimated over the patients of all departments,
-   which the reference stores; without a reference, a share of days takes Kish's effective number of the department's
-   patients (item 3), and any other figure a design effect of 1.
+   which the reference stores, or, where it stores none for that class, the reference's design effect for the row over
+   its whole range; without a reference, a share of days takes Kish's effective number of the department's patients
+   (item 3), and any other figure a design effect of 1.
 5. **Scope:** the intervals describe neonatal departments like the participating ones.
 
 The Interval columns below name each row's method, the gamma interval or Clopper-Pearson's, as items 2 to 4 apply it,
 the row's quartiles taking the interval of item 1. Beside a table's figures, a reference dataset stores what these
 intervals need: for each quartile's interval, which of its sides are open; for each row, the network's design effect
-for each birth-weight class (item 4) and the degrees of freedom of the pooled interval; and, for each row with
-quartiles, the number of departments that enter them (§13.1.6) and how many of them recorded none of the row's events.
+over the reference's whole range and for each birth-weight class (item 4), and the degrees of freedom of the pooled
+interval; and, for each row with quartiles, the number of departments that enter them (§13.1.6) and how many of them
+recorded none of the row's events.
 
 #### §13.1.5. Which Records Count, and Where
 
@@ -1486,15 +1491,15 @@ ATC level are given.
 | Patients receiving it | patients given the substance, or a substance of the group | patients given any antibiotic | % | Clopper-Pearson | effective denominator < 16 | ≥ 5 patients given an antibiotic |
 
 The use rate is per 1000 patient-days, as the published NeoIPC Core Protocol defines it, while the AWaRe rows of the
-exposure rates stay per 100. A substance's days of therapy in a stay are bounded by the stay's antibiotic days, and
-these by its patient-days, which validation checks as errors (§13.1.5) wherever the form records the antibiotic days, so
-its rate is a share of patient-days (§13.1.4), while a group's counts 2 of its substances given on 1 day twice and so is
-a ratio, and the substances' days of therapy can add up to more than the antibiotic days. The share of patients
-receiving a substance or group shows the choice of antibiotic; a patient receives a substance where an entry records it,
-whether or not the entry records its days. `aware` holds a substance's AWaRe category as the metadata gives it
-(`WHO_AWARE_ACCESS`, `WHO_AWARE_WATCH`, or `WHO_AWARE_RESERVE`; §13.6.1), or Not classified for a substance without one,
-and is `NA` on a group's row; the reports print it as Access, Watch, Reserve, or Not classified. Every substance and
-group with an entry keeps its row, at 0 known days where all its entries lack days. Antifungal use is not recorded.
+exposure rates stay per 100. A substance's days of therapy in a stay are bounded by its patient-days, which validation
+checks as an error (§13.1.5), so its rate is a share of patient-days (§13.1.4), while a group's counts 2 of its
+substances given on 1 day twice and so is a ratio, and the substances' days of therapy can add up to more than the
+antibiotic days. The share of patients receiving a substance or group shows the choice of antibiotic; a patient receives
+a substance where an entry records it, whether or not the entry records its days. `aware` holds a substance's AWaRe
+category as the metadata gives it (`WHO_AWARE_ACCESS`, `WHO_AWARE_WATCH`, or `WHO_AWARE_RESERVE`; §13.6.1), or Not
+classified for a substance without one, and is `NA` on a group's row; the reports print it as Access, Watch, Reserve, or
+Not classified. Every substance and group with an entry keeps its row, at 0 known days where all its entries lack days.
+Antifungal use is not recorded.
 
 ### §13.8. Infectious-Agent Tables
 
@@ -1866,11 +1871,15 @@ Partner Report compares with the reference's.
   surgical procedure whose follow-up window holds the SSI's date, the procedure's date being day 1. The window is 30
   days, or 90 days for a deep incisional or organ/space SSI after a surgical procedure that left an implant. A surgical
   revision in the same area ends the earlier procedure's window and opens its own; a record whose codes are no surgical
-  procedure (§13.9.1), such as a catheter's insertion, neither ends nor opens a window. An SSI that follows a procedure
-  whose codes no group takes (§13.9.2), within the window that procedure would open, has no eligible procedure, even
-  where an earlier surgical procedure's window also holds its date. Such an SSI, and one with no recorded surgical
-  procedure in its window, is not eligible, as the protocol says of an SSI after surgery elsewhere: it leaves the rate,
-  and the validation reports it.
+  procedure (§13.9.1), such as a catheter's insertion, neither ends nor opens a window. An SSI that another surgical
+  procedure's window also holds goes to the most recent all the same, and the validation reports it as a warning, since
+  the form cannot say which procedure opened the infected site, as the definition of an organ/space SSI requires. Where
+  the most recent date holds 2 or more surgical procedures, the SSI counts once: in their group's row where they share a
+  group, and otherwise in the overall row alone, which the validation reports too. An SSI that follows a procedure whose
+  codes no group takes (§13.9.2), within the window that procedure would open, has no eligible procedure, even where an
+  earlier surgical procedure's window also holds its date. Such an SSI, and one with no recorded surgical procedure in
+  its window, is not eligible, as the protocol says of an SSI after surgery elsewhere: it leaves the rate, and the
+  validation reports it.
 - **Observation:** follow-up also ends at death, transfer, or discharge, so the rate counts the SSIs seen in hospital,
   and how much of the window a department observes depends on how long its patients stay after surgery, which the
   methods say.
