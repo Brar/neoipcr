@@ -86,7 +86,7 @@ Where a row's return-class slug is scheduled for rename by task 1.2 (the class-s
 | 16 | `get_infectious_agent_detection_rate_per_inf_type_table` | [R/calc-tables.R](R/calc-tables.R) | `(x, use_cache, include_quartiles)` | `neoipcr_tbl_iadrpit` (→ `neoipcr_agent_detection_rate_per_infection_type_table`) | internal-stable | stable | — | — |
 | 17 | `get_infectious_agent_detection_rate_per_agent_table` | [R/calc-tables.R](R/calc-tables.R) | `(x, use_cache, include_quartiles)` | `neoipcr_tbl_iadrpa` / `_ref` (→ `neoipcr_agent_detection_rate_per_agent_table`) | internal-stable | stable | — | — |
 | 18 | `get_abr_infection_rate_table` | [R/calc-tables.R](R/calc-tables.R) | `(x, use_cache, include_quartiles)` | `neoipcr_tbl_abr_ir` / `_ref` (→ `neoipcr_abr_infection_rate_table` — keeps `abr`) | internal-stable | stable | — | — |
-| 19 | `get_organism_resistance_rate_table` | [R/calc-tables.R](R/calc-tables.R) | `(x, use_cache, include_quartiles)` | `neoipcr_tbl_org_rr` / `_ref` (→ `neoipcr_organism_resistance_rate_table`) | internal-stable | stable | — | — |
+| 19 | `get_organism_resistance_rate_table` | [R/calc-tables.R](R/calc-tables.R) | `(x, use_cache, include_quartiles)` | `neoipcr_tbl_org_rr` / `_ref` (→ `neoipcr_infectious_agent_resistance_rate_table`) | internal-stable | stable | `get_organism_resistance_rate_table` → `get_infectious_agent_resistance_rate_table` (§13.8) | — |
 | 20 | `get_resistance_test_rate_table` | [R/calc-tables.R](R/calc-tables.R) | `(x, use_cache, include_quartiles)` | `neoipcr_tbl_rtr` / `_ref` *(not in task 1.2 rename scope — see §12)* | internal-stable | stable | — | Slug `_rtr` not listed in task 1.2 rename table. |
 | 21 | `get_secondary_bsi_rate_table` | [R/calc-tables.R](R/calc-tables.R) | `(x, use_cache, include_quartiles)` | `neoipcr_tbl_sec_bsi` / `_ref` *(not in task 1.2 rename scope — see §12)* | internal-stable | stable | — | Slug `_sec_bsi` not listed in task 1.2 rename table. |
 | 22 | `neoipc_poisson_ci` | [R/ci.R](R/ci.R) | `(events, exposure, multiplier = 1000, conf.level = 0.95)` | `list(rate, lower, upper)` | external-stable | stable | `neoipc_poisson_ci` → `neoipcr_poisson_ci` (D-D) | Existing prefix `neoipc_` doesn't match package name `neoipcr`. Well-documented; has `@examples`. |
@@ -595,7 +595,7 @@ rlang::abort(c(
 
 | # | Candidate | Current inline location | Shape today | Target (package data) | Int/Ext | Accessor | Blocking |
 |---|-----------|-------------------------|-------------|-----------------------|---------|----------|----------|
-| 1 | Procedure-category map (ICHI → category code) | [R/calc-procedure-categories.R:69–210](R/calc-procedure-categories.R#L69) — `case_when` inside `get_procedure_category()` | Inline `case_when` over 9 factor levels (7 surgical categories, `not_surgery`, `to_be_categorized`) | Tibble `procedure_category_map` in `sysdata.Rda` with columns `ichi_code`, `category_code` | internal | `get_procedure_category()` (existing) | Needs a CSV source under [Surveillance-Toolkit/metadata/common/](https://github.com/NeoIPC/Surveillance-Toolkit/tree/main/metadata/common) (A5b). |
+| 1 | Procedure-category map (ICHI → category code) | [R/calc-procedure-categories.R:69–210](R/calc-procedure-categories.R#L69) — `case_when` inside `get_procedure_category()` | Inline `case_when` over 9 factor levels (7 surgical categories, `not_surgery`, `to_be_categorized`) | Tibble `procedure_category_map` in `sysdata.Rda` with columns `ichi_code`, `category_code` | internal | `get_procedure_category()` (existing) | **Superseded by §13.9.2**, whose 8 procedure groups replace the 7 categories. |
 | 2 | Procedure-category pretty-name labels | [R/calc-procedure-categories.R:215–231](R/calc-procedure-categories.R#L215-L231) — 11 `gettext()` calls (A4a F-1…F-11) | 11 factor-level label calls routed through gettext | Tibble `procedure_category_labels` in `sysdata.Rda` with locale-keyed columns (`category_code`, `label_en`, `label_de`, …) — the `countrycode` pattern | internal | new: `get_procedure_category_labels(locale = NULL)` | **Depends on D-H.** The 11 factor-label calls are the primary motivation for D-H. |
 | 3 | AWaRe categories (code → label) | [R/calc-denominators.R:218–224, 294–300](R/calc-denominators.R#L218-L224) — inline factor construction over `{"a", "w", "r"}` | Factor with levels `c("a", "w", "r")`; labels hardcoded English (Access / Watch / Reserve) | Tibble `aware_categories` in `sysdata.Rda`: `code`, `label_en`, `label_de` | internal | new: `get_aware_categories(locale = NULL)` | **Depends on D-H.** Codes come from DHIS2 option groups (read at import time); labels need the locale-column pattern. |
 | 4 | BW/GA breakpoints | [R/scales.R:1–75](R/scales.R) — hardcoded arithmetic in `ga7`, `bw50`, `bw125`, `bw250`, `bw500` | Hardcoded `floor(...)`-arithmetic in five functions | Named-list `scales_parameters` in `sysdata.Rda` (one sublist per binning) | internal | new: `get_scales_parameters()` returning the list; five binning fns consume it | **None.** Pure numeric constants. Promotable immediately (Phase 2 or earlier). |
@@ -637,7 +637,7 @@ metadata/common/
 
 | # | Candidate | Source path(s) under `metadata/common/` | Status |
 |---|-----------|-----------------------------------------|--------|
-| 1 | Procedure-category map (ICHI → category) | *(file does not yet exist)* — needs new `metadata/common/procedure-categories/NeoIPC-Procedure-Categories.csv` with columns `ichi_code`, `category_code` | **New file required.** Create in Surveillance-Toolkit before Phase 2. Coordinates with the CSV-to-YAML migration if that task restructures this domain. |
+| 1 | Procedure-category map (ICHI → category) | *(file does not yet exist)* — needs new `metadata/common/procedure-categories/NeoIPC-Procedure-Categories.csv` with columns `ichi_code`, `category_code` | **Superseded by §13.9.2**, whose 8 procedure groups replace the 7 categories. |
 | 2 | Procedure-category labels | *(file does not yet exist)* — needs `metadata/common/procedure-categories/ListElements.csv` + `ListElements.de.csv` + `ListElements.es.csv` following the locale-file convention | **New files required** + depends on D-H. |
 | 3 | AWaRe categories (code → label) | Taxonomy: `antibiotics/WHO-AWaRe-Classification-2021.csv` (exists). Labels: `antibiotics/ListElements.csv` (+ `.de.csv`, `.es.csv`) — verify the `a` / `w` / `r` codes have label entries there | **Verify first.** If labels exist, ingest; if not, extend `ListElements.csv` with three rows. Depends on D-H. |
 | 4 | BW/GA breakpoints | *(no source file needed)* — these are numeric constants, not metadata | **None.** Numbers ship inline in `sysdata.Rda` per row 4 of §7.1. Optionally document them in the Surveillance-Toolkit protocol text, but no machine-readable file is warranted. |
@@ -775,7 +775,7 @@ Flat rename table. Renames are applied in Phase 3 of task 1.1 (not in this sessi
 
 **One rename proposal withdrawn.** D-C originally proposed `get_benchmark_data()` → `calculate_benchmark_data()` based on the task file's claim that the function "actually computes." Reading the source ([R/calc-api.R:326–823](R/calc-api.R#L326-L823)) shows it combines pre-computed datasets with one small CI fix-up — not a calculation primitive. See §10.3. The task file claim is corrected in the same commit as this note.
 
-No other renames proposed for the 27 current exports. Long table-function names stay (D-E — use `@family` grouping instead of shortening).
+§13.8 adds one: `get_organism_resistance_rate_table()` becomes `get_infectious_agent_resistance_rate_table()`, and its slot `organism_resistance_rate_table` becomes `infectious_agent_resistance_rate_table`. No other renames proposed for the current exports (§3). Long table-function names stay (D-E — use `@family` grouping instead of shortening).
 
 ### §9.2. Class renames
 
@@ -934,7 +934,7 @@ Master-name choice is a *domain* call grounded in the AMA-canonical term for eac
 | 6 | agent detection rate per infection type | `agent_detection_rate_per_infection_type` | (b) keep section `infectious_agents_in_nosocomial_infections`; sub-H = `agent_detection_per_infection_type` | "Infectious agent" simplified to "agent" — H/D-side keeps "Infectious Agents" as section copy because it reads more naturally to clinicians; identifier uses "agent" for brevity. **Verify epi-correctness**. |
 | 7 | agent detection rate per agent | `agent_detection_rate_per_agent` | (a) align — sub-H = `agent_detection_per_agent` under same parent as row 6 | Distinguishes from row 6 by `_per_agent`. |
 | 8 | antibiotic-resistance infection rate | `antibiotic_resistance_infection_rate` (alt: `amr_infection_rate` if AMR is the preferred professional term) | (a) align — H/D = "Antibiotic Resistance Infection Rates" | Spell out `abr` — package-internal abbreviation. **PI: AbR vs AMR vs `antibiotic_resistance` vs `antimicrobial_resistance` — which term does the surveillance literature use?** |
-| 9 | organism resistance rate | `organism_resistance_rate` | (a) align — H/D = "Organism Resistance Rates" | Already aligned across F/S/Q/P. |
+| 9 | organism resistance rate | `infectious_agent_resistance_rate` | (a) align — H/D = "Infectious-Agent Resistance Rates" | §9.1 renames F and S to it (§13.8); C, Q, P, Z, and H follow, since what causes an infection may be no organism. |
 | 10 | antimicrobial susceptibility test rate | `antimicrobial_susceptibility_test_rate` (per H surface — the AMA-canonical term) | (a) align — H/D = "Antimicrobial Susceptibility Testing" | **The H surface is more correct than F/S/C/P**: "antimicrobial susceptibility testing" (AST) is the AMA term; "resistance test" is internal jargon. Recommend adopting the H wording as the master and renaming F/S/C/P to match. **Big Phase 3 change but it aligns with the literature**. |
 | 11 | secondary BSI rate | `secondary_bsi_rate` | (a) align — H/D = "Secondary BSI Rates" (or "Secondary Bloodstream Infection Rates" if AMA prefers full form in headings) | Keep `bsi` (clinician-standard). PI may prefer the full form in the display heading per AMA — that's a D-only choice; identifiers stay `bsi`. |
 | F1 | birth weight figure | `birth_weight_figure` | (a) align — H/D = "Birth Weight Distribution" (already correct) | Z renames `_fig-bw.qmd` → `_fig-birth-weight.qmd`. P migrates `BirthWeightDistribution` → `BirthWeightFigure` (or keep "Distribution" if PI prefers — but then F1's "figure" suffix in F/S becomes the outlier and we should pick one). |
@@ -1114,7 +1114,7 @@ We're already touching one of the three for the prefix-unification rename, and p
 | 6 | iadrpit | `agent_detection_rate_per_infection_type` | (b) keep section "Infectious Agents in Nosocomial Infections"; sub-heading per table |
 | 7 | iadrpa | `agent_detection_rate_per_agent` | (a) align under same parent as #6 |
 | 8 | abr / resistant pathogen / antibiotic resistance | `antibiotic_resistance_infection_rate` (alt: `amr_infection_rate`) | (a) align |
-| 9 | organism resistance rate | `organism_resistance_rate` | (a) align |
+| 9 | organism resistance rate | `infectious_agent_resistance_rate` | (a) align |
 | 10 | resistance test rate | **`antimicrobial_susceptibility_test_rate`** (adopt the H-surface AMA term, rename F/S/C/P/Q/Z to match) | (a) align |
 | 11 | secondary BSI rate | `secondary_bsi_rate` | (a) align — D string can spell out "Bloodstream Infection" if AMA prefers |
 | F1 | birth weight figure | `birth_weight_figure` | (a) align — Z renames `_fig-bw.qmd` → `_fig-birth-weight.qmd` |
@@ -1166,7 +1166,9 @@ enter its quartiles. Different rates answer different questions, so their numera
 tables by design; each denominator holds only the population at risk of what its numerator counts. In the measure
 tables below, *Counted* is the numerator, *Over* the denominator, *Interval* the method of the row's pooled and
 department intervals (§13.1.4), *Flag* what the sparse-data flag tests (§13.1.2), and *Quartiles* the departments that
-enter a row's quartiles. Where an earlier section describes a table's columns otherwise, this section governs.
+enter a row's quartiles. Where an earlier section describes a table's rows, columns, intervals, or quartiles, a
+dataset's slots, or the procedure categories otherwise, it describes the package as it is, and this section the
+definitions the package moves to, which govern.
 
 ### §13.1. Rules Every Table Follows
 
@@ -1176,14 +1178,15 @@ A row's pooled rate divides the events of all departments by their combined deno
 by its size and the pooled rate can fall outside the interquartile range; it takes every department, whatever the
 minimum below.
 
-Q₁, Q₂, and Q₃ are the 25th, 50th, and 75th percentiles of the rates of the departments that enter a row: those whose
-own denominator of that row is positive and reaches the minimum, at least 50 days of a day denominator (patient-days,
-device-days, substance-days) or at least 5 of a count denominator (patients, infections, procedures, detections), each
-at a rate of 0 where it had none of the row's events. The same departments make up the quartiles, their intervals
-(§13.1.4), and the display test, which is taken row by row: the quartiles are shown where at least 5 departments enter
-and their median denominator exceeds the denominator in which the pooled rate gives 1 event, the rate's scale divided
-by the pooled rate, so that a row whose pooled rate is 0 shows none. A row that fails the test shows its pooled rate
-and its interval only.
+Q₁, Q₂, and Q₃ are the 25th, 50th, and 75th percentiles, as `stats::quantile()` computes them by default (type 7,
+interpolating between adjacent ranks), of the rates of the departments that enter a row: those whose own denominator of
+that row is positive and reaches the minimum, at least 50 days of a day denominator (patient-days, device-days,
+substance-days) or at least 5 of a count denominator (patients, infections, procedures, detections), each at a rate of 0
+where it had none of the row's events. The same departments make up the quartiles, their intervals (§13.1.4), and the
+display test, which is taken row by row: the quartiles are shown where at least 5 departments enter and their median
+denominator (`stats::median()`) exceeds the denominator in which the pooled rate gives 1 event, the rate's scale divided
+by the pooled rate, so that a row whose pooled rate is 0 shows none. A row that fails the test shows its pooled rate and
+its interval only.
 
 #### §13.1.2. Sparse-Data Flag
 
@@ -1192,17 +1195,18 @@ below 16, the denominator itself not printed; the days with a device, a ventilat
 protective factor per 100 patient-days, and a single substance's days of therapy per 1000 patient-days (§13.7), are
 shares of patient-days. A count, a density, or a ratio is flagged where its effective count, the count divided by its
 design effect, is below 16. A figure without a design effect of its own tests the counts its interval takes (§13.1.4); a
-pooled 0 or share of 100% and a share whose days exceed its denominator, which have no interval (§13.1.4), are always
-flagged; and the share followed up for a secondary BSI (§13.5), which has no interval, tests its denominator. The mean
-days per exposed patient is the one ratio flagged on its effective number of exposed patients instead: a department's
-count of exposed patients, who are its clusters and so independent, and for a pooled figure that count divided by a
-design effect for the clustering of the patients within departments: the bias-reduced cluster-robust (CR2) variance of
-the pooled mean, with the departments as clusters (§13.1.4, item 2), over its variance with the patients as clusters, at
-least 1 and widened for the Bell-McCaffrey degrees of freedom of the CR2 variance, as item 2's design effect is, and 1
-where both variances are 0, as when every exposed patient has the same days. The threshold is configurable, 16 being its
-default. A pooled interval that rests on fewer than 8 degrees of freedom carries a flag of its own (§13.1.4). Every
-share carries its denominator, and every figure the effective number its flag tests, in the table neoipcr returns, so
-that a report can flag it.
+pooled figure to which fewer than 2 departments contribute, a pooled 0 or share of 100%, and a share whose days exceed
+its denominator, which have no interval (§13.1.4), are always flagged; and the share followed up for a secondary BSI
+(§13.5), which has no interval, tests its denominator. The mean days per exposed patient is the one ratio flagged on its
+effective number of exposed patients instead: a department's count of exposed patients, who are its clusters and so
+independent, and for a pooled figure that count divided by a design effect for the clustering of the patients within
+departments: the bias-reduced cluster-robust (CR2) variance of the pooled mean, with the departments as clusters
+(§13.1.4, item 2), over its variance with the patients as clusters, at least 1 and widened for the Bell-McCaffrey
+degrees of freedom of the CR2 variance, as item 2's design effect is, and 1 where both variances are 0, as when every
+exposed patient has the same days. The threshold is configurable, 16 being its default. A pooled figure, or a
+department's, whose own design effect rests on fewer than 8 degrees of freedom carries a flag of its own (§13.1.4).
+Every share carries its denominator, and every figure the effective number its flag tests and, where its design effect
+comes from its own clusters, their degrees of freedom, in the table neoipcr returns, so that a report can flag it.
 
 #### §13.1.3. Zeros
 
@@ -1219,42 +1223,65 @@ Every interval is at 95%, and none may understate the uncertainty, to which the 
 patients and within departments adds. Each row keeps a single method for every value it prints, its pooled figure, a
 department's figure, and a zero's upper limit (§13.1.3), while its quartiles take their own:
 
-1. **Quartiles:** a quartile's interval runs between the rates of 2 of the departments that enter the row (§13.1.1),
-   an order-statistic interval with ranks from the binomial distribution so that each tail holds at most 2.5%; since
-   each department's rate counts once in it, it carries the clustering within patients and within departments. A side
-   is open, a lower limit printed as 0 and an upper limit as open, where too few departments enter to give it a rank
-   (fewer than 13 for Q₁'s lower and Q₃'s upper limit, fewer than 6 for each limit of Q₂) or where its rank would fall
-   on the lowest or highest department's rate. Q₁'s interval is [0, 0] once as many departments recorded none of the
-   row's events as its upper rank, which need not be a majority, so a Q₁ of 0 with that interval carries a note that
-   counts them: "None recorded in {zeros} of {departments} departments."
+1. **Quartiles:** a quartile's interval runs between the rates of 2 of the departments that enter the row (§13.1.1), an
+   order-statistic interval with the innermost ranks from the binomial distribution at which each tail holds at most
+   2.5%; since each department's rate counts once in it, it carries the clustering within patients and within
+   departments. A side is open, a lower limit printed as the measure's minimum (below) and an upper limit as open, where
+   its rank does not exist (fewer than 13 departments for Q₁'s lower and Q₃'s upper limit, fewer than 6 for each limit
+   of Q₂) or is the lowest rank for a lower limit or the highest for an upper one, by rank whatever ties, so that no
+   limit rests on the lowest or highest rank alone: Q₁'s lower and Q₃'s upper limit thus close from 20 departments, and
+   each limit of Q₂ from 9. Q₁'s interval is [0, 0] once as many departments recorded none of the row's events as its
+   upper rank, which need not be a majority, so a Q₁ of 0 with that interval carries a note that counts them: "None
+   recorded in {zeros} of {departments} departments." The overall report keeps the note, which gives the number of
+   departments with the row's events where the quartile limits at 0 only bound it, since it names none and tells the
+   reader that [0, 0] need not mean a majority; whether a per-class report keeps it is still open.
 2. **Pooled figures:** a reference dataset's pooled rate, ratio, or share takes the row's exact interval on effective
    counts, its events and denominator divided by a design effect: the bias-reduced cluster-robust (CR2) variance of the
    pooled figure, with the departments as clusters, over its Poisson or binomial variance, at least 1 and widened for
    the Bell-McCaffrey degrees of freedom of the CR2 variance. The exact interval is the gamma interval for a rate over
    days and for a ratio, which at a design effect of 1 is the exact Poisson interval on the counts, and
-   Clopper-Pearson's for every share, a share of days included (item 3). A pooled interval is given from 2 departments,
-   and one that rests on fewer than 8 degrees of freedom is flagged. A pooled 0 and a pooled share of 100% leave no
+   Clopper-Pearson's for every share, a share of days included (item 3). A pooled interval is given from 2 contributing
+   departments, those with a positive denominator of the row, and one that rests on fewer than 8 degrees of freedom is
+   flagged. A pooled figure from fewer than 2 contributing departments, a pooled 0, and a pooled share of 100% leave no
    variance to estimate a design effect from, and so have no interval: such a figure is flagged (§13.1.2), and a note
    says that its uncertainty cannot be estimated from the data.
 3. **Shares of days:** a share of patient-days (§13.6.1, §13.7) and the Access share of substance-days (§13.6.1) take
    Clopper-Pearson's interval on an effective number of days, the days divided by the design effect, so that their
-   interval never passes 100%. Kish's effective number of patients, which a department's such share of 0 or 100%, or
-   from a single patient, takes without a reference (item 4), comes from each patient's patient-days, or for the Access
-   share from its substance-days. A share whose days exceed its denominator, which validation flags as an error
-   (§13.1.5) but which an exception or an import without the validation pass lets through, has no interval and is
+   interval never passes 100%. Kish's effective number of patients, which a department's figure that counts days takes
+   without a reference where nothing else gives it a design effect (item 4), comes from each patient's patient-days, or
+   for the Access share from its substance-days. A share whose days exceed its denominator, which validation flags as an
+   error (§13.1.5) but which an exception or an import without the validation pass lets through, has no interval and is
    flagged (§13.1.2).
-4. **A department's own figure** takes its row's method on effective counts, with a design effect of at least 1
-   estimated from how its counts vary between its patients. A figure of 0, a share of 100%, and a figure from a single
-   patient, which leave nothing to estimate it from, take instead the network's design effect for the row and the
-   department dataset's birth-weight class (§13.11.2), at least 1 and estimated over the patients of all departments,
-   which the reference stores, or, where it stores none for that class, the reference's design effect for the row over
-   its whole range; without a reference, a share of days takes Kish's effective number of the department's patients
-   (item 3), and any other figure a design effect of 1.
+4. **A department's own figure** takes its row's method on effective counts, with a design effect of at least 1 that the
+   steps below compute with the department's patients as the clusters, widened as item 2's is, a figure whose design
+   effect rests on fewer than 8 degrees of freedom being flagged. A figure of 0, a share of 100%, and a figure from a
+   single patient, which leave nothing to estimate a design effect from, and a figure whose own design effect rests on
+   fewer than 8 degrees of freedom, which leaves too little, take instead the network's design effect for the row and
+   the department dataset's birth-weight class (§13.11.2), which the same steps compute over the patients of all
+   departments in that class, at least 1, and which the reference stores; where it stores none for that class, as where
+   the class's own figure is 0 or 100%, they take the reference's design effect for the row over its whole range, and
+   where it stores none for the row either, as where the network's figure is 0 or 100% or the reference lacks the row
+   (§13.8.2), what they take without a reference. Without a reference, a figure that counts days, a share of days or a
+   ratio of days over patient-days (the Access, Watch, Reserve, and Not classified rows of §13.6.1 and an ATC group's
+   use rate, §13.7), takes the design effect that makes its effective denominator Kish's effective number of the
+   department's patients (item 3); the mean days per exposed patient and the operations per patient operated on take an
+   effective count equal to their number of patients, 1 for a single patient, since a design effect of 1 would count the
+   days or operations as independent events; and any other figure takes a design effect of 1. A share whose denominator
+   counts the department's patients, each once (the patients exposed of §13.6.2, the patients receiving a substance or
+   group of §13.7, and the patients operated on of §13.9.3), takes a design effect of 1 whatever its figure, with a
+   reference or without, since its patients are its clusters, each a 0 or a 1, and leave no clustering to correct for.
 5. **Scope:** the intervals describe neonatal departments like the participating ones.
 
-The pooled interval of item 2 takes 7 steps, over the G departments that contribute to it, department i having yᵢ events
-over its denominator wᵢ (days or counted entities), with S = Σwᵢ, Y = Σyᵢ, the pooled figure R = Y/S, the residuals
-uᵢ = yᵢ − Rwᵢ, and b = R for a rate or ratio (Poisson) or R(1 − R) for a share (binomial):
+No lower limit is printed below its measure's minimum, an open one of a quartile included: 0, but 1 for the operations
+per patient operated on (§13.9.3) and the mean days per exposed patient (§13.6.2), and 100 per 100 infections for the
+Total of the infectious agents detected (§13.8.3), measures in which every unit of the denominator holds at least 1 of
+the numerator. Since the true value never lies below the minimum, the cut keeps every interval's coverage.
+
+The pooled interval of item 2 takes 7 steps, over the G departments that contribute to it, those with a positive
+denominator of the row, department i having yᵢ events over its denominator wᵢ (days or counted entities), with S = Σwᵢ,
+Y = Σyᵢ, the pooled figure R = Y/S, the residuals uᵢ = yᵢ − Rwᵢ, and b = R for a rate or ratio (Poisson) or R(1 − R) for
+a share (binomial); a department's design effect and the network's (item 4) take the same steps with patients as the
+clusters, i then being a patient:
 
 1. The variance between departments is a moment estimator of the form of DerSimonian and Laird's:
    τ² = max{0, [Σwᵢ(yᵢ/wᵢ − R)² − (G − 1)b]/(S − Σwᵢ²/S)}.
@@ -1262,24 +1289,29 @@ uᵢ = yᵢ − Rwᵢ, and b = R for a rate or ratio (Poisson) or R(1 − R) for
    between departments.
 3. The ratio estimator's leverage is H = 1wᵀ/S, 1 being a vector of ones and w that of the wᵢ, so that every row of H is
    wᵀ/S; with Φ = diag(φᵢ) and I the identity matrix, M = (I − H)Φ(I − H)ᵀ.
-4. The CR2 variance of Bell and McCaffrey is v = Σuᵢ²(φᵢ/Mᵢᵢ)/S².
+4. The CR2 variance of Bell and McCaffrey, in the working-model form that Pustejovsky and Tipton give for weighted
+   estimators, is v = Σuᵢ²(φᵢ/Mᵢᵢ)/S².
 5. Its Bell-McCaffrey degrees of freedom are ν = (tr P)²/tr(P²), tr being the trace, with
    P = diag(√φᵢ)(I − H)ᵀ diag[wᵢ²φᵢ/(MᵢᵢS²)](I − H) diag(√φᵢ).
 6. The design effect is d = max{1, vS²/Y}(t/1.96)² for a rate or ratio and d = max{1, vS/[R(1 − R)]}(t/1.96)² for a
    share, t being the 97.5th percentile of the t distribution on ν degrees of freedom, so that the effective counts
-   shrink for the degrees of freedom as Korn and Graubard's effective sample size does.
+   shrink for the degrees of freedom as Korn and Graubard's effective sample size does, with the normal quantile 1.96 in
+   place of their t quantile on n − 1 degrees of freedom, and for rates and ratios as for shares.
 7. The interval is the row's exact interval on the effective counts Y/d and S/d: for a rate or ratio, the gamma interval
    of Fay and Feuer, [F⁻¹(0.025; Y/d), F⁻¹(0.975; Y/d + 1)]/(S/d), F⁻¹(p; a) being the p quantile of the gamma
    distribution with shape a and scale 1 (`stats::qgamma()`); for a share, the Clopper-Pearson interval on Y/d of S/d
    (`stats::qbeta()`), as Korn and Graubard propose for survey proportions.
 
-The pooled interval's degrees of freedom, which the reference stores and the flag below 8 tests (§13.1.2), are ν. The
-steps follow these sources:
+The degrees of freedom are ν: the reference stores those of each pooled interval, and a department's dataset those of
+each figure's own design effect, which decide whether the figure takes the network's (item 4); the flag below 8 tests
+both (§13.1.2). The steps follow these sources:
 
 - DerSimonian R, Laird N. Meta-analysis in clinical trials. *Control Clin Trials*. 1986;7(3):177-188.
   doi:10.1016/0197-2456(86)90046-2
 - Bell RM, McCaffrey DF. Bias reduction in standard errors for linear regression with multi-stage samples. *Surv
   Methodol*. 2002;28(2):169-181.
+- Pustejovsky JE, Tipton E. Small-sample methods for cluster-robust variance estimation and hypothesis testing in fixed
+  effects models. *J Bus Econ Stat*. 2018;36(4):672-683. doi:10.1080/07350015.2016.1247004
 - Fay MP, Feuer EJ. Confidence intervals for directly standardized rates: a method based on the gamma distribution.
   *Stat Med*. 1997;16(7):791-801. doi:10.1002/(SICI)1097-0258(19970415)16:7\<791::AID-SIM500\>3.0.CO;2-#
 - Korn EL, Graubard BI. Confidence intervals for proportions with small expected number of positive counts estimated
@@ -1297,9 +1329,10 @@ recorded none of the row's events.
 - A stay counts, with all its days, in the period in which its surveillance ended, once the stay has been completed;
   an infection form still open when the data are exported is left out, so a recent period lacks the stays not yet
   entered.
-- An infection and its days count for the department of the stay (its DHIS2 enrollment) to which the infection
-  belongs. A validation rule flags an event or a patient record whose department differs from its stay's, as a warning
-  that removes nothing.
+- An infection and its days count for the department of the stay (its DHIS2 enrollment) to which the infection belongs,
+  an SSI counting with its procedure, in the period and for the department of the procedure's stay (§13.10.1). A
+  validation rule flags an event or a patient record whose department differs from its stay's, as a warning that removes
+  nothing.
 - A stay without an antibiotic entry counts with all its days and exposures, its antibiotic days being 0; an antibiotic
   entry without days adds none, every sum counting the days that are known, and no analysis is refused.
 - A patient record that a validation rule flags as an error leaves every table with all its stays, unless an exception
@@ -1341,14 +1374,17 @@ testing (§13.8.7), the concept each code names and those flags. The tables whos
 compare the version of the layout of their rows (their order, levels, residual and summary rows, keys, and labels). A
 release of the list that changes what a table's rows count, which rows it has, how it nests and labels them, or, over
 the full ontology, the concept type it gives them (`rank`) makes stored datasets incomparable for that table until they
-are recomputed, and one that changes none of these leaves it comparable: a release that changes only the full ontology
-leaves the versions over the reporting groups comparable, and one that changes only the reporting groups leaves those
-over the full ontology comparable. The one part of the list a table reads that no digest compares is the order of the
-attributes and their values, which lays out the summary rows over the reporting groups: it comes from the release a
-dataset was calculated from, and `get_benchmark_data()` keeps the reference's order as far as its rows of the table show
-it, but places a summary row of an attribute the running neoipcr's classification lacks as a top-level row of the tree,
-ordered in each block as the tree's rows are (§13.8.2). A stored dataset lacking a digest that a later release of
-neoipcr adds counts as calculated under different definitions only for the tables that compare it.
+are recomputed, and one that changes none of these leaves it comparable. An infectious agent takes its reporting group
+and attribute values from its nearest listed ancestor or itself, so a release that adds an `Id` in the ontology alone,
+moves one, or turns one into a synonym can change the versions over the reporting groups as well; one that changes the
+ontology's nodes or paths without changing any infectious agent's reporting group, attribute values, or concept leaves
+them comparable, and one that changes only the reporting classification leaves the versions over the full ontology
+comparable. The one part of the list a table reads that no digest compares is the order of the attributes and their
+values, which lays out the summary rows over the reporting groups: it comes from the release a dataset was calculated
+from, and `get_benchmark_data()` keeps the reference's order as far as its rows of the table show it, but places a
+summary row of an attribute the running neoipcr's classification lacks as a top-level row of the tree, ordered in each
+block as the tree's rows are (§13.8.2). A stored dataset lacking a digest that a later release of neoipcr adds counts as
+calculated under different definitions only for the tables that compare it.
 
 The exposure rates (§13.6.1) and the antibiotic use (§13.7) compare, beside their version, a digest of the category of
 the World Health Organization's Access, Watch, Reserve (AWaRe) classification that the DHIS2 metadata a dataset was
@@ -1356,14 +1392,17 @@ imported from gives each antimicrobial substance, so that datasets whose metadat
 classification, or give a substance different categories, are compared for neither table. The antibiotic use also
 compares a digest of the group of the 4th level of the Anatomical Therapeutic Chemical (ATC) classification that the
 same metadata gives each substance (its option group set `ATC5`), since its group rows sum their substances, so that
-datasets whose metadata place a substance in different groups are not compared for it.
+datasets whose metadata place a substance in different groups, a substance in no group counting as one of its own
+(§13.7), are not compared for it.
 
 ### §13.2. Overview of the Dataset
 
 `calculate_reference_data()` and `calculate_department_data()` give `n_departments`, a single count, and `n_patients`,
 `n_enrollments`, and `n_patient_days`, each with its `total` and, in a reference dataset, the departments'
-`pooled_mean`, `q1`, `q2`, and `q3`. The reports' introductions print them as a list of counts and a mean, with no
-interval, flag, or minimum.
+`pooled_mean`, `q1`, `q2`, and `q3`. The reports' introductions print the counts and the mean surveillance time per
+admission, which replaces today's average surveillance period per patient record, and the Reference Report also prints
+the departments' quartiles of patient records and of patient-days, which no report prints today; none of them has an
+interval, flag, or minimum, and no report prints `pooled_mean`.
 
 | Measure | Counted | Over | Scale | Interval | Flag | Quartiles |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1395,15 +1434,24 @@ department show how far the largest departments carry the pooled rates.
 | Surgical NEC | NEC with a surgical or pathological finding or a pneumoperitoneum | patient-days | per 1000 | gamma | effective count < 16 | ≥ 50 patient-days |
 | Medical NEC | the other NEC | patient-days | per 1000 | gamma | effective count < 16 | ≥ 50 patient-days |
 
-Patient-days include days of life 1 to 3 and days 1 and 2 after a transfer or readmission, whose risk is lower but not
-nil, and the 13 days after an infection, in which the NeoIPC Core Protocol registers no new infection of the same type;
-the protocol's formula counts every patient-day, which the methods say. Since departments differ in how many of these
-days their stays hold, a rate over every patient-day can order 2 departments otherwise than one over the days at risk
-alone. A patient with a sepsis/BSI and a pneumonia counts once for each in severe infection, and a further episode of
-the same type counts where it begins 14 days or more after the previous one and after a period without symptoms of
-infection. A patient record with an infection before day of life 4, or before day 3 of its stay whatever the type of
-admission, or with a repeat of the same type within 14 days fails the onset rules, a validation error. Primary
-sepsis/BSI leaves out secondary BSI, which its own table shows.
+Patient-days include days of life 1 to 3 and days 1 and 2 of a stay, whose risk is lower but not nil, and the 13 days
+after an infection, in which the NeoIPC Core Protocol registers no new infection of the same type; the protocol's
+formula counts every patient-day, which the reports' methods texts say (here and below, what the methods texts say is a
+statement for the reworked reports' methods texts, which today's do not hold). Since departments differ in how many of
+these days their stays hold, a rate over every patient-day can order 2 departments otherwise than one over the days at
+risk alone. A patient with a sepsis/BSI and a pneumonia counts once for each in severe infection, and a further episode
+of the same type counts where it begins 14 days or more after the previous one and after a period without symptoms of
+infection. A patient record fails the onset rules, a validation error, where a sepsis/BSI, a pneumonia, or an NEC begins
+before day of life 4 or before day 3 of its stay, or where an infection of any type, an SSI included, begins fewer than
+14 days after the previous one of its type. An SSI's onset is otherwise judged by its procedure's follow-up window alone
+(§13.10.1), although the protocol states both cut-offs for SSIs too: an SSI within its procedure's window is
+hospital-acquired by its definition, and the cut-off of day 3 would drop the SSIs on days 1 and 2 of a readmission that
+§13.10.1 counts, which the methods texts say. The protocol gives the cut-off of day 3 of the stay for transfers and
+readmissions; §13 applies it to a sepsis/BSI, a pneumonia, or an NEC in every stay, which changes only a record that an
+exception keeps before day of life 4, since a stay that begins on the day of birth has its days 1 and 2 on days of life
+1 and 2. An infection that the protocol accepts before day of life 4, as clearly hospital-acquired, is kept by an
+exception that names its record for each rule it fails. Primary sepsis/BSI leaves out secondary BSI, which its own table
+shows.
 
 The 3 kinds of primary sepsis/BSI add up to it, and the 2 kinds of NEC to NEC. A BSI with both a recognized pathogen and
 a common commensal counts with the recognized pathogen; the common commensals are those the released NeoIPC
@@ -1412,16 +1460,23 @@ pathogens, as the list has them, and so does a positive culture whose infectious
 slots holding only codes the list lacks or naming none. Clinical sepsis includes sepsis without a blood culture, which
 the form cannot tell from a negative one. Surgical NEC is an NEC whose form records `NEOIPC_NEC_BOWEL_NECROSIS`,
 `NEOIPC_NEC_PNEUMATOSIS_INTESTINALIS_SURG`, or `NEOIPC_NEC_PNEUMOPERITONEUM`, the pneumoperitoneum standing in for the
-intestinal perforation that the form does not record.
+intestinal perforation that the form does not record. The row is thus wider than the protocol's definition of the same
+name, whose findings are bowel necrosis and pneumatosis intestinalis at surgery or on pathology, a pneumoperitoneum on
+imaging being a sign of its symptom-based definition, and "Medical NEC" is no term of the protocol; the reports' methods
+texts say both.
 
-The reports' section on nosocomial infections opens with counts only: the severe infections, the patients with at
-least 1, and all patients, since an average per patient has no time base. Strata by birth-weight class are reports of
+The reports' section on nosocomial infections opens with counts only, since an average per patient has no time base: the
+severe infections (`n` of the severe-infection row), the patients with at least 1 (`n_severe_infection_patients`, which
+both `calculate_reference_data()` and `calculate_department_data()` give with its `total`, counting each patient record
+once whatever its episodes and stays), and all patients (`n_patients`). Strata by birth-weight class are reports of
 their own (§13.11.2), not rows of this table.
 
 ### §13.4. Incidence Density Rates of Device-Associated Infections
 
-`get_dev_ass_incidence_density_rate_table()` builds the table, 1 row per device in `dev` (`cvc`, `pvc`, `vs` for any
-ventilatory support, `inv`, and `niv`), with `n`, `pooled`, `ci_lower`, `ci_upper`, and the quartile columns.
+`get_dev_ass_incidence_density_rate_table()` builds the table, 1 row per device in `dev` (`cvc`, a central vascular
+catheter (CVC); `pvc`, a peripheral vascular catheter (PVC); `vs`, any ventilatory support; `inv`, invasive mechanical
+ventilation (INV); and `niv`, non-invasive ventilatory support (NIV), by continuous positive airway pressure or
+high-flow nasal cannula), with `n`, `pooled`, `ci_lower`, `ci_upper`, and the quartile columns.
 
 | Measure | Counted | Over | Scale | Interval | Flag | Quartiles |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1431,14 +1486,17 @@ ventilatory support, `inv`, and `niv`), with `n`, `pooled`, `ci_lower`, `ci_uppe
 | INV-associated pneumonia | pneumonia associated with INV | INV-days | per 1000 | gamma | effective count < 16 | ≥ 50 INV-days |
 | NIV-associated pneumonia | pneumonia associated with NIV | NIV-days | per 1000 | gamma | effective count < 16 | ≥ 50 NIV-days |
 
-An infection is associated with the device its form records, by a single rule for every device, ventilation included:
-the device is in place on at least its third day, the day of placement being day 1, on the day of infection or the day
-before, a CVC taking precedence over a PVC and INV over NIV; the association is temporal, not proven causal. A catheter
-day has the catheter in place for at least 12 hours, a ventilation day more than 12 hours of that support. A device's
-first 2 days, which cannot carry an associated infection, stay in its denominator, since the day counts carry no dates
-by which to remove them. The sepsis/BSI rows include clinical sepsis, so the CVC row is not the central line–associated
-BSI rate of the National Healthcare Safety Network (NHSN). The protocol does not say whether the days with a PVC count
-while a CVC is in place, so the PVC rates may differ by each department's convention.
+An infection is associated with the device its form records, by a single rule for every device, ventilation included, as
+the protocol's data dictionary and the forms state it: the device is in place on at least its third day, the day of
+placement being day 1, on the day of infection or the day before, a CVC taking precedence over a PVC and INV over NIV;
+the association is temporal, not proven causal. The protocol's note on device-associated pneumonia, which asks for at
+least 4 calendar days of ventilation, departs from this rule, and the note and the reports' methods text, which follows
+the note today, are to follow the rule. A catheter day has the catheter in place for at least 12 hours, a ventilation
+day more than 12 hours of that support. A device's first 2 days, which cannot carry an associated infection, stay in its
+denominator, since the day counts carry no dates by which to remove them. The sepsis/BSI rows include clinical sepsis,
+so the CVC row is not the central line–associated BSI rate of the National Healthcare Safety Network (NHSN). The
+protocol's definition of a PVC day makes no exception for a CVC, so a day with both catheters counts for both; a
+department that counts such days otherwise makes its PVC rates differ by that convention.
 
 ### §13.5. Secondary Bloodstream Infections
 
@@ -1512,7 +1570,7 @@ and the duration of exposure, which the days per 100 patient-days cannot tell ap
 | Measure | Counted | Over | Scale | Interval | Flag | Quartiles |
 | --- | --- | --- | --- | --- | --- | --- |
 | Patients exposed | patients with at least 1 day of the factor | all patients | % | Clopper-Pearson | effective denominator < 16 | ≥ 5 patients |
-| Mean days per exposed patient | the days of the factor over all the exposed patients' stays in the period | patients with at least 1 day of it | days per patient | gamma | effective number of exposed patients < 16 (§13.1.2) | ≥ 5 exposed patients |
+| Mean days per exposed patient | the days of the factor over all the exposed patients' stays in the period | patients with at least 1 day of it | days per patient, at least 1 | gamma | effective number of exposed patients < 16 (§13.1.2) | ≥ 5 exposed patients |
 
 ### §13.7. Antibiotic Use by Anatomical Therapeutic Chemical Group and Substance
 
@@ -1521,20 +1579,30 @@ Chemical (ATC) classification, a 5-character code such as J01CA, in which the DH
 places each substance (§13.1.7), and 1 per substance used beneath it (`row_id`, `atc5_group`, `row_type`,
 `display_name`, and `aware`, the code naming the 4th level `atc5`), with `n`, `pooled`, `ci_lower`, `ci_upper`, and the
 quartile columns, and beside them, for each row, the patients receiving it, the patients given any antibiotic, and the
-share of the patients given any antibiotic who receive it. No totals of the 1st or 2nd ATC level are given.
+share of the patients given any antibiotic who receive it. A substance that `ATC5` places in no group stands beneath a
+group row "No ATC group", last in the table, with `atc5_group` missing, as a substance without an AWaRe category counts
+in Not classified, so that the group rows cover every substance-day. No totals of the 1st or 2nd ATC level are given,
+although the NeoIPC Core Protocol names these levels too: since nearly every substance of the NeoIPC antibiotic list
+that has an ATC code lies in J01, antibacterials for systemic use, they would nearly repeat the sum of the AWaRe rows of
+the exposure rates (§13.6.1), which give all substance-days.
 
 | Measure | Counted | Over | Scale | Interval | Flag | Quartiles |
 | --- | --- | --- | --- | --- | --- | --- |
 | Use rate | days of therapy of the substance, or of the group's substances summed | patient-days | per 1000 | Clopper-Pearson for a substance; gamma for a group | effective denominator < 16 for a substance; effective count < 16 for a group | ≥ 50 patient-days |
 | Patients receiving it | patients given the substance, or a substance of the group | patients given any antibiotic | % | Clopper-Pearson | effective denominator < 16 | ≥ 5 patients given an antibiotic |
 
-The use rate is per 1000 patient-days, as the published NeoIPC Core Protocol defines it, while the AWaRe rows of the
-exposure rates stay per 100. A substance's days of therapy in a stay are bounded by its patient-days, which validation
-checks as an error (§13.1.5), so its rate is a share of patient-days (§13.1.4), while a group's counts 2 of its
-substances given on 1 day twice and so is a ratio, and the substances' days of therapy can add up to more than the
-antibiotic days. The share of patients receiving a substance or group shows the choice of antibiotic; a patient receives
-a substance where an entry records it, whether or not the entry records its days. `aware` holds a substance's AWaRe
-category as the metadata gives it (`WHO_AWARE_ACCESS`, `WHO_AWARE_WATCH`, or `WHO_AWARE_RESERVE`; §13.6.1), or Not
+The use rate is per 1000 patient-days, as the published NeoIPC Core Protocol (version 1.2 of 2023-08-01, p. 44) defines
+it in its text and its formula alike, the formula of its current draft reading ×100 since the draft's conversion to
+AsciiDoc; `get_antibiotic_utilization_table()` gives the rate per 100 today, and the AWaRe rows of the exposure rates
+stay per 100. A substance's days of therapy in a stay are bounded by its patient-days, which validation checks as an
+error (§13.1.5), so its rate is a share of patient-days (§13.1.4), while a group's counts 2 of its substances given on 1
+day twice and so is a ratio, and the substances' days of therapy can add up to more than the antibiotic days. The share
+of patients receiving a substance or group shows the choice of antibiotic; a patient receives a substance where an entry
+records it, whether or not the entry records its days. The patients given any antibiotic are those with at least 1 entry
+that records a substance in a stay counted in the period, so that every patient receiving a substance is among them;
+their count can differ from the patients exposed to any antibiotic (§13.6.2), who go by the form's antibiotic days,
+where an entry stands on a form without antibiotic days or antibiotic days lack an entry. `aware` holds a substance's
+AWaRe category as the metadata gives it (`WHO_AWARE_ACCESS`, `WHO_AWARE_WATCH`, or `WHO_AWARE_RESERVE`; §13.6.1), or Not
 classified for a substance without one, and is `NA` on a group's row; the reports print it as Access, Watch, Reserve, or
 Not classified. Every substance and group with an entry keeps its row, at 0 known days where all its entries lack days.
 Antifungal use is not recorded.
@@ -1552,6 +1620,9 @@ classification. All 5 count findings by the same rules.
 | Nosocomial infections with resistant infectious agents | `get_abr_infection_rate_table()` | off by default; on in the "full" preset |
 | Resistance rates per infectious agent | `get_infectious_agent_resistance_rate_table()` | off by default; on in the "full" preset |
 | Completeness of antimicrobial susceptibility testing | `get_resistance_test_rate_table()` | off by default; on in the "full" preset |
+
+`get_infectious_agent_resistance_rate_table()` replaces `get_organism_resistance_rate_table()`, and the slot
+`infectious_agent_resistance_rate_table` replaces `organism_resistance_rate_table` (§9.1).
 
 #### §13.8.1. Findings
 
@@ -1576,7 +1647,10 @@ Both warn once where the findings hold codes the list lacks.
    value, with a notice, on a form the user can edit, but keeps one on a form it does not let the user edit, such as a
    completed one; they hide a primary sepsis/BSI's slots and a pneumonia's 2nd and 3rd own slots by their section,
    which keeps their values, though a further rule hides a pneumonia's 2nd and 3rd slots field by field too once its
-   1st slot is blank. Such a slot does not count either.
+   1st slot is blank. Such a slot does not count either. The item "No positive blood culture" is itself hidden field by
+   field once slot 1 names an infectious agent, so that Tracker Capture would blank it on such a form reopened for
+   editing; §13 follows the form as stored, as neoipcr's reconciliation does, so where a stored form records both, the
+   item stands and the slots do not count.
 3. **An infection is microbiologically confirmed** where at least 1 slot that counts names an infectious agent, for the
    infection itself or for a secondary BSI following it. "Not listed" (`Id` 0), "Unidentifiable" (`Id` 3561), and a
    code the list lacks confirm an infection as any other code does.
@@ -1651,7 +1725,10 @@ opens each category's block with one; the resistance rates per infectious agent 
   share a place follow that classification's order, whatever the order in which the datasets are passed, and such
   rows whose value it lacks follow their order in the joined table.
 - **Outside the tree:** "Not listed", "Unidentifiable", and codes the list lacks count in a table's Total only, and in
-  no row of a table without one; each Total carries their number for its footnote.
+  no row of a table without one. Each Total gives in `n_outside_tree` the number its footnote states: in §13.8.3, the
+  infectious agents outside the tree that the Total counts, each once per infection, as 1 number for all types; in each
+  block of §13.8.5, the detections outside the tree recorded resistant in the category, whether or not the list applies
+  the category to them (§13.8.7). Every other row leaves `n_outside_tree` missing.
 - **Nothing is hard-coded:** a group appears wherever the classification places it, and a resistance category applies
   wherever the list applies it.
 
@@ -1665,11 +1742,14 @@ denominator, and the number of departments that enter the row's quartiles (§13.
 by `abr`. Over the full ontology, `node_id` is the node's source and its record there (`<ConceptSource>|<ConceptId>`), a
 node whose source is the International Committee on Taxonomy of Viruses (ICTV) taking its ICTV identifier (`IctvId`) in
 place of its record, so that a row keeps its key across the releases of the ICTV's Master Species List that the list
-adopts; over the reporting groups, it is the group's key, and a summary row's is its attribute and value (such as
-`gram_reaction|positive`); a residual row's is its node's followed by `~n.o.s.`. The reports find the rows their
-interpretation texts quote, the group rows in the groups version and the ontology rows in the ontology version, by
-`node_id`, and in the 2 resistance tables, where a `node_id` recurs in each block that has its row, by `abr` and
-`node_id` together.
+adopts; over the reporting groups, it is the group's key, and a summary row's is neoipcr's name of its attribute
+(`gram_reaction` or `oxygen_requirement`, which no group's key can equal), `|`, and the value's key as the
+classification spells it (such as `gram_reaction|positive`); a residual row's is its node's followed by `~n.o.s.`. A
+Total row has `level` 0 and no `node_id`, `parent_id`, or `rank`, and a summary row `level` 1 and no `parent_id` or
+`rank`; `rank` is missing as well on every group and residual row and where a node has no concept type, as Viruses has
+none. The reports find the rows their interpretation texts quote, the group rows in the groups version and the ontology
+rows in the ontology version, by `node_id`, and in the 2 resistance tables, where a `node_id` recurs in each block that
+has its row, by `abr` and `node_id` together.
 
 Every calculated dataset also carries the version and commit of the infectious-agent list it was built from; beside
 each table's version, the digests of the parts of the list the table reads (§13.1.7): of the tree of each version (the
@@ -1694,9 +1774,9 @@ each row has a column for each type: primary sepsis/BSI, pneumonia, NEC, and SSI
 
 | Measure | Counted | Over | Scale | Interval | Flag | Quartiles |
 | --- | --- | --- | --- | --- | --- | --- |
-| Total | infectious agents recorded, each once per infection, primary and secondary-BSI slots together, `Id`s 0 and 3561 and codes the list lacks included | microbiologically confirmed infections, those confirmed by `Id`s 0 and 3561 or codes the list lacks included | per 100 infections | gamma | effective count < 16 | ≥ 5 confirmed infections |
-| Group or taxon | confirmed infections with at least 1 infectious agent of the row's node | confirmed infections with at least 1 infectious agent in the tree, which leaves out an infection confirmed only by `Id`s 0 or 3561 or codes the list lacks | % | Clopper-Pearson | effective denominator < 16 | ≥ 5 such infections, at 0 without the row's infectious agents |
-| Type columns | as the row, among the type's infections; in the Total row, infectious agents per 100 confirmed infections of the type | as the row, among the type's infections | % (Total: per 100 infections) | Clopper-Pearson (Total: gamma) | effective denominator < 16 (Total: effective count < 16) | none; the column for all types keeps them |
+| Total | infectious agents recorded, each once per infection, primary and secondary-BSI slots together, `Id`s 0 and 3561 and codes the list lacks included | microbiologically confirmed infections, those confirmed by `Id`s 0 and 3561 or codes the list lacks included | per 100 infections, at least 100 | gamma | effective count < 16 | ≥ 5 confirmed infections |
+| Row other than the Total | confirmed infections with at least 1 infectious agent of the row's node | confirmed infections with at least 1 infectious agent in the tree, which leaves out an infection confirmed only by `Id`s 0 or 3561 or codes the list lacks | % | Clopper-Pearson | effective denominator < 16 | ≥ 5 such infections, at 0 without the row's infectious agents |
+| Type columns | as the row, among the type's infections; in the Total row, infectious agents per 100 confirmed infections of the type | as the row, among the type's infections | % (Total: per 100 infections, at least 100) | Clopper-Pearson (Total: gamma) | effective denominator < 16 (Total: effective count < 16) | none; the column for all types keeps them |
 
 Each row counts infections, as NEO-KISS, the neonatal component of the German hospital infection surveillance system
 (KISS), counts the infections per group of infectious agents, so that a row gives the share of the infections in which
@@ -1714,6 +1794,13 @@ of the testing. Neither tells a true from a false result; a department sets its 
 whether a deviation is explained, and by what. The follow-up for a secondary BSI, a matter of surveillance capacity,
 enters neither share, so that a lack of it cannot move them: §13.5 gives it beside the secondary-BSI rate, which
 counts the infections with an infectious agent found in the blood.
+
+Both reports open their infectious-agent section with figures of §13.8.3's Total and of this table, in place of today's
+detection rate over all infection types, which this section leaves out: the infectious agents and the confirmed
+infections that the Total counts; for primary sepsis/BSI, `n` of `total`; and for pneumonia and SSI, `total`, `tested`,
+and `n`, with both shares. The Partner Report gives the department's figures first, then the reference's. The opening no
+longer reads the slot `n_infections`, nor does the surgery paragraph (§13.9.4), so no report reads it; it stays as the
+dataset's count of infections of each type, NEC and all types together included.
 
 Its result columns are `inf` (the type); `n` (the positive infections), `tested` (the positive share's denominator),
 `pooled` with `ci_lower` and `ci_upper`, and `q1`, `q2`, and `q3` with their intervals; `total` (every infection of the
@@ -1745,8 +1832,8 @@ carbapenem resistance, colistin resistance, methicillin-resistant *Staphylococcu
 vancomycin-resistant *Enterococcus* (VRE), heads a block: its Total, then its rows of either version, as §13.8.2 derives
 them from the infectious agents to which the list applies the category. MRSA thus covers the *Staphylococcus aureus*
 complex, *Staphylococcus argenteus* included, where NEO-KISS, ECDC, and its European Antimicrobial Resistance
-Surveillance Network (EARS-Net) count it within *S. aureus* alone, and the methods say so; VRE covers *Enterococcus* and
-its species. The categories overlap: an infectious agent can meet more than 1.
+Surveillance Network (EARS-Net) count it within *S. aureus* alone, and the reports' methods texts say so; VRE covers
+*Enterococcus* and its species. The categories overlap: an infectious agent can meet more than 1.
 
 | Measure | Counted | Over | Scale | Interval | Flag | Quartiles |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1774,7 +1861,7 @@ completeness of antimicrobial susceptibility testing does, so that an infectious
 such as a streptococcus beneath the order of *Enterococcus*, does not lower a parent row's share. Counting each
 infection's infectious agent once keeps one that a primary and a secondary-BSI slot both record from counting twice. The
 rate counts every infection, not only an infant's first isolate as EARS-Net does, so infants with recurrent infections
-weigh more, and the methods say so. The Tested share beside each row shows how far the rate rests on the testing.
+weigh more, and the methods texts say so. The Tested share beside each row shows how far the rate rests on the testing.
 
 #### §13.8.7. Completeness of Antimicrobial Susceptibility Testing
 
@@ -1839,7 +1926,15 @@ order, cavities before the body wall and superficial sites:
 
 The groups are defined by ICHI's axes rather than by lists of codes, so that a code entered for the first time falls in
 one. No version of ICHI is pinned: the groups take every code recorded under any of its states, each mapped to its
-current entity where one exists.
+current entity where one exists. Their placement of the codes, each with its group, the tract it opens, and whether it
+is an approach code, together with the codes that are no surgical procedure, is part of the definitions this section
+versions (§13.1.7), the recorded codes being its test cases. It places the oesophagus in the chest: an oesophageal
+atresia repair is non-cardiac thoracic surgery (group 3). The approach codes are `MAA.FA.AA` in neurosurgery,
+`JCH.AE.AA` and `JCH.FA.AA` in the chest, and `PAK.AE.AA`, `PAK.AE.AB`, and `PAK.FA.AA` in the abdomen. Of the codes of
+percutaneous drainage, only the pleura's counts (§13.9.1), and that of any other site is a needle puncture and no
+surgical procedure, a drain placed through an incision being coded as open drainage, except the peritoneum's
+(`KMA.JB.AE`): since it can also hold a primary peritoneal drain placed through an incision, it is a code that no group
+takes.
 
 A procedure counts once, by all its codes, whichever of them was entered as the main code:
 
@@ -1849,15 +1944,15 @@ A procedure counts once, by all its codes, whichever of them was entered as the 
 3. the procedure joins the first group, in the order above, that one of its remaining codes places it in.
 
 A procedure that holds only an approach code counts in the approach's group, its definitive operation unknown.
-`KMA.FA.AA` ("Incision of peritoneum"), which also covers the revision of a ventricular shunt's peritoneal end, is
-abdominal surgery unless the procedure holds a shunt code. A procedure whose codes no group takes, such as one holding
-only a code that is no valid ICHI code, is no surgical procedure until its codes are corrected: it leaves the surgery
-table, the dataset's surgical counts, and the SSI rate, and an SSI after it has no eligible procedure. Validation rules
-report, as warnings that remove no record, a procedure that holds only an approach code, a code that no group takes or
-whose group depends on what was done, such as `KMA.FA.AA`, and a procedure recorded as wound class I although a code of
-its group opens a tract. A code that is no valid ICHI code fails validation as an error, which removes its patient
-record (§13.1.5), so that for such a code the rule on a procedure whose codes no group takes decides only where an
-exception or `include_invalid_patients = TRUE` keeps the record.
+`KMA.FA.AA`, an operation on the peritoneum that is no approach code and also covers the revision of a ventricular
+shunt's peritoneal end, is abdominal surgery unless the procedure holds a shunt code. A procedure whose codes no group
+takes, such as one holding only a code that is no valid ICHI code, is no surgical procedure until its codes are
+corrected: it leaves the surgery table, the dataset's surgical counts, and the SSI rate, and an SSI after it has no
+eligible procedure. Validation rules report, as warnings that remove no record, a procedure that holds only an approach
+code, a code that no group takes or whose group depends on what was done, such as `KMA.FA.AA`, and a procedure recorded
+as wound class I although a code of its group opens a tract. A code that is no valid ICHI code fails validation as an
+error, which removes its patient record (§13.1.5), so that for such a code the rule on a procedure whose codes no group
+takes decides only where an exception or `include_invalid_patients = TRUE` keeps the record.
 
 #### §13.9.3. Measures
 
@@ -1868,13 +1963,13 @@ patient operated on, since it has no patient operated on.
 | Measure | Counted | Over | Scale | Interval | Flag | Quartiles |
 | --- | --- | --- | --- | --- | --- | --- |
 | Patients operated on | patients with at least 1 surgical procedure of the group ("Overall": of any group) | all patients | % | Clopper-Pearson | effective denominator < 16 | departments that operated in the period, with ≥ 5 patients, at 0 where they operated on none in the group |
-| Operations per patient operated on | surgical procedures of the group | patients with at least 1 surgical procedure of the group | per patient | gamma | effective count < 16 | ≥ 5 patients operated on in the group |
+| Operations per patient operated on | surgical procedures of the group | patients with at least 1 surgical procedure of the group | per patient, at least 1 | gamma | effective count < 16 | ≥ 5 patients operated on in the group |
 
 The groups' procedures add up to the overall row's, since each surgical procedure falls in 1 group; their patients
 operated on need not, since a patient can be operated on in several groups. The pooled rates take every department,
 those that do not operate included. Only departments with at least 1 surgical procedure in the period enter the
 quartiles, their intervals, and the display test, since a department that transfers its patients elsewhere for surgery
-is not at risk of operations performed in it; the methods state how many departments operate.
+is not at risk of operations performed in it; the methods texts state how many departments operate.
 
 #### §13.9.4. The Surgery Paragraph and the Dataset's Surgical Counts
 
@@ -1887,48 +1982,80 @@ records an antibiotic. The dataset's slots `n_surgical_departments`, `n_surgical
 the table: the departments with at least 1 surgical procedure, and the overall row's patients operated on and surgical
 procedures. In `calculate_reference_data()`, their per-department mean and quartiles take every department, one that
 does not operate at 0, each counting its patients operated on and surgical procedures under the same definition, with
-no antibiotic join.
+no antibiotic join. The surgery paragraph replaces today's, which says that SSI rates are not calculated; §13.10 gives
+them.
 
 ### §13.10. Surgical Site Infections per 100 Surgical Procedures
 
-The rate counts the SSIs that follow a surgical procedure per 100 surgical procedures, overall and for groups of
-similar procedures, as the NeoIPC Core Protocol defines it, crude and adjusted for nothing.
-`calculate_reference_data()` carries it in a slot of its own, its cells suppressed as the minimum cell (§13.10.4)
-requires, and `calculate_department_data()` carries the department's own counts and rates, unsuppressed, which the
-Partner Report compares with the reference's.
+The rate counts the SSIs that follow a surgical procedure per 100 surgical procedures, overall and for groups of similar
+procedures, crude and adjusted for nothing, as the NeoIPC Core Protocol defines it but for the points that §13.10.1 and
+§13.3 state with their reasons, which the reports' methods texts say: the rate leaves out an SSI present at surgery and
+a procedure on the date of death, which the protocol's formula keeps; it follows a procedure's window into a
+readmission, where the protocol ends the follow-up at transfer and discharge; a revision ends every earlier window,
+where the protocol ends only that of a procedure in the same area; and an SSI's onset is judged by its window alone,
+where the protocol applies the cut-offs of day of life 4 and day 3 of the stay to SSIs too. No report gives it today;
+both reports print it, on by default. `get_ssi_rate_table()` builds it for a dataset, and `get_ref_ssi_rate_table()`
+adds the reference's quartiles and suppression; `calculate_reference_data()` carries it as `ssi_rate_table`, its cells
+suppressed within the dataset as the minimum cell (§13.10.4) requires, and `calculate_department_data()` carries the
+department's own counts and rates, unsuppressed, which the Partner Report compares with the reference's. Which per-class
+reports withhold their overall row for one another (§13.11.2) only a step that sees the 4 classes' datasets together can
+decide.
 
 #### §13.10.1. Numerator, Denominator, and Attribution
 
-- **Counted:** the SSIs attributed to a surgical procedure of the row. An SSI already present at the time of surgery
-  (`NEOIPC_SSI_INFECTION_PRESENT`) leaves the rate together with its procedure, since the procedure did not cause it,
-  and any other SSI attributed to that procedure leaves with it; a column beside the rate gives the number of SSIs
-  present at surgery.
+- **Counted:** the SSIs attributed to a surgical procedure of the row, each counting. An SSI already present at the time
+  of surgery (`NEOIPC_SSI_INFECTION_PRESENT`) leaves the rate together with its procedure, since the procedure did not
+  cause it, and any other SSI attributed to that procedure leaves with it; where 2 or more candidate procedures of one
+  date take the SSI (below), all of them leave, with every SSI attributed to any of them. A column beside the rate gives
+  the number of SSIs present at surgery. The protocol's formula keeps such an SSI and its procedure; §13 leaves both
+  out, as the standardized infection ratios of NHSN's 2022 baseline do (NHSN Patient Safety Component Manual, ch. 9,
+  January 2026, p. 9-29), although NHSN's crude SSI rate per 100 procedures keeps them (p. 9-28).
 - **Over:** the surgical procedures of the row, each counted once, by all its codes, in the group the rule of §13.9.2
-  gives it. A procedure followed by death on its own date leaves; revisions and procedures not closed primarily count.
-- **Attribution:** the SSI form names no procedure, so an SSI is attributed by date to the most recent recorded
-  surgical procedure whose follow-up window holds the SSI's date, the procedure's date being day 1. The window is 30
-  days, or 90 days for a deep incisional or organ/space SSI after a surgical procedure that left an implant. A surgical
-  revision in the same area ends the earlier procedure's window and opens its own; a record whose codes are no surgical
-  procedure (§13.9.1), such as a catheter's insertion, neither ends nor opens a window. An SSI that another surgical
-  procedure's window also holds goes to the most recent all the same, and the validation reports it as a warning, since
-  the form cannot say which procedure opened the infected site, as the definition of an organ/space SSI requires. Where
-  the most recent date holds 2 or more surgical procedures, the SSI counts once: in their group's row where they share a
-  group, and otherwise in the overall row alone, which the validation reports too. An SSI that follows a procedure whose
-  codes no group takes (§13.9.2), within the window that procedure would open, has no eligible procedure, even where an
-  earlier surgical procedure's window also holds its date. Such an SSI, and one with no recorded surgical procedure in
-  its window, is not eligible, as the protocol says of an SSI after surgery elsewhere: it leaves the rate, and the
-  validation reports it.
-- **Observation:** follow-up also ends at death, transfer, or discharge, so the rate counts the SSIs seen in hospital,
-  and how much of the window a department observes depends on how long its patients stay after surgery, which the
-  methods say.
+  gives it. A procedure on the date of the surveillance-end form that records the patient's death
+  (`NEOIPC_SURVEILLANCE_END_REASON`, Death) leaves: NHSN leaves a procedure in which the patient dies in the operating
+  room out of its denominator (ch. 9, p. 9-27), the forms record dates without times, and the same date also catches
+  surgery on a patient already deceased, which the protocol leaves out. The protocol's formula keeps a procedure
+  followed by death. Revisions and procedures not closed primarily count.
+- **Attribution:** the SSI form names no procedure, so an SSI is attributed by date to the most recent recorded surgical
+  procedure of its patient record, in its own stay or an earlier one, whose follow-up window holds the SSI's date, the
+  procedure's date being day 1. The window is 30 days, or 90 days for a deep incisional or organ/space SSI after a
+  surgical procedure that left an implant. A procedure recorded as a revision (`NEOIPC_SURGERY_REVISION_PROCEDURE`)
+  ends, on its date, the window of every earlier surgical procedure of the patient record and opens its own: the form
+  names neither the procedure revised nor its area, which the protocol's "revision in the same area" would need. A
+  revision whose codes no group takes (§13.9.2) ends the earlier windows as well and opens none. A record whose codes
+  are no surgical procedure (§13.9.1), such as a catheter's insertion, neither ends nor opens a window. An SSI that
+  another surgical procedure's window also holds goes to the most recent all the same, and the validation reports it as
+  a warning, since the form cannot say which procedure opened the infected site, as the definition of an organ/space SSI
+  requires. Where 2 or more surgical procedures of the most recent date hold the SSI in their windows, these candidates
+  take it once: in their group's row where they share a group, and otherwise in the overall row alone, and in a
+  stratum's row only where they share the stratum, otherwise in their group's total alone; the validation reports this
+  too. An SSI within the window that a procedure whose codes no group takes would open has no eligible procedure where
+  that procedure falls on the date of the most recent surgical procedure whose window holds the SSI, or later, even
+  though that surgical procedure's window holds it too. Such an SSI, and any other that no eligible procedure's window
+  holds, is not eligible, as the protocol says of an SSI after surgery elsewhere, and leaves the rate. The validation
+  reports an SSI that no procedure form of its patient record holds in its window, whatever the form's codes and
+  revisions, as an error, which removes the patient record from every table (§13.1.5), and any other SSI without an
+  eligible procedure as a warning, which removes no record.
+- **Observation:** death ends the follow-up, while a readmission of the patient record continues it within the window,
+  since an SSI belongs to its procedure's follow-up, which can run past a discharge into a readmission; the protocol
+  ends the follow-up at transfer and discharge as well, which the reports' methods texts say. An SSI that a later stay
+  records counts with its procedure, in the period and for the department of the stay that holds the procedure
+  (§13.1.5), so that a period's numerator and denominator hold the same procedures. Attribution, and the validation of
+  an SSI against the procedure forms of its patient record, read every stay of the patient record, those of other
+  periods and those not yet completed included, and the period narrows the dataset only after them; an SSI not yet
+  recorded when its procedure's period is calculated is missing from that period, which the methods texts say. The rate
+  thus counts the SSIs seen in hospital, in the procedure's stay or a later one, and how much of the window a department
+  observes depends on how long its patients stay after surgery and whether they return, which the methods texts say.
 
 #### §13.10.2. Rows
 
 1. **Overall.**
-2. **By depth, overall only:** superficial incisional, deep incisional, and organ/space SSI, by the SSI form's
-   infection type (`NEOIPC_SSI_INFECTION_TYPE`), each over the overall row's procedures, adding up to the overall
-   rate. The groups show their total only.
-3. **Per procedure group:** its total, the groups below the minimum being pooled into 1 row that names them.
+2. **By depth, overall only:** superficial incisional, deep incisional, and organ/space SSI, by the SSI form's infection
+   type (`NEOIPC_SSI_INFECTION_TYPE`), each over the overall row's procedures, adding up to the overall rate. The groups
+   show their total only, and a per-class report (§13.11.2) prints rows 1 and 2 alone.
+3. **Per procedure group:** its total, the groups below the minimum being pooled into 1 row that names them (§13.10.4).
+   The groups' SSIs need not add up to the overall row's, since an SSI that candidates of 2 groups share counts in the
+   overall row alone (§13.10.1); the difference is printed nowhere on its own.
 4. **Per infection-risk stratum within a group,** shown only where its cell reaches the minimum, by the surgery form's
    wound class, primary closure, and implant (`NEOIPC_SURGERY_WOUND_CLASS`, `NEOIPC_SURGERY_PRIMARY_CLOSURE`,
    `NEOIPC_SURGERY_IMPLANT`):
@@ -1939,8 +2066,9 @@ Partner Report compares with the reference's.
    4. contaminated or dirty: class III or IV.
 
    A class I procedure not closed primarily, and without a code of its group opening a tract, counts in its group's
-   total and in no stratum, a footnote giving their number, so the strata need not add up to the group. The surgery
-   form requires all 3 items, so no completed procedure lacks them.
+   total and in no stratum, a footnote giving their number where they reach the minimum and no stratum of the group is
+   withheld (§13.10.4), so the strata need not add up to the group. The surgery form requires all 3 items, so the strata
+   and these procedures together make up the group.
 
 #### §13.10.3. Measure
 
@@ -1949,19 +2077,41 @@ Partner Report compares with the reference's.
 | SSI rate | SSIs attributed to a surgical procedure that the row's denominator holds | surgical procedures of the row, those followed by death on their date and those with an SSI present at surgery left out | per 100 procedures | gamma | effective count < 16 | the overall rate only, ≥ 5 procedures; none for the depths, groups, or strata |
 
 The interval is the gamma interval of a ratio (§13.1.4) because the rate counts SSIs, not procedures with an SSI: every
-attributed SSI counts, as the protocol's "Total SSI Cases" do, and a procedure can be followed by more than 1, which a
-binomial interval over the procedures, such as Clopper-Pearson's, cannot hold. The rate is a ratio of SSIs to
-procedures, so its flag tests the effective count of SSIs. The table prints the SSIs, the procedures, the rate with its
-interval, and the SSIs present at surgery; it prints the procedures, although the tables otherwise leave denominators
-unprinted, since every openly published cell holds at least 16 of them.
+SSI attributed to a procedure of the denominator counts, as the protocol's "Total SSI Cases" do, and a procedure can be
+followed by more than 1, which a binomial interval over the procedures, such as Clopper-Pearson's, cannot hold. The rate
+is a ratio of SSIs to procedures, so its flag tests the effective count of SSIs. The table prints the SSIs, the
+procedures, the rate with its interval, and the SSIs present at surgery; it prints the procedures, although the tables
+otherwise leave denominators unprinted, since every openly published cell that holds procedures holds at least 16 of
+them.
 
 #### §13.10.4. Minimum Cell
 
-An openly published cell holds at least 16 procedures from at least 3 departments, none contributing more than half of
-them. A cell below the minimum is suppressed, its counts with its rate, and a second cell is suppressed wherever a total
-would give a suppressed one back, the overall report's cell across the per-class reports included (§13.11.2); the groups
-below the minimum are pooled, and strata appear only where they reach it. Each department sees its own counts,
-unsuppressed, in its Partner Report.
+An openly published cell that holds procedures holds at least 16 of them from at least 3 departments, none contributing
+more than half of them, and the departments beyond the 2 largest together contributing at least 10% of the largest one's
+procedures, so that neither of the 2 largest can work out the other's procedures, from its own, to better than 10% of
+the largest one's: the p% rule of statistical disclosure control at p = 10 (Hundepool A, Domingo-Ferrer J, Franconi L,
+et al. *Statistical Disclosure Control*. Wiley; 2012. doi:10.1002/9781118348239). Their SSIs, which the rule does not
+test, one of them can bound for the other only to within those of the remaining departments, which may be none: a cell
+of 3 departments leaves each the others' sum, whatever the rule. A cell below the minimum is suppressed, its counts with
+its rate, and further cells are suppressed wherever a total would give a suppressed one back, the overall report's
+overall row across the per-class reports included (§13.11.2), until the suppressed cells meet the minimum together. A
+cell without procedures needs no protection: it counts as no suppressed cell, makes no other cell suppressed, and joins
+no pool, an empty group showing 0 procedures and no rate.
+
+The groups below the minimum are pooled into 1 row: while the pool misses the minimum, a further group with procedures
+joins it, the one with the fewest procedures among those with which it would meet it, or, where none would, the one with
+the fewest, ties going by the order of §13.9.2, until the pool meets the minimum or holds every group with procedures; a
+single group below the minimum takes a partner the same way. A group in the pool shows no strata and no remainder
+footnote, since its strata are rows beneath its own row, which the pool replaces. Where the pool holds every group with
+procedures, only the overall row prints, with its depths, and it only where it meets the minimum.
+
+A stratum appears only where it reaches the minimum. A group's procedures that fall in no stratum (§13.10.2) form a cell
+too, whose footnote gives their number only where they reach the minimum and no stratum of the group is withheld; where
+a stratum is withheld, the footnote is withheld with it, and the remainder counts among the withheld cells. Where the
+remainder, with any strata withheld beside it, misses the minimum, further strata are withheld, the one with the fewest
+procedures first among those with which the withheld cells would meet the minimum together, or, where none would, the
+one with the fewest, ties going by stratum number, until they meet it or every stratum is withheld. Each department sees
+its own counts, unsuppressed, in its Partner Report.
 
 ### §13.11. Case-Mix Figures and Birth-Weight Ranges
 
@@ -2005,13 +2155,20 @@ includes the patients outside the protocol's eligibility (`include_ineligible_pa
 patients of 1500 g or more born before 32 weeks. The patients without a recorded birth weight fall in no per-class
 report, and the overall report states their number. A report's header names its class, and with fewer departments per
 class more quartiles fail the display test and more rows carry the flag. A per-class report prints a row's pooled
-figures only where at least 3 departments contribute to its denominator, none contributing more than half of it,
-since a pooled figure from 1 or 2 departments can show which department had a rare infectious agent or resistance.
+figures only where at least 3 departments contribute to its denominator, none contributing more than half of it and the
+departments beyond the 2 largest together at least 10% of the largest one's part (§13.10.4), since a pooled figure from
+1 or 2 departments can show which department had a rare infectious agent or resistance.
 
-The classes that withhold a row, or a cell of the SSI rate below its minimum (§13.10.4), must together meet the rule
-that withholds it, since the overall report's row or cell, less the other classes', gives back their sum: exactly where
-no patient lacks a recorded birth weight, and as a bound where some do. A single withheld class therefore never stands
-alone: where the withheld classes do not meet the rule together, a further class withholds the row or cell, the one with
-the smallest denominator among those with which they would, or, where none would, the one with the smallest denominator,
-until they meet it or every class withholds it. The overall report withholds nothing for this, so the withheld rows and
-cells of all 4 classes are decided together, before any per-class report renders.
+A per-class report prints the SSI rate's overall row and its depths only (§13.10.2), no groups, pool, or strata, since
+the classes' pools and group rows, set against one another and against the overall report's, can give a suppressed cell
+back by subtraction although every rule of §13.10.4 is met. The classes that withhold a row, the SSI rate's overall row
+among them, must together meet the rule that withholds it, and never 1 class alone, since the overall report's row, less
+the other classes', gives back their sum: exactly where no patient lacks a recorded birth weight, and as a bound where
+some do. Where 1 class alone withholds it, or the withholding classes do not meet the rule together, a further class
+withholds it, the one with the smallest denominator among those with which they would, or, where none would, the one
+with the smallest denominator, ties going by the classes' order in the table above, until they meet it or every class
+withholds it; a class that withholds the SSI rate's overall row withholds its depths with it. A row whose denominator is
+0 in a class, an SSI overall row without procedures included, counts as no withheld row and makes no other class
+withhold it, since it shows no department's figures. The overall report withholds nothing for this, so the withheld rows
+of all 4 classes are decided together, before any per-class report renders, by a step that sees their datasets together;
+which step that is, and where it stores what it withholds, is still open.
