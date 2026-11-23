@@ -333,3 +333,29 @@ test_that("the display test takes the median of the entering departments' denomi
   expect_true(all(is.na(c(r$q1[2], r$q2[2], r$q3[2], r$q1_ci_lower[2],
                           r$q3_ci_upper[2]))))
 })
+
+test_that("incidence density rates take both the infection and its days from the stay's department", {
+  ds <- make_stay_department_calc_test_ds()
+  r <- neoipcr:::get_incidence_density_rates(
+    neoipcr:::.departments_of_the_stay(ds),
+    group_cols = "department_key", use_cache = FALSE)
+
+  # The drifting stay's sepsis and its days belong to department 2; no
+  # department holds days without infections or infections without days.
+  expect_equal(nrow(r), 2L)
+  expect_equal(unique(r$department_key), 2L)
+  expect_equal(r$n[r$inf == "bsi"], 2L)
+  expect_equal(r$patient_days[r$inf == "bsi"], 30L)
+  expect_equal(r$rate[r$inf == "bsi"], 2 / 30 * 1000)
+})
+
+test_that("infection counts group under the department of the stay", {
+  ds <- make_stay_department_calc_test_ds()
+  r <- neoipcr:::get_infection_counts(
+    neoipcr:::.departments_of_the_stay(ds),
+    group_cols = "department_key", use_cache = FALSE)
+
+  expect_equal(nrow(r), 1L)
+  expect_equal(r$department_key, 2L)
+  expect_equal(r$n, 2L)
+})

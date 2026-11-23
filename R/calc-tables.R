@@ -216,6 +216,7 @@ get_usage_density_rate_table <- function(
     cache_key, use_cache, include_quartiles)))
     return(r)
 
+  x <- .departments_of_the_stay(x)
   risk_time <- get_risk_time(x, use_cache = use_cache)
   r <- risk_time |>
     dplyr::select(!"patient_days" & tidyselect::ends_with("_days")) |>
@@ -359,6 +360,7 @@ get_antibiotic_utilization_table <- function(
     cache_key, use_cache, include_quartiles)))
     return(r)
 
+  x <- .departments_of_the_stay(x)
   patient_days <- get_risk_time(x, use_cache = use_cache)$patient_days
 
   # ATC5-level totals
@@ -493,6 +495,7 @@ get_surgery_rate_table <- function(x, use_cache = TRUE) {
   if(use_cache && !is.null(r <- get_cached(x, "surgery_rate_table")))
     return(r)
 
+  x <- .departments_of_the_stay(x)
   tibble::tibble(
     pro_cat = "overall",
     n = get_procedures(x, use_cache = use_cache) |>
@@ -533,6 +536,7 @@ get_ref_surgery_rate_table <- function(ref, use_cache = TRUE) {
   if(use_cache && !is.null(r <- get_cached(ref, "ref_surgery_rate_table")))
     return(r)
 
+  ref <- .departments_of_the_stay(ref)
   pats_per_dept <- ref |>
     get_risk_population(
       group_cols = "department_key",
@@ -655,6 +659,7 @@ get_incidence_density_rate_table <- function(
     cache_key, use_cache, include_quartiles)))
     return(r)
 
+  x <- .departments_of_the_stay(x)
   r <- x |>
     get_incidence_density_rates(use_cache = use_cache) |>
     dplyr::rename("pooled" = "rate")
@@ -774,6 +779,7 @@ get_dev_ass_incidence_density_rate_table <- function(
     cache_key, use_cache, include_quartiles)))
     return(r)
 
+  x <- .departments_of_the_stay(x)
   r <- x |>
     get_dev_ass_incidence_density_rates(use_cache = use_cache)
   r <- r |>
@@ -1077,6 +1083,7 @@ get_infectious_agent_detection_rate_per_inf_type_table <- function(
     cache_key, use_cache, include_quartiles, include_event = "full")))
     return(r)
 
+  x <- .departments_of_the_stay(x)
   types <- testing_infection_types
   counts <- get_infectious_agent_detection_rates_per_inf_type(
     x, use_cache = use_cache)
@@ -1206,6 +1213,7 @@ get_infectious_agent_detection_rate_per_agent_table <- function(
     cache_key, use_cache, include_quartiles, include_event = "full")))
     return(r)
 
+  x <- .departments_of_the_stay(x)
   d <- get_infectious_agent_detection_rates(x, rows = rows, use_cache = use_cache)
 
   total <- .infectious_agent_rate_columns(
@@ -1349,6 +1357,7 @@ get_abr_infection_rate_table <- function(
     cache_key, use_cache, include_quartiles, include_event = "full")))
     return(r)
 
+  x <- .departments_of_the_stay(x)
   d <- get_infectious_agent_resistance_rates(
     x, rows = rows, use_cache = use_cache)
   patient_days <- get_risk_time(
@@ -1537,6 +1546,7 @@ get_infectious_agent_resistance_rate_table <- function(
     cache_key, use_cache, include_quartiles, include_event = "full")))
     return(r)
 
+  x <- .departments_of_the_stay(x)
   d <- get_infectious_agent_resistance_rates(
     x, rows = rows, use_cache = use_cache)
 
@@ -1649,6 +1659,7 @@ get_resistance_test_rate_table <- function(
     cache_key, use_cache, include_quartiles, include_event = "full")))
     return(r)
 
+  x <- .departments_of_the_stay(x)
   r <- .infectious_agent_rate_columns(
     get_resistance_test_counts(x, use_cache = use_cache),
     keys = resistance_test_rows,
@@ -1706,6 +1717,7 @@ get_secondary_bsi_rate_table <- function(
     cache_key, use_cache, include_quartiles, include_event = "full")))
     return(r)
 
+  x <- .departments_of_the_stay(x)
   # Calculate pooled rates
   rates <- x |>
     get_secondary_bsi_rates(use_cache = use_cache)

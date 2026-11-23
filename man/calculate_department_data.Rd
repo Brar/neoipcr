@@ -32,6 +32,11 @@ infectious-agent figures read the findings' \code{pathogen_key}, which the
 \code{"pseudo"} tier leaves out. Another dataset is refused with an error of
 class \code{neoipcr_unmet_import_options}.
 
+An infection and its days count for the department of its stay: the
+calculations read every event under its enrolment's department and group
+a stay's rows under that department too, wherever the records were
+recorded.
+
 Where the findings hold codes the NeoIPC infectious-agent list lacks, a
 warning of class \code{neoipcr_unknown_infectious_agent_code} is raised once,
 as \code{\link[=calculate_reference_data]{calculate_reference_data()}} raises it. The result carries the versions

@@ -18,6 +18,11 @@
 #' `"pseudo"` tier leaves out. Another dataset is refused with an error of
 #' class `neoipcr_unmet_import_options`.
 #'
+#' An infection and its days count for the department of its stay: the
+#' calculations read every event under its enrolment's department and group
+#' a stay's rows under that department too, wherever the records were
+#' recorded.
+#'
 #' Where the findings hold codes the NeoIPC infectious-agent list lacks, a
 #' warning of class `neoipcr_unknown_infectious_agent_code` is raised once,
 #' with the codes in its field `codes`: the infectious-agent tables count such
@@ -68,6 +73,7 @@ calculate_reference_data <- function(x, use_cache = TRUE) {
   assert_validation_summary(x, fn_name = "calculate_reference_data")
   assert_reconciliation_summary(x, fn_name = "calculate_reference_data")
   .warn_unknown_infectious_agent_codes(x)
+  x <- .departments_of_the_stay(x)
 
   # `metadata$countries` is always a tibble under the three-mode schema
   # contract; gate on the key column instead of null-ness. Under "no" the
@@ -273,6 +279,11 @@ calculate_reference_data <- function(x, use_cache = TRUE) {
 #' `"pseudo"` tier leaves out. Another dataset is refused with an error of
 #' class `neoipcr_unmet_import_options`.
 #'
+#' An infection and its days count for the department of its stay: the
+#' calculations read every event under its enrolment's department and group
+#' a stay's rows under that department too, wherever the records were
+#' recorded.
+#'
 #' Where the findings hold codes the NeoIPC infectious-agent list lacks, a
 #' warning of class `neoipcr_unknown_infectious_agent_code` is raised once,
 #' as [calculate_reference_data()] raises it. The result carries the versions
@@ -300,6 +311,7 @@ calculate_department_data <- function(x, use_cache = TRUE) {
   assert_validation_summary(x, fn_name = "calculate_department_data")
   assert_reconciliation_summary(x, fn_name = "calculate_department_data")
   .warn_unknown_infectious_agent_codes(x)
+  x <- .departments_of_the_stay(x)
 
   rt <- x |>
     get_risk_time(use_cache = use_cache)
@@ -1112,6 +1124,47 @@ rate_definition_columns <- c(
   "table", "version", "common_commensal_digest", "concept_mapping_digest",
   "groups_tree_digest", "ontology_tree_digest", "layout",
   "applicability_digest")
+
+# The data set as every calculation reads it: each stay's records carry the
+# department of the stay, so an infection and its days count for the
+# department the stay was enrolled in, wherever the records were recorded.
+#
+# The reader keys every record to the organisation unit it was recorded
+# under, and a stay's records need not share one: the view gives every event
+# its enrolment's department and retires the patients' department, so the
+# joins that start at the patients group a stay's rows by the enrolment's.
+# Under the import options every calculation accepts, the enrolments always
+# hold the department the view takes from them; a data set whose enrolments
+# lack it fails its patients-first joins before any table reads a department
+# of its own. The import's post-filter prunes events that lack their
+# enrolment, so only a data set assembled by hand reaches the guard below.
+# Applying the view again changes nothing, so an entry point may read a data
+# set another entry point has already read. The view shares the cache of the
+# data set it reads, and cache entries do not record whether they were keyed,
+# so the calculations reach a data set only through an entry point or an
+# exported table, which key it before anything groups by department.
+.departments_of_the_stay <- function(x) {
+  if(!("department_key" %in% names(x$enrollments)))
+    return(x)
+
+  if(any(!x$events$enrollment_key %in% x$enrollments$enrollment_key))
+    rlang::abort(
+      c("An event has no enrolment in the data set.",
+        i = "The import's post-filter prunes such events; a data set assembled by hand must hold every event's enrolment."),
+      .internal = TRUE)
+
+  x$events <- x$events |>
+    dplyr::select(-tidyselect::any_of("department_key")) |>
+    dplyr::left_join(
+      x$enrollments |>
+        dplyr::select("enrollment_key", "department_key"),
+      dplyr::join_by("enrollment_key"),
+      relationship = "many-to-one")
+  if("department_key" %in% names(x$patients))
+    x$patients <- x$patients |>
+      dplyr::select(-"department_key")
+  x
+}
 
 # The slots of the tables whose rows are infectious agents, both versions of
 # each.

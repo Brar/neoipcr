@@ -1443,6 +1443,61 @@ make_resistance_quartile_test_ds <- function() {
     patient_days = c(rep(100L, 5), 40L, 100L, 100L)))
 }
 
+# Calc pipeline fixture of one stay whose records sit in three departments:
+# its patient's tracked entity in department 1, its enrolment — the stay
+# itself — in department 2, and all four of its forms in department 3, plus a
+# stay consistent within department 2. The calculations must count each stay's
+# patient-days, infections, and procedures for the department of its stay,
+# here department 2 for both.
+make_stay_department_calc_test_ds <- function(include_patient = "full") {
+  md <- read_test_metadata(
+    dataset_options = dhis2_dataset_options(
+      include_department = "full",
+      include_country    = "full"))
+  md$departments      <- make_test_metadata_departments(3)
+  md$hospitals        <- make_test_metadata_hospitals(3)
+  md$countries        <- make_test_metadata_countries(3)
+  md$worldBankClasses <- make_test_metadata_wb_classes(3)
+  md$eventTypes       <- make_test_metadata_event_types()
+  md$dataset_options  <- dhis2_dataset_options(
+    include_department = "full",
+    include_country    = "full",
+    include_patient    = include_patient,
+    include_enrollment = "full",
+    include_event      = "full")
+
+  patients <- make_test_patients(2,
+    include_patient = include_patient,
+    department_key  = c(1L, 2L))
+
+  enrollments <- make_test_enrollments(2,
+    patient_keys   = 1:2,
+    department_key = c(2L, 2L))
+
+  # Events 1 to 4 hold the drifting stay and 5 to 7 the consistent one;
+  # the first stay's forms are all recorded under department 3.
+  events <- make_test_events(
+    n               = 7,
+    enrollment_keys = c(1, 1, 1, 1, 2, 2, 2),
+    patient_keys    = c(1, 1, 1, 1, 2, 2, 2),
+    event_type_keys = c("adm", "end", "bsi", "pro", "adm", "end", "bsi"),
+    department_key  = c(3L, 3L, 3L, 3L, 2L, 2L, 2L))
+
+  make_test_ds(
+    metadata                = md,
+    patients                = patients,
+    enrollments             = enrollments,
+    events                  = events,
+    admissionData           = make_test_admission_data(c(1L, 5L)),
+    surveillanceEndData     = make_test_surveillance_end_data(
+      c(2L, 6L), patient_days = c(10L, 20L)),
+    sepsisData              = make_test_sepsis_data(c(3L, 7L)),
+    surgeryData             = make_test_surgery_data(4L),
+    substanceDays           = make_test_substance_days(c(2L, 6L)),
+    infectiousAgentFindings = make_test_iaf(c(3L, 7L),
+      pathogen_key = c(1L, 2L)))
+}
+
 
 #' Construct a minimal structurally valid neoipcr_ds object.
 #'

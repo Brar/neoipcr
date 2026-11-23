@@ -2685,3 +2685,80 @@ test_that("get_benchmark_data gives a row of the resistance rates the reference 
                      label = slot)
   }
 })
+
+
+# --- Department of the stay --------------------------------------------------
+#
+# An infection and its days count for the department of its stay — the
+# enrolment's — not for the department the patient's record or the forms were
+# recorded under. `make_stay_department_calc_test_ds()` holds one stay whose
+# records sit in departments 1, 2, and 3, and a stay consistent in department
+# 2, so both must count for department 2.
+
+test_that("the view of the stay's departments keys every event to its stay and retires the patients' own department", {
+  ds <- make_stay_department_calc_test_ds()
+  view <- neoipcr:::.departments_of_the_stay(ds)
+
+  stay_department <- view$events$department_key[
+    match(view$events$enrollment_key, view$enrollments$enrollment_key)]
+  expect_equal(view$events$department_key, stay_department)
+  expect_false("department_key" %in% names(view$patients))
+  expect_equal(view$enrollments, ds$enrollments)
+  # Applying it again changes nothing, so an entry point may read a dataset
+  # another has already read.
+  expect_equal(neoipcr:::.departments_of_the_stay(view), view)
+  # The view shares the cache of the dataset it was read from, so the
+  # calculations see each other's results through either.
+  expect_identical(view$.cache, ds$.cache)
+})
+
+test_that("the calculation entry points read every stay as its department, and the view leaves every pooled result where it was", {
+  ds <- make_stay_department_calc_test_ds()
+  view <- neoipcr:::.departments_of_the_stay(ds)
+
+  own <- calculate_department_data(ds, use_cache = FALSE)
+  own_view <- calculate_department_data(view, use_cache = FALSE)
+  ref <- calculate_reference_data(ds, use_cache = FALSE)
+  ref_view <- calculate_reference_data(view, use_cache = FALSE)
+
+  # What the stay's department is changes nothing about the pooled results:
+  # both readings of the same data give the same result in every table and
+  # every count.
+  expect_setequal(names(own), names(own_view))
+  for (slot in setdiff(names(own), "metadata"))
+    expect_equal(own[[slot]], own_view[[slot]], label = slot)
+  for (slot in setdiff(names(ref), "metadata"))
+    expect_equal(ref[[slot]], ref_view[[slot]], label = slot)
+
+  expect_equal(own$n_patient_days$total, 30L)
+  expect_equal(
+    own$n_infections$total[own$n_infections$inf_type == "overall"], 2L)
+})
+
+test_that("the view refuses a data set whose event has no enrolment in it", {
+  ds <- make_stay_department_calc_test_ds()
+
+  unknown <- ds
+  unknown$events$enrollment_key[7L] <- 99L
+  expect_error(neoipcr:::.departments_of_the_stay(unknown),
+               "no enrolment in the data set")
+
+  unanswered <- ds
+  unanswered$events$enrollment_key[7L] <- NA_integer_
+  expect_error(neoipcr:::.departments_of_the_stay(unanswered),
+               "no enrolment in the data set")
+})
+
+test_that("the view keys the events even where the patients carry no department of their own", {
+  ds <- make_stay_department_calc_test_ds(include_patient = "pseudo")
+  view <- neoipcr:::.departments_of_the_stay(ds)
+
+  stay_department <- view$events$department_key[
+    match(view$events$enrollment_key, view$enrollments$enrollment_key)]
+  expect_equal(view$events$department_key, stay_department)
+
+  r <- neoipcr:::get_procedures(
+    view, group_cols = "department_key", use_cache = FALSE)
+  expect_equal(r$department_key, 2L)
+  expect_equal(r$n, 1L)
+})

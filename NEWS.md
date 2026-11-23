@@ -14,6 +14,12 @@ section above it for the next changes.
 
 # neoipcr (development version)
 
+* An infection and its days count for the department of its stay. The reader keys each record —
+  the patient's, the enrolment, and each form — to the organisation unit it was recorded under,
+  and a stay's records need not all belong to one unit: a form recorded under another unit's
+  department counted the stay's infection there, while its patient-days grouped under the
+  patient's own department. The calculations now read every event under its enrolment's
+  department and group a stay's rows there too.
 * neoipcr classifies infectious-agent findings by tables built from a release of the NeoIPC
   infectious-agent list and its reporting classification in the Surveillance-Toolkit, the release
   that `neoipcr_supported_versions()` gives as the new element `infectious_agents`. The tables they
