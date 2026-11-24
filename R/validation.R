@@ -33,12 +33,13 @@
 
 # The `patient_columns` keys of the patient attributes the pass reads whatever
 # `patient_columns` selects — rule 56 the multiple-birth flag and the number of
-# infants, rule 57 the birth weight and the gestational age in both its forms,
-# the total gestation days and the text, and rule 58 the text: the import
-# reads them for the pass and drops them again unless selected. Rules 56 and
-# 58 record the value they compared in their finding's context, so the import
-# masks it there too (`.mask_unreturned_patient_context()`), and the dataset
-# holds only the patient attributes the caller asked for.
+# infants, rules 57 and 73 the birth weight and the gestational age in both its
+# forms, the total gestation days and the text (rule 73 reads the gestational
+# age to tell a patient it queries from rule 57's), rule 58 the text: the import
+# reads them for the pass and drops them again unless selected. Rules 56 and 58
+# record the value they compared in their finding's context, so the import masks
+# it there too (`.mask_unreturned_patient_context()`), and the dataset holds only
+# the patient attributes the caller asked for.
 .pass_patient_columns <- c(
   "multiple_birth", "siblings", "birth_weight", "gestational_age")
 
@@ -210,7 +211,11 @@ validation_rules <- list(
        context = "infection_type", fun = validation_rule_61),
   list(id = 62L, level = "enrollment", event_types = "end",
        context = c("substance_code", "substance", "substance_days", "ab_days"),
-       fun = validation_rule_62))
+       fun = validation_rule_62),
+  # The id runs to 73, not 63: ids 63 to 72 are not in use, so the registry
+  # jumps from 62 to 73.
+  list(id = 73L, level = "patient", severity = "warning", context = character(),
+       fun = validation_rule_73))
 
 # How long an enrolment may stay active after its enrolment date before
 # rules 43 and 44 question it. A neonatal stay past four months is
@@ -445,8 +450,11 @@ validation_rule_context_fields <- function()
 #' others. A warning flags a record the analyses can use as it
 #' stands although it may hide a mistake the record cannot prove: an
 #' enrolment open for more than 120 days, which may be a stay still going on
-#' (rules 43 and 44), and a substance recorded in two slots of a form, most
-#' often one per treatment course, whose days the analyses add up (rule 54).
+#' (rules 43 and 44), a substance recorded in two slots of a form, most
+#' often one per treatment course, whose days the analyses add up (rule 54),
+#' and a patient with no recorded birth weight beside a recorded gestational
+#' age, which leaves that patient out of the reports of a birth-weight class
+#' while the overall and gestational-age reports keep it (rule 73).
 #' The slots of one substance adding up to more days than the form's
 #' antibiotic days prove a mistake, and are an error (rule 62).
 #'
@@ -658,7 +666,7 @@ validation_summary <- function(findings)
 #' @section Severities:
 #' An error flags a record the analyses cannot use as recorded. A warning
 #' flags one they can, although it may hide a mistake the record cannot
-#' prove: rules 43, 44, and 54 are warnings, every other rule an error, as
+#' prove: rules 43, 44, 54, and 73 are warnings, every other rule an error, as
 #' [validation_rule_severities()] lists them. `validate()` reports both
 #' alike; the import's validation pass removes the patient records an error
 #' flags and keeps those only a warning flags, counting both in its
@@ -668,7 +676,7 @@ validation_summary <- function(findings)
 #' @section Context fields:
 #' Each rule records the fields below in `context`, identifies its finding
 #' by the key named as its level, and is exempted by an exception record
-#' written at that level: the patient alone for rules 1 and 56–58, the
+#' written at that level: the patient alone for rules 1, 56–58, and 73, the
 #' patient and the enrolment date for an enrolment-level rule, and the
 #' event's type and date as well for an event-level rule, the type being one
 #' the rule concerns (rules 7, 12, 27–30 and 59 sepsis, 8, 13, 35–38 and 60
@@ -897,6 +905,7 @@ validation_summary <- function(findings)
 #' | 60 | `event_key` | `imaging_count`, `clinical_count`, `surgical_count` |
 #' | 61 | `event_key` | `infection_type` |
 #' | 62 | `enrollment_key` | `substance_code`, `substance`, `substance_days`, `ab_days` — one finding per substance and form |
+#' | 73 | `patient_key` | none |
 #'
 #' @family validation
 #' @export

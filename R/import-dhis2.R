@@ -351,8 +351,8 @@ import_dhis2 <- function(
 
   # The validation pass reads patient attributes whatever the caller selected
   # (`.pass_patient_columns`: rule 56 the multiple-birth flag and the number of
-  # infants, rule 57 the birth weight and the gestational age, rule 58 the
-  # gestational-age text): with the pass to run, the patients are read as the
+  # infants, rules 57 and 73 the birth weight and the gestational age, rule 58
+  # the gestational-age text): with the pass to run, the patients are read as the
   # full tier with those added to the selection (the pseudonymized tier's
   # selection being its key alone), and are narrowed to the requested shape
   # once the pass has run, the findings' context with them, so the dataset

@@ -85,7 +85,7 @@ writeLines(x, con, sep = "\n", useBytes = TRUE)
 | `R/validation-rules-pathogens.R` | Rule 20: infectious-agent name resolution, a finding recorded as the unknown infectious agent, with the free-text name entered for it |
 | `R/validation-rules-event-timing.R` | Rules 27–42: an event form's stored day of life and day after admission against the computed ones, and the early-onset flags |
 | `R/validation-rules-infections.R` | Rules 49, 50, and 55: an infection against the patient's other infections (repeat within 14 days), the surveillance-end form (device association without device days), and its own findings (the secondary-BSI item against the infectious agents recorded) |
-| `R/validation-rules-patient.R` | Rules 56–58: the patient record (fewer than two infants at a recorded multiple birth, neither birth weight nor gestational age in either form, a gestational-age text in the wrong format) |
+| `R/validation-rules-patient.R` | Rules 56–58 and 73: the patient record (fewer than two infants at a recorded multiple birth, neither birth weight nor gestational age in either form, a gestational-age text in the wrong format, a missing birth weight beside a recorded gestational age) |
 | `R/validation-rules-definitions.R` | Rules 59–61: a completed infection form against the case definition Tracker Capture checks on completion (clinical sepsis, NEC, the SSI depth recorded), reading empty items as the client does; `.bsi_clinical_sepsis()`, shared with the reconciliation of a culture-negative sepsis |
 | **Other** | |
 | `R/infectious-agents.R` | `get_infectious_agents()`, each code of the NeoIPC infectious-agent list with its name and the concept it names, read from `R/sysdata.rda`; the lineage and the flags stay internal |

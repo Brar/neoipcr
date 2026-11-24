@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: neoipcr 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/NeoIPC/neoipcr/issues\n"
-"POT-Creation-Date: 2026-11-28 09:09+0100\n"
+"POT-Creation-Date: 2026-11-28 09:52+0100\n"
 "PO-Revision-Date: 2025-05-27 16:56+0200\n"
 "Last-Translator: Brar Piening <brar.piening@charite.de>\n"
 "Language-Team: NeoIPC-Support <NeoIPC-Support@charite.de>\n"
@@ -669,7 +669,7 @@ msgstr ""
 msgid "Import with %s."
 msgstr ""
 
-#: R/validation-exceptions.R:248 R/validation.R:377
+#: R/validation-exceptions.R:248 R/validation.R:382
 msgid "%s must be a data frame of exception records."
 msgstr ""
 
@@ -697,7 +697,7 @@ msgid ""
 "code, which this dataset does not carry."
 msgstr ""
 
-#: R/validation-exceptions.R:338 R/validation.R:524
+#: R/validation-exceptions.R:338 R/validation.R:532
 msgid "Got %s."
 msgstr ""
 
@@ -794,85 +794,85 @@ msgstr ""
 msgid "rules %s do not concern the %s their records name"
 msgstr ""
 
-#: R/validation.R:255
+#: R/validation.R:260
 msgid "%s must be a single %s."
 msgstr ""
 
-#: R/validation.R:271
+#: R/validation.R:276
 msgid ""
 "The age of an open enrolment is measured against the date the data was read, "
 "which this dataset does not carry."
 msgstr ""
 
-#: R/validation.R:272
+#: R/validation.R:277
 msgid "An import records it on %s; pass %s to %s otherwise."
 msgstr ""
 
-#: R/validation.R:330
+#: R/validation.R:335
 msgid "The validation pass could not run every rule on this dataset."
 msgstr ""
 
-#: R/validation.R:332
+#: R/validation.R:337
 msgid ""
 "Rule %s did not run: the dataset lacks what it reads, which the log names."
 msgstr ""
 
-#: R/validation.R:334
+#: R/validation.R:339
 msgid ""
 "Rules %s did not run: the dataset lacks what they read, which the log names "
 "for each."
 msgstr ""
 
-#: R/validation.R:336
+#: R/validation.R:341
 msgid ""
 "The pass needs the full enrolment and event tiers with every column they "
 "declare, and the events that are not completed whenever the enrolments that "
 "are not completed are requested."
 msgstr ""
 
-#: R/validation.R:378
+#: R/validation.R:383
 msgid "Pass the list %s returns, or the key form %s returns."
 msgstr ""
 
-#: R/validation.R:394
+#: R/validation.R:399
 msgid ""
 "an exception record must name the dataset record it exempts through at least "
 "one of %s"
 msgstr ""
 
-#: R/validation.R:397
+#: R/validation.R:402
 msgid "%s must hold integer keys or %s"
 msgstr ""
 
-#: R/validation.R:401
+#: R/validation.R:406
 msgid "%s in key form must name existing rules through integer keys."
 msgstr ""
 
-#: R/validation.R:520
+#: R/validation.R:528
 msgid "%s must be a result of %s."
 msgstr ""
 
-#: R/validation.R:522
+#: R/validation.R:530
 msgid "It carries no %s attribute."
 msgstr ""
 
-#: R/validation.R:919
+#: R/validation.R:928
 msgid "%s must be a vector of whole numbers naming validation rules."
 msgstr ""
 
-#: R/validation.R:925
+#: R/validation.R:934
 msgid "%s names validation rules that do not exist."
 msgstr ""
 
-#: R/validation.R:927
+#: R/validation.R:936
 msgid "Unknown rule id: %s."
 msgstr ""
 
-#: R/validation.R:929
+#: R/validation.R:938
 msgid "Unknown rule ids: %s."
 msgstr ""
 
-#: R/validation.R:930
+#: R/validation.R:939
 msgid "The rules are numbered %d to %d; see %s."
 msgstr ""
 

@@ -1,4 +1,4 @@
-# Tests for R/validation-rules-patient.R — rules 56 to 58.
+# Tests for R/validation-rules-patient.R — rules 56 to 58 and 73.
 
 # Two patients with the multiple-birth flags `flags` and the numbers of
 # infants `infants`, the columns the rule reads selected.
@@ -183,4 +183,71 @@ test_that("rule 58 skips without a warning when the gestational-age text is abse
   ds$patients$gest_age <- NULL
   expect_no_warning(result <- neoipcr:::validation_rule_58(ds, NULL))
   expect_null(result)
+})
+
+# --- Rule 73: the missing birth weight ---
+
+test_that("rule 73 detects a patient with no birth weight but a gestational age", {
+  # Patient 1 has the gestational age as a total, patient 3 only as a text;
+  # both keep it, so neither is rule 57's patient, and the query asks for the
+  # birth weight the gestational age does not stand in for.
+  result <- neoipcr:::validation_rule_73(
+    eligibility_ds(c(NA, 1200L, NA), c(210L, 210L, NA), c(NA, NA, "28+3")),
+    NULL)
+  expect_equal(result$patient_key, c(1L, 3L))
+  expect_declared_context(result)
+  expect_equal(result$rule_id, c(73L, 73L))
+  # A patient-level finding names no enrolment or event, and the rule
+  # carries no value: the finding is the missing field itself.
+  expect_true(all(is.na(result$enrollment_key)))
+  expect_true(all(is.na(result$event_key)))
+  expect_null(result$context[[1]])
+})
+
+test_that("rule 73 leaves a patient with a birth weight alone, in whatever range", {
+  # The rule queries the missing value, not an implausible one: a birth
+  # weight, small or large, is a recorded birth weight.
+  expect_equal(nrow(neoipcr:::validation_rule_73(
+    eligibility_ds(c(420L, 1200L, 3100L), c(210L, 210L, 280L)), NULL)), 0L)
+})
+
+test_that("rule 73 leaves a patient with neither value alone, which is rule 57's finding", {
+  # A patient who records neither an eligible birth weight nor a gestational
+  # age (in either form) is rule 57's error, which removes the patient; the
+  # query for the missing birth weight leaves it alone, so the two rules do
+  # not flag the same record.
+  expect_equal(nrow(neoipcr:::validation_rule_73(
+    eligibility_ds(c(NA, NA, NA), c(NA, NA, NA), c(NA, "", NA)),
+    NULL)), 0L)
+})
+
+test_that("rule 73 honours exceptions", {
+  result <- neoipcr:::validation_rule_73(
+    eligibility_ds(c(NA, NA, 1200L), c(210L, 210L, 210L)),
+    make_test_exceptions(73L, patient_key = 1L))
+  expect_equal(result$patient_key, 2L)
+})
+
+test_that("rule 73 skips without a warning when a value it reads is absent", {
+  # Without the gestational age the rule cannot tell its patient from rule
+  # 57's, so it skips rather than flag the overlap.
+  for (col in c("birth_weight", "total_gestation_days", "gest_age")) {
+    ds <- eligibility_ds(c(NA, 1200L, 2500L), c(210L, 210L, 280L))
+    ds$patients[[col]] <- NULL
+    expect_no_warning(result <- neoipcr:::validation_rule_73(ds, NULL))
+    expect_null(result)
+  }
+})
+
+test_that("rule 73 is registered as a patient-level warning", {
+  # The warning severity is what makes the import's pass report the finding
+  # without removing the patient (import-dhis2.R keeps a patient no error
+  # flags); this pins the registration that drives that.
+  entry <- Filter(\(rule) rule$id == 73L, neoipcr:::validation_rules)[[1]]
+  expect_equal(entry$level, "patient")
+  expect_equal(entry$severity, "warning")
+  expect_false("event_types" %in% names(entry))
+  expect_equal(entry$context, character())
+  severities <- neoipcr::validation_rule_severities()
+  expect_equal(unname(severities[["73"]]), "warning")
 })

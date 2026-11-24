@@ -19,8 +19,11 @@ counting the records a warning flags in \code{validationSummary} beside the
 others. A warning flags a record the analyses can use as it
 stands although it may hide a mistake the record cannot prove: an
 enrolment open for more than 120 days, which may be a stay still going on
-(rules 43 and 44), and a substance recorded in two slots of a form, most
-often one per treatment course, whose days the analyses add up (rule 54).
+(rules 43 and 44), a substance recorded in two slots of a form, most
+often one per treatment course, whose days the analyses add up (rule 54),
+and a patient with no recorded birth weight beside a recorded gestational
+age, which leaves that patient out of the reports of a birth-weight class
+while the overall and gestational-age reports keep it (rule 73).
 The slots of one substance adding up to more days than the form's
 antibiotic days prove a mistake, and are an error (rule 62).
 }

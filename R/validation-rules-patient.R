@@ -112,3 +112,43 @@ validation_rule_58 <- function(x, exceptions)
       context        = .data$context,
       .keep = "none")
 }
+
+# Find patients with no recorded birth weight but a recorded gestational age.
+# The registration form of a site outside the NeoDeco trial requires a birth
+# weight only where the gestational age is missing, so an empty birth weight
+# beside a gestational age is a recorded absence the form allows, not an entry
+# made around it. The birth weight divides the reports: a patient without one
+# falls outside each birth-weight range and so leaves the reports of those
+# ranges while the overall report and the gestational-age reports keep it. The
+# Validation Reports query the missing value so the team can record it if the
+# infant has one; the query removes nothing, since these infants stay in the
+# surveillance. Rule 57 is the stronger case it does not overlap: that record
+# holds no gestational age either, which is an error that removes the patient.
+# A patient the eligibility filter leaves out for want of a birth weight while
+# its gestational age also fails is not this rule's, the filter having removed
+# it before the pass; this rule reads the gestational age only to tell the two
+# rules apart.
+validation_rule_73 <- function(x, exceptions)
+{
+  check_neoipcr_ds(x)
+  if (!all(c("birth_weight", "total_gestation_days", "gest_age") %in%
+           names(x$patients)))
+    return(.rule_skipped(
+      73L, "the patients' birth weight, total gestation days, and gestational-age text"))
+
+  x$patients |>
+    dplyr::filter(
+      is.na(.data$birth_weight) &
+        (!is.na(.data$total_gestation_days) | .text_recorded(.data$gest_age))) |>
+    dplyr::select("patient_key") |>
+    dplyr::anti_join(
+      .rule_exceptions(exceptions, 73L),
+      dplyr::join_by("patient_key")) |>
+    dplyr::mutate(
+      rule_id        = 73L,
+      patient_key    = .data$patient_key,
+      enrollment_key = NA_integer_,
+      event_key      = NA_integer_,
+      context        = list(NULL),
+      .keep = "none")
+}

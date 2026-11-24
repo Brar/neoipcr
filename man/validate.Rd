@@ -80,7 +80,7 @@ is written and translated where the document is rendered.
 
 An error flags a record the analyses cannot use as recorded. A warning
 flags one they can, although it may hide a mistake the record cannot
-prove: rules 43, 44, and 54 are warnings, every other rule an error, as
+prove: rules 43, 44, 54, and 73 are warnings, every other rule an error, as
 \code{\link[=validation_rule_severities]{validation_rule_severities()}} lists them. \code{validate()} reports both
 alike; the import's validation pass removes the patient records an error
 flags and keeps those only a warning flags, counting both in its
@@ -92,7 +92,7 @@ record from a warning as from an error.
 
 Each rule records the fields below in \code{context}, identifies its finding
 by the key named as its level, and is exempted by an exception record
-written at that level: the patient alone for rules 1 and 56–58, the
+written at that level: the patient alone for rules 1, 56–58, and 73, the
 patient and the enrolment date for an enrolment-level rule, and the
 event's type and date as well for an event-level rule, the type being one
 the rule concerns (rules 7, 12, 27–30 and 59 sepsis, 8, 13, 35–38 and 60
@@ -319,6 +319,7 @@ being a compulsory value of the form, which no rule checks.\tabular{lll}{
    60 \tab \code{event_key} \tab \code{imaging_count}, \code{clinical_count}, \code{surgical_count} \cr
    61 \tab \code{event_key} \tab \code{infection_type} \cr
    62 \tab \code{enrollment_key} \tab \code{substance_code}, \code{substance}, \code{substance_days}, \code{ab_days} — one finding per substance and form \cr
+   73 \tab \code{patient_key} \tab none \cr
 }
 }
 
