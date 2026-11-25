@@ -1118,6 +1118,17 @@ rate_definition_columns <- c(
   "groups_tree_digest", "ontology_tree_digest", "layout",
   "applicability_digest")
 
+# The version the procedure placement and the surgical counts carry into the
+# keys of the caches they fill. A cached result computed under another
+# version is a different number, and a cache restored with its dataset must
+# not answer for the current definitions after a version of those counts
+# rises; the tag retires the entries of the old version with it.
+.surgical_definitions_version <- function() {
+  min(unname(rate_definition_versions[
+    c("n_surgical_departments", "n_surgical_patients",
+      "n_surgical_procedures", "surgery_rate_table")]))
+}
+
 # The slots of the tables whose rows are infectious agents, both versions of
 # each.
 .infectious_agent_table_slots <- function()

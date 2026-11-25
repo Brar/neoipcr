@@ -35,19 +35,28 @@ get_risk_population <- function(x, group_cols = NULL, use_cache = TRUE) {
     cache(x, cache_key)
 }
 
+# The surgery form's three code columns, an absent one standing in as
+# empty: a dataset taken from a form version without the side codes counts
+# like one whose procedures hold no side code.
+.surgery_code_columns <- function(surgeryData) {
+  for (col in c("main_procedure_code", "side_procedure_code_1",
+                "side_procedure_code_2"))
+    if (!(col %in% names(surgeryData)))
+      surgeryData <- dplyr::mutate(surgeryData, !!col := character())
+  surgeryData
+}
+
 get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE) {
+  v <- paste0(".v", .surgical_definitions_version())
   if(is.null(group_cols))
-    cache_key <- "surgery_risk"
+    cache_key <- paste0("surgery_risk", v)
   else
-    cache_key <- paste0("surgery_risk_by.", paste0(group_cols, collapse = "."))
+    cache_key <- paste0("surgery_risk_by.", paste0(group_cols, collapse = "."), v)
 
   if(use_cache && !is.null(r <- get_cached(x, cache_key)))
-    return(r)
+      return(r)
 
-  surgeryData <- x$surgeryData
-  if(!("main_procedure_code" %in% names(surgeryData)))
-    surgeryData <- surgeryData |>
-      dplyr::mutate(main_procedure_code = character())
+  surgeryData <- .surgery_code_columns(x$surgeryData)
 
   enrollments <- .enrollment_hierarchy_cols(x$enrollments)
   x$patients |>
@@ -91,7 +100,14 @@ get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE) {
                       "side_procedure_code_2"),
                     ~ get_procedure_category(.x, not_surgery_na = TRUE),
                     .names = "side_procedure_2_category")) |>
-                dplyr::filter(dplyr::if_any(tidyselect::matches("procedure_(\\d_)?category$"), ~ !is.na(.x))),
+                # The surgical count holds only a code a group takes, and a
+                # procedure a held pending code keeps unknown stays out.
+                dplyr::filter(
+                  !.procedure_holds_procedure(
+                    .data$main_procedure_code,
+                    .data$side_procedure_code_1,
+                    .data$side_procedure_code_2),
+                  dplyr::if_any(tidyselect::matches("procedure_(\\d_)?category$"), ~ !is.na(.x))),
               dplyr::join_by("event_key")),
           dplyr::join_by("enrollment_key")),
       dplyr::join_by("patient_key")) |>
@@ -151,18 +167,16 @@ get_risk_time <- function(x, group_cols = NULL, use_cache = TRUE) {
 }
 
 get_procedures <- function(x, group_cols = NULL, use_cache = TRUE) {
+  v <- paste0(".v", .surgical_definitions_version())
   if(is.null(group_cols))
-    cache_key <- "procedures"
+    cache_key <- paste0("procedures", v)
   else
-    cache_key <- paste0("procedures_by.", paste0(group_cols, collapse = "."))
+    cache_key <- paste0("procedures_by.", paste0(group_cols, collapse = "."), v)
 
   if(use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
-  surgeryData <- x$surgeryData
-  if(!("main_procedure_code" %in% names(surgeryData)))
-    surgeryData <- surgeryData |>
-      dplyr::mutate(main_procedure_code = character())
+  surgeryData <- .surgery_code_columns(x$surgeryData)
 
   x$events |>
     dplyr::inner_join(
@@ -172,8 +186,12 @@ get_procedures <- function(x, group_cols = NULL, use_cache = TRUE) {
           dplyr::join_by("main_procedure_code" == "procedure_code")),
       dplyr::join_by("event_key")) |>
     # The surgical count holds only a code a group takes: a code that is no
-    # surgical procedure and a code no group takes alike stay out.
-    dplyr::filter(!.data$pro_cat %in% c("not_surgery", "no_group")) |>
+    # surgical procedure and a code no group takes alike stay out, and so
+    # does a procedure a held pending code keeps unknown.
+    dplyr::filter(!.procedure_holds_procedure(.data$main_procedure_code,
+                                              .data$side_procedure_code_1,
+                                              .data$side_procedure_code_2),
+                  !.data$pro_cat %in% c("not_surgery", "no_group")) |>
     dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
     dplyr::summarise(n = dplyr::n(), .groups = "drop") |>
     cache(x, cache_key)

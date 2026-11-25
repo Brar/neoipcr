@@ -6,7 +6,9 @@
 # with their groups, tracts, approach codes and pending codes are the test
 # cases of these rules. A code the table holds is placed as the table says;
 # the axes of target, action and means below serve only a code it does not
-# hold, and never contradict the table. A code no group takes stays out of
+# hold, and never contradict the table. An ICHI code expression is read as
+# the intervention stems it is built of, and only the stems place; a value
+# no grammar reads places nothing. A code no group takes stays out of
 # every group: the warnings ask the partners what was done, and only the
 # answer places it.
 
@@ -16,7 +18,10 @@
 #' `get_procedure_group()` classifies a surgical procedure, given by its main
 #' procedure code and its two side procedure codes, into one of the eight
 #' procedure groups: the site the procedure is placed at, as the protocol's
-#' review of the ICHI codes decided it. Every code of a procedure counts:
+#' review of the ICHI codes decided it. Each slot may hold a full ICHI code
+#' expression, and every intervention stem of every slot counts among the
+#' procedure's codes; a malformed value is a code no group takes. Every code
+#' of a procedure counts:
 #' the procedure joins the first group, in the fixed order of the group
 #' levels, that any of its codes places, so the same procedure is grouped the
 #' same way whichever of its codes was entered as the main one. An approach
@@ -68,6 +73,16 @@ get_procedure_group <- function(main, side1 = NA_character_,
 # does not settle whether it does, and raises nothing.
 .procedure_opening_tracts <- c("gastrointestinal", "respiratory", "urinary",
                                "genital")
+
+# The shunt codes: beside one of them, `KMA.FA.AA` is the shunt's
+# peritoneal end and its placement asks nothing; without one it is an
+# operation on the peritoneum and the warning asks what was done.
+.procedure_shunt_codes <- c("AAE.JB.AA", # Ventricular shunt to abdominal cavity and drain
+                            "AAE.KA.AA", # Replacement of peritoneal end of ventricular shunt
+                            "AAE.LH.AA", # Removal of ventricular shunt
+                            "AAE.LI.AA", # Insertion of ventricular shunt
+                            "AAE.LI.AB", # Laparoscopic insertion of ventricular shunt
+                            "AAE.SN.AA") # Management of ventricular shunt
 
 # The placement of every ICHI code the production data carries: its group,
 # the tract it opens, whether it is an approach code, and — among the pending
@@ -263,7 +278,8 @@ get_procedure_group <- function(main, side1 = NA_character_,
   # peritoneal dialysis access counts as abdominal unless the procedure
   # holds a shunt code beside it, and the umbilical vein repair was recorded
   # only with an implant and is probably a patch closure. The warning asks
-  # about both whenever one of them places its procedure.
+  # about the access whenever the procedure holds no shunt code, and about
+  # the repair whatever else the procedure holds.
   table$conditional <- table$procedure_code %in% c("KMA.FA.AA", "KMA.MK.AA")
   table
 })
@@ -339,16 +355,27 @@ get_procedure_group <- function(main, side1 = NA_character_,
     .default = NA_character_)
 }
 
-# The group each code places by itself: the table for a code it holds, the
+# The intervention stems of one ICHI code expression. The grammar composes
+# an expression of a stem with extension clauses and other-code suffixes,
+# and joins the stems of interventions done together with "/"; only stems
+# classify. An expression the grammar rejects yields no stem: a malformed
+# value places nothing.
+.procedure_stems_of_one <- function(code) {
+  if (is.na(code) || !is_valid_ichi_code(code)) return(character(0))
+  parts <- strsplit(code, "/", fixed = TRUE)[[1]]
+  sub("[&#].*$", "", parts)
+}
+
+# The group each stem places by itself: the table for a stem it holds, the
 # axes for one it does not, and the code no group takes for one neither
 # places. `not_surgery` codes and pending alike pass through their lookup.
-.procedure_group_for_code <- function(x) {
-  idx <- match(x, .procedure_code_table$procedure_code)
+.procedure_group_for_stem <- function(stems) {
+  idx <- match(stems, .procedure_code_table$procedure_code)
   in_table <- !is.na(idx)
   table_group <- .procedure_code_table$group[idx]
-  axis <- .procedure_group_by_axis(x)
+  axis <- .procedure_group_by_axis(stems)
   group <- dplyr::case_when(
-    is.na(x) ~ NA_character_,
+    is.na(stems) ~ NA_character_,
     in_table & !is.na(table_group) ~ table_group,
     in_table ~ "no_group",
     !is.na(axis) ~ axis,
@@ -356,8 +383,36 @@ get_procedure_group <- function(main, side1 = NA_character_,
   group
 }
 
+# The group the given stems of one procedure place: the earliest group of a
+# stem that is no approach code, an approach's group when nothing else
+# places, and no surgical procedure when every stem is.
+.procedure_group_of_stems <- function(stems) {
+  idx <- match(stems, .procedure_code_table$procedure_code)
+  recorded <- !is.na(idx)
+  groups <- .procedure_group_for_stem(stems)
+  placed <- groups %in% .procedure_group_levels
+  is_approach <- logical(length(stems))
+  is_approach[recorded] <- .procedure_code_table$approach[idx[recorded]]
+  non_approach <- placed & !is_approach
+  if (any(non_approach)) {
+    return(.procedure_first_group(groups[non_approach]))
+  }
+  if (any(placed)) return(.procedure_first_group(groups[placed]))
+  # A procedure is no surgical procedure only when every one of its codes
+  # says so: a code no group takes among them asks what was done, and the
+  # answer could still place the procedure.
+  if (all(groups == "not_surgery")) return("not_surgery")
+  "no_group"
+}
+
 get_procedure_category <- function(x, not_surgery_na = FALSE) {
-  group <- .procedure_group_for_code(x)
+  group <- vapply(as.character(x), function(one) {
+    if (is.na(one)) return(NA_character_)
+    stems <- .procedure_stems_of_one(one)
+    # A value no grammar reads — a malformed code — places nothing.
+    if (length(stems) == 0L) return("no_group")
+    .procedure_group_of_stems(stems)
+  }, character(1), USE.NAMES = FALSE)
   if (not_surgery_na) {
     # The surgical counts hold only a code a group takes: a code that is no
     # surgical procedure and a code no group takes alike read as missing.
@@ -373,7 +428,8 @@ get_procedure_category <- function(x, not_surgery_na = FALSE) {
 # their procedure can be trusted beside.
 .procedure_holds_procedure <- function(main, side1, side2) {
   holds <- function(codes) {
-    idx <- match(codes, .procedure_code_table$procedure_code)
+    stems <- unlist(lapply(codes, .procedure_stems_of_one), use.names = FALSE)
+    idx <- match(stems, .procedure_code_table$procedure_code)
     recorded <- which(!is.na(idx))
     length(recorded) > 0L &&
       any(.procedure_code_table$holds_procedure[idx[recorded]])
@@ -385,27 +441,18 @@ get_procedure_category <- function(x, not_surgery_na = FALSE) {
 # The group one procedure joins: the earliest group a code of its own
 # operation places, an approach's group only when nothing else places, and
 # the code that is no surgical procedure's own code when all its codes are.
+# Each code slot holds a full ICHI code expression; its stems count among
+# the procedure's codes, and a slot that is no valid expression places
+# nothing yet marks the procedure as recorded.
 .procedure_group_row <- function(main, side1, side2) {
   row <- function(m, s1, s2) {
-    codes <- c(m, s1, s2)
-    codes <- codes[!is.na(codes)]
-    if (length(codes) == 0L) return(NA_character_)
-    idx <- match(codes, .procedure_code_table$procedure_code)
-    recorded <- !is.na(idx)
-    groups <- .procedure_group_for_code(codes)
-    placed <- groups %in% .procedure_group_levels
-    is_approach <- logical(length(codes))
-    is_approach[recorded] <- .procedure_code_table$approach[idx[recorded]]
-    non_approach <- placed & !is_approach
-    if (any(non_approach)) {
-      return(.procedure_first_group(groups[non_approach]))
-    }
-    if (any(placed)) return(.procedure_first_group(groups[placed]))
-    # A procedure is no surgical procedure only when every one of its codes
-    # says so: a code no group takes among them asks what was done, and the
-    # answer could still place the procedure.
-    if (all(groups == "not_surgery")) return("not_surgery")
-    "no_group"
+    fields <- c(m, s1, s2)
+    if (all(is.na(fields))) return(NA_character_)
+    stems <- unlist(lapply(fields, .procedure_stems_of_one),
+                    use.names = FALSE)
+    # A slot was filled and no grammar reads it: a code no group takes.
+    if (length(stems) == 0L) return("no_group")
+    .procedure_group_of_stems(stems)
   }
   mapply(row, main, side1, side2, USE.NAMES = FALSE)
 }
@@ -433,29 +480,34 @@ get_procedure_category <- function(x, not_surgery_na = FALSE) {
   opens_tract <- vapply(seq_len(n), function(i) {
     g <- group[[i]]
     if (is.na(g) || !(g %in% .procedure_group_levels)) return(FALSE)
-    codes <- c(main[[i]], side1[[i]], side2[[i]])
-    codes <- codes[!is.na(codes)]
-    if (length(codes) == 0L) return(FALSE)
-    idx <- match(codes, .procedure_code_table$procedure_code)
+    stems <- unlist(lapply(c(main[[i]], side1[[i]], side2[[i]]),
+                           .procedure_stems_of_one), use.names = FALSE)
+    if (length(stems) == 0L) return(FALSE)
+    idx <- match(stems, .procedure_code_table$procedure_code)
     recorded <- !is.na(idx)
     # Only a code of the procedure's own group opens its tract: an
     # unrecorded code's group by the axes counts too, and its tract, which
     # nothing records, raises nothing.
-    code_group <- .procedure_group_for_code(codes)
+    code_group <- .procedure_group_for_stem(stems)
     own <- code_group == g
-    tract <- rep(NA_character_, length(codes))
+    tract <- rep(NA_character_, length(stems))
     tract[recorded] <- .procedure_code_table$tract[idx[recorded]]
     any(own & !is.na(tract) & tract %in% .procedure_opening_tracts)
   }, logical(1))
 
+  # Both clean strata are closed primarily and open no tract: an implant
+  # makes the one, an explicitly absent implant the other, and a class I
+  # wound that fails either test counts in its group and in no stratum.
   stratum <- dplyr::case_when(
     is.na(group) | !(group %in% .procedure_group_levels) ~ NA_character_,
     is.na(wound) ~ NA_character_,
     wound %in% c("3", "4") ~ "contaminated_or_dirty",
     wound == "2" ~ "clean_contaminated",
     wound == "1" & opens_tract ~ "clean_contaminated",
-    wound == "1" & !is.na(implant) & implant ~ "clean_with_implant",
-    wound == "1" & !is.na(closure) & closure ~ "clean",
+    wound == "1" & !is.na(closure) & closure &
+      !is.na(implant) & implant ~ "clean_with_implant",
+    wound == "1" & !is.na(closure) & closure &
+      !is.na(implant) & !implant ~ "clean",
     .default = NA_character_)
   factor(stratum,
          levels = c("clean", "clean_with_implant", "clean_contaminated",
@@ -499,7 +551,8 @@ get_procedure_category_pretty <- function(x) {
 
 get_procedure_categories <- function(
     x, pretty = FALSE, include_iche = FALSE, use_cache = TRUE) {
-  cache_key <- "procedure_categories"
+  cache_key <- paste0("procedure_categories.v",
+                      .surgical_definitions_version())
 
   # ToDo: Clarify licensing and inclusion criteria for ICHE information with WHO
   # and add ICHE table

@@ -276,6 +276,22 @@ test_that("a procedure whose codes no group takes is one no group takes", {
   expect_equal(group_of("PZX.AA.JA", "PAK.FA.AA"), "abdominal_surgery")
 })
 
+test_that("an expression places by the intervention stems it is built of", {
+  # The grammar reads a stem with extension clauses, a stem with an
+  # other-code suffix, and stems of interventions done together joined by
+  # "/"; the stems place, each as the bare code would.
+  expect_equal(group_of("AAE.LI.AA&XK9K"), "neurosurgery")
+  expect_equal(group_of("PAK.LI.AA&XK9K"), "abdominal_wall_surgery")
+  expect_equal(group_of("MAA.FA.AA/KBF.LI.AA"), "abdominal_surgery")
+  expect_equal(group_of("KBF.LI.AA/AAE.LI.AA"), "neurosurgery")
+  expect_equal(group_of("JBB.AE.AD/KBF.LI.AA"), "abdominal_surgery")
+  expect_equal(group_of("KBF.LI.AA#ICF d6402"), "abdominal_surgery")
+  # A held-pending stem inside an expression holds the procedure, and a
+  # value no grammar reads is a code no group takes.
+  expect_equal(group_of("KBF.LI.AA/NMR.MK.AB"), "no_group")
+  expect_equal(group_of("KBF.LI.AAA"), "no_group")
+})
+
 test_that("a procedure without any code is no procedure", {
   expect_equal(group_of(NA_character_), NA_character_)
   expect_equal(group_of(NA_character_, NA_character_, NA_character_), NA_character_)
@@ -373,6 +389,15 @@ test_that("the strata place nothing the forms leave unplaced", {
     NA_character_)
   expect_equal(
     stratum_of("PAM.MK.AA", wound_class = "1", implant = FALSE, primary_closure = NA),
+    NA_character_)
+  # Both clean strata are closed primarily, and a clean one needs the
+  # implant recorded as absent: an implant beside a wound not closed
+  # primarily, and an implant not recorded at all, stratify nothing.
+  expect_equal(
+    stratum_of("PAM.MK.AA", wound_class = "1", implant = TRUE, primary_closure = FALSE),
+    NA_character_)
+  expect_equal(
+    stratum_of("PAM.MK.AA", wound_class = "1", implant = NA, primary_closure = TRUE),
     NA_character_)
   expect_equal(stratum_of("PAM.MK.AA", wound_class = NA_character_), NA_character_)
   expect_equal(

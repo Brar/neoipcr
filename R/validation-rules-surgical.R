@@ -183,8 +183,8 @@ validation_rule_66 <- function(x, exceptions)
       .keep = "none")
 }
 
-# The first code of the procedure that opens a tract of the procedure's own
-# group, or `NA`. Only a recorded code has a tract; the group is the one the
+# The first stem of the procedure that opens a tract of the procedure's own
+# group, or `NA`. Only a recorded stem has a tract; the group is the one the
 # procedure's codes together take.
 .rule_procedure_opening_code <- function(df, i) {
   # The group the procedure's codes together take, held pending codes
@@ -195,14 +195,16 @@ validation_rule_66 <- function(x, exceptions)
                                         df$side_procedure_code_2[[i]]))
   if (is.na(g) || !(g %in% .procedure_group_levels)) return(NA_character_)
   codes <- .rule_procedure_codes_of(df, i)
-  idx <- match(codes, .procedure_code_table$procedure_code)
+  stems <- unlist(lapply(codes, .procedure_stems_of_one), use.names = FALSE)
+  if (length(stems) == 0L) return(NA_character_)
+  idx <- match(stems, .procedure_code_table$procedure_code)
   recorded <- !is.na(idx)
-  code_group <- .procedure_group_for_code(codes)
-  tract <- rep(NA_character_, length(codes))
+  code_group <- .procedure_group_for_stem(stems)
+  tract <- rep(NA_character_, length(stems))
   tract[recorded] <- .procedure_code_table$tract[idx[recorded]]
   hits <- which(code_group == g & !is.na(tract) &
                   tract %in% .procedure_opening_tracts)
-  if (length(hits) == 0L) NA_character_ else codes[[hits[[1]]]]
+  if (length(hits) == 0L) NA_character_ else stems[[hits[[1]]]]
 }
 
 # Find procedures an approach code alone places. The codes name the road
@@ -231,20 +233,21 @@ validation_rule_67 <- function(x, exceptions)
       .keep = "none")
 }
 
-# The first approach code when approach codes and codes that are no surgical
+# The first approach stem when approach codes and codes that are no surgical
 # procedure are all the procedure holds, else `NA`.
 .rule_procedure_approach_only_code <- function(df, i) {
   codes <- .rule_procedure_codes_of(df, i)
-  if (length(codes) == 0L) return(NA_character_)
-  idx <- match(codes, .procedure_code_table$procedure_code)
+  stems <- unlist(lapply(codes, .procedure_stems_of_one), use.names = FALSE)
+  if (length(stems) == 0L) return(NA_character_)
+  idx <- match(stems, .procedure_code_table$procedure_code)
   recorded <- !is.na(idx)
-  groups <- .procedure_group_for_code(codes)
+  groups <- .procedure_group_for_stem(stems)
   placed <- groups %in% .procedure_group_levels
-  is_approach <- logical(length(codes))
+  is_approach <- logical(length(stems))
   is_approach[recorded] <- .procedure_code_table$approach[idx[recorded]]
   if (any(placed & !is_approach)) return(NA_character_)
   approach_hits <- which(placed & is_approach)
-  if (length(approach_hits) == 0L) NA_character_ else codes[[approach_hits[[1]]]]
+  if (length(approach_hits) == 0L) NA_character_ else stems[[approach_hits[[1]]]]
 }
 
 # Find a code no group takes, and a code whose group the partners queried.
@@ -252,8 +255,8 @@ validation_rule_67 <- function(x, exceptions)
 # procedure cannot be grouped from its codes; the peritoneal dialysis access
 # counts as abdominal unless the procedure holds a shunt code beside it, and
 # the umbilical vein repair was recorded only with an implant and is probably
-# a patch closure: each queried code is asked about whenever it places its
-# procedure by itself.
+# a patch closure: each queried code is asked about whenever the procedure
+# itself does not settle it.
 validation_rule_68 <- function(x, exceptions)
 {
   check_neoipcr_ds(x)
@@ -276,27 +279,31 @@ validation_rule_68 <- function(x, exceptions)
       .keep = "none")
 }
 
-# The first code no group takes — a pending code, or a code the placement
-# table and the axes alike leave out — else the conditional peritoneum code
-# when it places its procedure, else `NA`.
+# The first code no group takes — a pending stem, a stem the placement
+# table and the axes alike leave out, or a value no grammar reads — else
+# the first queried code the procedure does not settle, else `NA`.
 .rule_procedure_ungrouped_code <- function(df, i) {
   codes <- .rule_procedure_codes_of(df, i)
   if (length(codes) == 0L) return(NA_character_)
-  ungrouped <- which(.procedure_group_for_code(codes) == "no_group")
-  if (length(ungrouped) > 0L) return(codes[[ungrouped[[1]]]])
-  idx <- match(codes, .procedure_code_table$procedure_code)
-  recorded <- which(!is.na(idx))
-  conditional_at <- if (length(recorded) == 0L) integer(0) else
-    recorded[.procedure_code_table$conditional[idx[recorded]]]
-  if (length(conditional_at) == 0L) return(NA_character_)
-  g <- .procedure_group_row(df$main_procedure_code[[i]],
-                            df$side_procedure_code_1[[i]],
-                            df$side_procedure_code_2[[i]])
-  code <- codes[[conditional_at[[1]]]]
-  # The condition is settled when a code of an earlier group places the
-  # procedure besides the conditional code: then the code follows that group
-  # and nothing is asked.
-  if (!identical(g, .procedure_group_for_code(code))) NA_character_ else code
+  stems_per_code <- lapply(codes, .procedure_stems_of_one)
+  # A slot holds a value no grammar reads: the expression itself is what
+  # the partners must be shown.
+  invalid <- which(vapply(stems_per_code, length, integer(1)) == 0L)
+  if (length(invalid) > 0L) return(codes[[invalid[[1]]]])
+  stems <- unlist(stems_per_code, use.names = FALSE)
+  ungrouped <- which(.procedure_group_for_stem(stems) == "no_group")
+  if (length(ungrouped) > 0L) return(stems[[ungrouped[[1]]]])
+  idx <- match(stems, .procedure_code_table$procedure_code)
+  conditional_at <- which(!is.na(idx) & .procedure_code_table$conditional[idx])
+  shunt <- any(stems %in% .procedure_shunt_codes)
+  for (at in conditional_at) {
+    # A shunt code settles the peritoneal access: beside it the code names
+    # the shunt's peritoneal end. The umbilical vein repair's query is about
+    # what was done, which no other code of the procedure answers.
+    if (identical(stems[[at]], "KMA.FA.AA") && shunt) next
+    return(stems[[at]])
+  }
+  NA_character_
 }
 
 # Find a procedure carrying one of the percutaneous abdominal drainages.
@@ -311,9 +318,10 @@ validation_rule_69 <- function(x, exceptions)
   if (is.null(df)) return(df)
   asked <- c("KMA.JB.AE", "PAK.JB.AE")
   df$found <- vapply(seq_len(nrow(df)), function(i) {
-    codes <- .rule_procedure_codes_of(df, i)
-    hits <- which(codes %in% asked)
-    if (length(hits) == 0L) NA_character_ else codes[[hits[[1]]]]
+    stems <- unlist(lapply(.rule_procedure_codes_of(df, i),
+                           .procedure_stems_of_one), use.names = FALSE)
+    hits <- which(stems %in% asked)
+    if (length(hits) == 0L) NA_character_ else stems[[hits[[1]]]]
   }, character(1))
   df |>
     dplyr::filter(!is.na(.data$found)) |>

@@ -208,6 +208,41 @@ test_that("surgery_rate_table counts match fixture", {
   expect_equal(overall$pooled, 1 / 3 * 100, tolerance = 0.01)
 })
 
+test_that("a procedure held by a pending code stays out of the surgical counts", {
+  # The classifier places a procedure holding a pending code that names no
+  # operation nowhere, and the counts hold it out too: the table counts the
+  # procedures the classifier places.
+  held <- calc_ds
+  held$surgeryData$side_procedure_code_1 <- "NMR.MK.AB"
+  expect_equal(get_procedures(held, use_cache = FALSE)$n, 0L)
+  expect_equal(get_surgery_risk(held, use_cache = FALSE)$n_procedures, 0L)
+  # With its codes alone the procedure counts, so it is the held code that
+  # leaves it out.
+  expect_equal(get_procedures(calc_ds, use_cache = FALSE)$n, 1L)
+  expect_equal(get_surgery_risk(calc_ds, use_cache = FALSE)$n_procedures, 1L)
+})
+
+test_that("surgical cache entries carry the definitions version", {
+  ds <- make_calc_test_ds()
+  invisible(get_procedures(ds, use_cache = TRUE))
+  invisible(get_procedure_categories(ds, use_cache = TRUE))
+  invisible(get_surgery_risk(ds, use_cache = TRUE))
+  invisible(get_surgery_rate_table(ds, use_cache = TRUE))
+  v <- paste0("[.]v",
+              as.character(neoipcr:::.surgical_definitions_version()), "$")
+  keys <- ls(ds$.cache)
+  surgical <- keys[grepl(
+    "^(procedures|procedure_categories|surgery_risk|surgery_rate_table)",
+    keys)]
+  expect_true(length(surgical) >= 4L)
+  expect_true(all(grepl(v, surgical)))
+  # An entry restored with its dataset under the old untagged key answers
+  # nothing after the bump: the counts are recomputed, not mislabelled.
+  stale <- tibble::tibble(n = 999L)
+  ds$.cache$procedures <- stale
+  expect_false(identical(get_procedures(ds, use_cache = TRUE), stale))
+})
+
 test_that("incidence_density_rate_table BSI count matches fixture", {
   result <- get_incidence_density_rate_table(calc_ds, use_cache = FALSE,
     include_quartiles = FALSE)

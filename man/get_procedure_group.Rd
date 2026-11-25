@@ -26,7 +26,10 @@ no surgical procedure, \code{no_group} for one its codes place nowhere, and
 \code{get_procedure_group()} classifies a surgical procedure, given by its main
 procedure code and its two side procedure codes, into one of the eight
 procedure groups: the site the procedure is placed at, as the protocol's
-review of the ICHI codes decided it. Every code of a procedure counts:
+review of the ICHI codes decided it. Each slot may hold a full ICHI code
+expression, and every intervention stem of every slot counts among the
+procedure's codes; a malformed value is a code no group takes. Every code
+of a procedure counts:
 the procedure joins the first group, in the fixed order of the group
 levels, that any of its codes places, so the same procedure is grouped the
 same way whichever of its codes was entered as the main one. An approach

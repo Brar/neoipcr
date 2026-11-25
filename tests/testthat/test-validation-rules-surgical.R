@@ -275,6 +275,11 @@ test_that("rule 66 detects a class I procedure whose own group opens a tract", {
     procedure_ds("NAM.MK.AA"), NULL)), 1L)
   expect_equal(nrow(neoipcr:::validation_rule_66(
     procedure_ds("JBA.MK.AA"), NULL)), 1L)
+  # A recorded tract-opening stem inside an expression is found as the bare
+  # code is, and reported by its stem.
+  result <- neoipcr:::validation_rule_66(procedure_ds("KBF.LI.AA&XK9K"), NULL)
+  expect_equal(nrow(result), 1L)
+  expect_equal(result$context[[1]]$procedure_code, "KBF.LI.AA")
 })
 
 test_that("rule 66 leaves a class I procedure alone when nothing of its group opens a tract", {
@@ -336,6 +341,9 @@ test_that("rule 67 detects a procedure an approach code alone places", {
   # holds nothing but its approach code.
   expect_equal(nrow(neoipcr:::validation_rule_67(
     procedure_ds("PAK.JB.AE", "PAK.AE.AA"), NULL)), 1L)
+  # The approach stem inside an expression is found as the bare code is.
+  expect_equal(nrow(neoipcr:::validation_rule_67(
+    procedure_ds("PAK.FA.AA&XK9K"), NULL)), 1L)
 })
 
 test_that("rule 67 leaves alone a procedure its operation places", {
@@ -384,23 +392,48 @@ test_that("rule 68 detects a code no group takes", {
     procedure_ds("KBF.LI.AA", "LZZ.DK.AH"), NULL)
   expect_equal(nrow(result), 1L)
   expect_equal(result$context[[1]]$procedure_code, "LZZ.DK.AH")
+  # The grammar composes expressions of stems, and it is the stem that
+  # places: a stem no rule takes is asked about beside the stems that do
+  # place.
+  result <- neoipcr:::validation_rule_68(
+    procedure_ds("KBF.LI.AA&XK9K/ZZZ.ZZ.ZZ"), NULL)
+  expect_equal(nrow(result), 1L)
+  expect_equal(result$context[[1]]$procedure_code, "ZZZ.ZZ.ZZ")
+  # A value no grammar reads is asked about whole.
+  result <- neoipcr:::validation_rule_68(procedure_ds("KBF.LI.AAA"), NULL)
+  expect_equal(nrow(result), 1L)
+  expect_equal(result$context[[1]]$procedure_code, "KBF.LI.AAA")
 })
 
 test_that("rule 68 detects the peritoneum code whose group turns on a shunt", {
   # `KMA.FA.AA` counts as abdominal unless the procedure holds a shunt code,
-  # in which case it follows the shunt: the coding is asked about whenever
-  # the peritoneum code itself places the procedure.
+  # in which case it follows the shunt: the coding is asked about unless a
+  # shunt code settles it.
   result <- neoipcr:::validation_rule_68(procedure_ds("KMA.FA.AA"), NULL)
   expect_equal(nrow(result), 1L)
   expect_equal(result$context[[1]]$procedure_code, "KMA.FA.AA")
   # Beside a shunt code the placement is settled and nothing is asked.
   expect_equal(nrow(neoipcr:::validation_rule_68(
     procedure_ds("KMA.FA.AA", "AAE.LI.AA"), NULL)), 0L)
+  # Only a shunt settles it: a code of another group that wins the
+  # procedure says nothing about what was done at the peritoneum.
+  result <- neoipcr:::validation_rule_68(
+    procedure_ds("KMA.FA.AA", "HIK.MK.AA"), NULL)
+  expect_equal(nrow(result), 1L)
+  expect_equal(result$context[[1]]$procedure_code, "KMA.FA.AA")
   # The umbilical vein repair was recorded only with an implant and is
-  # probably a patch closure: the same warning asks about it.
+  # probably a patch closure: the same warning asks about it, whatever
+  # else the procedure holds and whether or not it places the procedure.
   expect_equal(nrow(neoipcr:::validation_rule_68(
     procedure_ds("KMA.MK.AA"), NULL)), 1L)
   result <- neoipcr:::validation_rule_68(procedure_ds("KMA.MK.AA"), NULL)
+  expect_equal(result$context[[1]]$procedure_code, "KMA.MK.AA")
+  expect_equal(nrow(neoipcr:::validation_rule_68(
+    procedure_ds("KMA.MK.AA", "HIK.MK.AA"), NULL)), 1L)
+  # Beside a shunt the access is settled yet the repair keeps its query.
+  result <- neoipcr:::validation_rule_68(
+    procedure_ds("KMA.FA.AA", "AAE.LI.AA", "KMA.MK.AA"), NULL)
+  expect_equal(nrow(result), 1L)
   expect_equal(result$context[[1]]$procedure_code, "KMA.MK.AA")
 })
 
@@ -441,6 +474,9 @@ test_that("rule 69 detects a percutaneous abdominal drain among the codes", {
   expect_equal(result$context[[1]]$procedure_description, "Test procedure")
   expect_equal(nrow(neoipcr:::validation_rule_69(
     procedure_ds("KBF.LI.AA", "PAK.JB.AE"), NULL)), 1L)
+  # The drain stem inside an expression is found as the bare code is.
+  expect_equal(nrow(neoipcr:::validation_rule_69(
+    procedure_ds("KMA.JB.AE&XK9K"), NULL)), 1L)
 })
 
 test_that("rule 69 leaves the other drains and the procedures without them alone", {
