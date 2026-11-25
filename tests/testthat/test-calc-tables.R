@@ -200,7 +200,7 @@ test_that("antibiotic_utilization_table substance days match fixture", {
 
 test_that("surgery_rate_table counts match fixture", {
   result <- get_surgery_rate_table(calc_ds, use_cache = FALSE)
-  # 2 rows: overall + to_be_categorized (PZX.AA.JA not in ICHI list)
+  # 2 rows: overall + inguinal_umbilical_hernia_repair (fixture default code)
   expect_equal(nrow(result), 2L)
   overall <- result[result$pro_cat == "overall", ]
   expect_equal(overall$n, 1L)

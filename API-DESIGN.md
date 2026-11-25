@@ -2139,8 +2139,10 @@ a code that no group takes (below). No version of ICHI is pinned: the groups tak
 states, each mapped to its current entity where one exists. Their placement of the codes, each with its group, the tract
 it opens, and whether it is an approach code, together with the codes that are no surgical procedure, is part of the
 definitions this section versions (§13.1.7), the recorded codes being its test cases. This document does not hold the
-placement: the change that implements the groups adds it to neoipcr, beside `get_procedure_category()`, as a table of
-every recorded code with its group, the tract it opens, and whether it is an approach code. It places the oesophagus in
+placement: [R/calc-procedure-categories.R](R/calc-procedure-categories.R) holds it, as `.procedure_code_table` of every
+recorded code with its group, the tract it opens, and whether it is an approach code, and `get_procedure_group()` gives
+the group of a procedure from its three codes, so that a report groups its procedures as the package does. It places the
+oesophagus in
 the chest: an oesophageal atresia repair is non-cardiac thoracic surgery (group 3). The approach codes recorded so far
 are `MAA.FA.AA` in neurosurgery (group 1), `JCH.AE.AA` and `JCH.FA.AA` in non-cardiac thoracic surgery (group 3), and
 `PAK.AE.AA`, `PAK.AE.AB`, and `PAK.FA.AA` in abdominal surgery (group 4). Of the codes of percutaneous drainage, only

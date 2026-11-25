@@ -171,7 +171,9 @@ get_procedures <- function(x, group_cols = NULL, use_cache = TRUE) {
           get_procedure_categories(x, use_cache = use_cache),
           dplyr::join_by("main_procedure_code" == "procedure_code")),
       dplyr::join_by("event_key")) |>
-    dplyr::filter(.data$pro_cat != "not_surgery") |>
+    # The surgical count holds only a code a group takes: a code that is no
+    # surgical procedure and a code no group takes alike stay out.
+    dplyr::filter(!.data$pro_cat %in% c("not_surgery", "no_group")) |>
     dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
     dplyr::summarise(n = dplyr::n(), .groups = "drop") |>
     cache(x, cache_key)

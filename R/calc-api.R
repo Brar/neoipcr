@@ -1082,17 +1082,20 @@ get_effective_analysis_period <- function(x) {
 # share its definitions.
 rate_definition_versions <- c(
   n_departments = 1L,
-  n_surgical_departments = 1L,
+  # Version 2 places procedures by the decided group placement and holds
+  # out the codes no group takes: the surgery table's rows and the surgical
+  # counts changed.
+  n_surgical_departments = 2L,
   n_patients = 1L,
   n_enrollments = 1L,
   n_patient_days = 1L,
-  n_surgical_patients = 1L,
-  n_surgical_procedures = 1L,
+  n_surgical_patients = 2L,
+  n_surgical_procedures = 2L,
   birth_weight_figure = 1L,
   gestational_age_figure = 1L,
   usage_density_rate_table = 1L,
   antibiotic_utilization_table = 1L,
-  surgery_rate_table = 1L,
+  surgery_rate_table = 2L,
   incidence_density_rate_table = 1L,
   dev_ass_incidence_density_rate_table = 1L,
   n_infections = 1L,

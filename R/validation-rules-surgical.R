@@ -122,3 +122,209 @@ validation_rule_23 <- function(x, exceptions)
 # ICHI code.
 validation_rule_24 <- function(x, exceptions)
   .rule_invalid_ichi_code(x, exceptions, 24L, "side_procedure_code_2")
+
+# --- Rules 66–69: the placement of a procedure among the groups -------------
+# These four ask the partners about a procedure the group rules cannot settle
+# from its codes alone, or whose recorded codes say something the form's
+# other answers contradict. Each reads the whole procedure — the main code
+# and both side codes — beside what it needs of the rest of the form.
+
+.rule_procedure_code_cols <-
+  c("main_procedure_code", "side_procedure_code_1", "side_procedure_code_2")
+
+# The procedure events with their codes and any further form columns a rule
+# reads, or a skip when the dataset lacks one of them.
+.rule_procedures <- function(x, rule_id, extra_cols = character()) {
+  need <- c(.rule_procedure_code_cols, extra_cols)
+  if (!all(need %in% names(x$surgeryData)))
+    return(.rule_skipped(
+      rule_id,
+      sprintf("the surgery form's %s", paste(need, collapse = ", "))))
+  x$events |>
+    dplyr::filter(.data$event_type_key == "pro") |>
+    dplyr::select("patient_key", "enrollment_key", "event_key") |>
+    dplyr::inner_join(
+      x$surgeryData |> dplyr::select(tidyselect::all_of(c("event_key", need))),
+      dplyr::join_by("event_key"))
+}
+
+# The codes of one procedure, main first, with the absent ones left out.
+.rule_procedure_codes_of <- function(df, i) {
+  codes <- vapply(.rule_procedure_code_cols,
+                  \(col) df[[col]][[i]], character(1))
+  codes[!is.na(codes)]
+}
+
+# Find class I procedures whose own procedure group opens a tract. A class I
+# wound of such a procedure is clean-contaminated by the protocol's own
+# reading, so the wound class and the codes do not agree: either the wound
+# class is too low or the codes are not the operation that was done.
+validation_rule_66 <- function(x, exceptions)
+{
+  check_neoipcr_ds(x)
+  df <- .rule_procedures(x, 66L, "wound_class")
+  if (is.null(df)) return(df)
+  df$found <- vapply(seq_len(nrow(df)), function(i) {
+    if (!identical(as.character(df$wound_class[[i]]), "1"))
+      return(NA_character_)
+    .rule_procedure_opening_code(df, i)
+  }, character(1))
+  df |>
+    dplyr::filter(!is.na(.data$found)) |>
+    dplyr::anti_join(.rule_exceptions(exceptions, 66L), dplyr::join_by("event_key")) |>
+    dplyr::rename(procedure_code = "found") |>
+    tidyr::nest(context = c("wound_class", "procedure_code")) |>
+    dplyr::mutate(
+      rule_id = 66L,
+      patient_key = .data$patient_key,
+      enrollment_key = .data$enrollment_key,
+      event_key = .data$event_key,
+      context = .data$context,
+      .keep = "none")
+}
+
+# The first code of the procedure that opens a tract of the procedure's own
+# group, or `NA`. Only a recorded code has a tract; the group is the one the
+# procedure's codes together take.
+.rule_procedure_opening_code <- function(df, i) {
+  # The group the procedure's codes together take, held pending codes
+  # included: a procedure the classifier places nowhere has no own group
+  # whose tract could open, and rule 68 already asks about it.
+  g <- as.character(get_procedure_group(df$main_procedure_code[[i]],
+                                        df$side_procedure_code_1[[i]],
+                                        df$side_procedure_code_2[[i]]))
+  if (is.na(g) || !(g %in% .procedure_group_levels)) return(NA_character_)
+  codes <- .rule_procedure_codes_of(df, i)
+  idx <- match(codes, .procedure_code_table$procedure_code)
+  recorded <- !is.na(idx)
+  code_group <- .procedure_group_for_code(codes)
+  tract <- rep(NA_character_, length(codes))
+  tract[recorded] <- .procedure_code_table$tract[idx[recorded]]
+  hits <- which(code_group == g & !is.na(tract) &
+                  tract %in% .procedure_opening_tracts)
+  if (length(hits) == 0L) NA_character_ else codes[[hits[[1]]]]
+}
+
+# Find procedures an approach code alone places. The codes name the road
+# taken — a laparoscopy, a thoracotomy, a craniotomy — and not the operation
+# done through it: the procedure rests on an incision with nothing behind
+# it, which asks whether the operation itself was left out of the codes.
+validation_rule_67 <- function(x, exceptions)
+{
+  check_neoipcr_ds(x)
+  df <- .rule_procedures(x, 67L)
+  if (is.null(df)) return(df)
+  df$found <- vapply(seq_len(nrow(df)),
+                     \(i) .rule_procedure_approach_only_code(df, i),
+                     character(1))
+  df |>
+    dplyr::filter(!is.na(.data$found)) |>
+    dplyr::anti_join(.rule_exceptions(exceptions, 67L), dplyr::join_by("event_key")) |>
+    dplyr::rename(procedure_code = "found") |>
+    tidyr::nest(context = "procedure_code") |>
+    dplyr::mutate(
+      rule_id = 67L,
+      patient_key = .data$patient_key,
+      enrollment_key = .data$enrollment_key,
+      event_key = .data$event_key,
+      context = .data$context,
+      .keep = "none")
+}
+
+# The first approach code when approach codes and codes that are no surgical
+# procedure are all the procedure holds, else `NA`.
+.rule_procedure_approach_only_code <- function(df, i) {
+  codes <- .rule_procedure_codes_of(df, i)
+  if (length(codes) == 0L) return(NA_character_)
+  idx <- match(codes, .procedure_code_table$procedure_code)
+  recorded <- !is.na(idx)
+  groups <- .procedure_group_for_code(codes)
+  placed <- groups %in% .procedure_group_levels
+  is_approach <- logical(length(codes))
+  is_approach[recorded] <- .procedure_code_table$approach[idx[recorded]]
+  if (any(placed & !is_approach)) return(NA_character_)
+  approach_hits <- which(placed & is_approach)
+  if (length(approach_hits) == 0L) NA_character_ else codes[[approach_hits[[1]]]]
+}
+
+# Find a code no group takes, and a code whose group the partners queried.
+# A valid code no rule places, or one whose query is still pending, says the
+# procedure cannot be grouped from its codes; the peritoneal dialysis access
+# counts as abdominal unless the procedure holds a shunt code beside it, and
+# the umbilical vein repair was recorded only with an implant and is probably
+# a patch closure: each queried code is asked about whenever it places its
+# procedure by itself.
+validation_rule_68 <- function(x, exceptions)
+{
+  check_neoipcr_ds(x)
+  df <- .rule_procedures(x, 68L)
+  if (is.null(df)) return(df)
+  df$found <- vapply(seq_len(nrow(df)),
+                     \(i) .rule_procedure_ungrouped_code(df, i),
+                     character(1))
+  df |>
+    dplyr::filter(!is.na(.data$found)) |>
+    dplyr::anti_join(.rule_exceptions(exceptions, 68L), dplyr::join_by("event_key")) |>
+    dplyr::rename(procedure_code = "found") |>
+    tidyr::nest(context = "procedure_code") |>
+    dplyr::mutate(
+      rule_id = 68L,
+      patient_key = .data$patient_key,
+      enrollment_key = .data$enrollment_key,
+      event_key = .data$event_key,
+      context = .data$context,
+      .keep = "none")
+}
+
+# The first code no group takes — a pending code, or a code the placement
+# table and the axes alike leave out — else the conditional peritoneum code
+# when it places its procedure, else `NA`.
+.rule_procedure_ungrouped_code <- function(df, i) {
+  codes <- .rule_procedure_codes_of(df, i)
+  if (length(codes) == 0L) return(NA_character_)
+  ungrouped <- which(.procedure_group_for_code(codes) == "no_group")
+  if (length(ungrouped) > 0L) return(codes[[ungrouped[[1]]]])
+  idx <- match(codes, .procedure_code_table$procedure_code)
+  recorded <- which(!is.na(idx))
+  conditional_at <- if (length(recorded) == 0L) integer(0) else
+    recorded[.procedure_code_table$conditional[idx[recorded]]]
+  if (length(conditional_at) == 0L) return(NA_character_)
+  g <- .procedure_group_row(df$main_procedure_code[[i]],
+                            df$side_procedure_code_1[[i]],
+                            df$side_procedure_code_2[[i]])
+  code <- codes[[conditional_at[[1]]]]
+  # The condition is settled when a code of an earlier group places the
+  # procedure besides the conditional code: then the code follows that group
+  # and nothing is asked.
+  if (!identical(g, .procedure_group_for_code(code))) NA_character_ else code
+}
+
+# Find a procedure carrying one of the percutaneous abdominal drainages.
+# Both are no surgical procedure; the warning asks what the form describes
+# beside them, since an open drainage coded percutaneous belongs among the
+# abdominal procedures and a percutaneous one does not belong among
+# procedures at all.
+validation_rule_69 <- function(x, exceptions)
+{
+  check_neoipcr_ds(x)
+  df <- .rule_procedures(x, 69L, "procedure_description")
+  if (is.null(df)) return(df)
+  asked <- c("KMA.JB.AE", "PAK.JB.AE")
+  df$found <- vapply(seq_len(nrow(df)), function(i) {
+    codes <- .rule_procedure_codes_of(df, i)
+    hits <- which(codes %in% asked)
+    if (length(hits) == 0L) NA_character_ else codes[[hits[[1]]]]
+  }, character(1))
+  df |>
+    dplyr::filter(!is.na(.data$found)) |>
+    dplyr::anti_join(.rule_exceptions(exceptions, 69L), dplyr::join_by("event_key")) |>
+    dplyr::rename(procedure_code = "found") |>
+    tidyr::nest(context = c("procedure_description", "procedure_code")) |>
+    dplyr::mutate(
+      rule_id = 69L,
+      patient_key = .data$patient_key,
+      enrollment_key = .data$enrollment_key,
+      event_key = .data$event_key,
+      context = .data$context,
+      .keep = "none")
+}
