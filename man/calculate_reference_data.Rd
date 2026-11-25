@@ -24,7 +24,10 @@ departments it was built from. \code{validationSummary} is the dataset's
 validation summary (see \code{\link[=import_dhis2]{import_dhis2()}}); a dataset without it is
 refused. \code{reconciliationSummary} is the dataset's reconciliation summary
 (see \code{\link[=import_dhis2]{import_dhis2()}}), \code{NULL} for a dataset written before the summary
-existed; a summary of another shape is refused.
+existed; a summary of another shape is refused. \code{withheld} is the dataset's
+index of the cells its report withholds — the rows, counts, figures, and
+numbers of patients it does not print — named by coordinate and never by
+value; a dataset as calculated carries it empty.
 }
 \details{
 The dataset must have been imported with \code{include_department},

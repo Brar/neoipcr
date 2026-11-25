@@ -105,3 +105,29 @@ test_that("serialized reference metadata names neither the exception records nor
   expect_false(grepl("DEPT_ONLY", json, fixed = TRUE))
   expect_true(grepl("exception_list_applied", json, fixed = TRUE))
 })
+
+test_that("the withheld index serializes as coordinates only and carries no value", {
+  # A withheld cell rides in the JSON only as its coordinate, so the dataset
+  # the reporting service binds cannot leak what the report withholds.
+  index <- neoipcr:::withheld_index() |>
+    neoipcr:::withheld_mark("birth_weight_figure", part = "density") |>
+    neoipcr:::withheld_mark("n_infections", part = "q1",
+                            keys = c(inf_type = "ssi"))
+
+  parsed <- jsonlite::fromJSON(write_json(index))
+
+  # Only coordinates: no column can carry a withheld value.
+  expect_setequal(names(parsed),
+                  c("cell", "table", "part", "key_column", "key_value"))
+  # The coordinates themselves ride, key columns and values included.
+  expect_equal(parsed$table, c("birth_weight_figure", "n_infections"))
+  expect_equal(parsed$part, c("density", "q1"))
+  expect_equal(parsed$key_column, c(NA_character_, "inf_type"))
+  expect_equal(parsed$key_value, c(NA_character_, "ssi"))
+})
+
+test_that("a dataset that withholds nothing serializes its empty index as an empty array", {
+  # The empty index is the only withheld state a calculated dataset carries
+  # today; its wire form is the JSON empty array "[]".
+  expect_identical(as.character(write_json(neoipcr:::withheld_index())), "[]")
+})

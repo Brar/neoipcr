@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: neoipcr 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/NeoIPC/neoipcr/issues\n"
-"POT-Creation-Date: 2026-11-28 09:09+0100\n"
+"POT-Creation-Date: 2026-11-28 09:53+0100\n"
 "PO-Revision-Date: 2025-05-27 16:56+0200\n"
 "Last-Translator: Brar Piening <brar.piening@charite.de>\n"
 "Language-Team: NeoIPC-Support <NeoIPC-Support@charite.de>\n"
@@ -16,59 +16,59 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: R/calc-api.R:538
+#: R/calc-api.R:553
 msgid "No dataset to benchmark: pass at least one calculated dataset."
 msgstr ""
 
-#: R/calc-api.R:955 R/calc-procedure-categories.R:45
+#: R/calc-api.R:979 R/calc-procedure-categories.R:45
 msgid "Procedure category"
 msgstr ""
 
-#: R/calc-api.R:955
+#: R/calc-api.R:979
 msgid "N"
 msgstr ""
 
-#: R/calc-api.R:955
+#: R/calc-api.R:979
 msgid "Pooled"
 msgstr ""
 
-#: R/calc-api.R:955
+#: R/calc-api.R:979
 msgid "Q1"
 msgstr "Q₁"
 
-#: R/calc-api.R:955
+#: R/calc-api.R:979
 msgid "Q2"
 msgstr "Q₂"
 
-#: R/calc-api.R:955
+#: R/calc-api.R:979
 msgid "Q3"
 msgstr "Q₃"
 
-#: R/calc-api.R:1214 R/infectious-agents.R:43
+#: R/calc-api.R:1238 R/infectious-agents.R:43
 msgid "Not in the list: %s."
 msgstr ""
 
-#: R/calc-api.R:1215
+#: R/calc-api.R:1239
 msgid ""
 "The infectious-agent tables count such a code in their Totals only, and no "
 "resistance category applies to it."
 msgstr ""
 
-#: R/calc-api.R:1348
+#: R/calc-api.R:1372
 msgid "the unnamed dataset"
 msgstr ""
 
-#: R/calc-api.R:1351
+#: R/calc-api.R:1375
 msgid "Left empty for %s: %s."
 msgstr ""
 
-#: R/calc-api.R:1359
+#: R/calc-api.R:1383
 msgid ""
 "%s was calculated before calculated datasets carried the versions of their "
 "rate definitions; calculate it again from its raw dataset to compare it."
 msgstr ""
 
-#: R/calc-api.R:1370
+#: R/calc-api.R:1394
 msgid ""
 "Each such table keeps the rows of the datasets joined into it; a figure "
 "takes no rows from a dataset for which it is left empty, and any other such "

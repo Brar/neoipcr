@@ -9,7 +9,10 @@
 #' validation summary (see [import_dhis2()]); a dataset without it is
 #' refused. `reconciliationSummary` is the dataset's reconciliation summary
 #' (see [import_dhis2()]), `NULL` for a dataset written before the summary
-#' existed; a summary of another shape is refused.
+#' existed; a summary of another shape is refused. `withheld` is the dataset's
+#' index of the cells its report withholds — the rows, counts, figures, and
+#' numbers of patients it does not print — named by coordinate and never by
+#' value; a dataset as calculated carries it empty.
 #'
 #' The dataset must have been imported with `include_department`,
 #' `include_patient`, and `include_enrollment` not `"no"` and with
@@ -222,6 +225,9 @@ calculate_reference_data <- function(x, use_cache = TRUE) {
       # NEOIPC-PERMANENT(dataset-format): `NULL` for a raw dataset written
       # before the slot existed; see `assert_reconciliation_summary()`.
       reconciliationSummary = x$reconciliationSummary,
+      # The index of the cells this dataset's report withholds; empty in a
+      # newly calculated dataset.
+      withheld = withheld_index(),
       usage_density_rate_table =
         get_usage_density_rate_table(x, use_cache),
       antibiotic_utilization_table =
@@ -265,7 +271,10 @@ calculate_reference_data <- function(x, use_cache = TRUE) {
 #' validation summary (see [import_dhis2()]); a dataset without it is
 #' refused. `reconciliationSummary` is the dataset's reconciliation summary
 #' (see [import_dhis2()]), `NULL` for a dataset written before the summary
-#' existed; a summary of another shape is refused.
+#' existed; a summary of another shape is refused. `withheld` is the dataset's
+#' index of the cells its report withholds — the rows, counts, figures, and
+#' numbers of patients it does not print — named by coordinate and never by
+#' value; a dataset as calculated carries it empty.
 #'
 #' The dataset must have been imported with `include_department`,
 #' `include_patient`, and `include_enrollment` not `"no"` and with
@@ -387,6 +396,9 @@ calculate_department_data <- function(x, use_cache = TRUE) {
       # NEOIPC-PERMANENT(dataset-format): `NULL` for a raw dataset written
       # before the slot existed; see `assert_reconciliation_summary()`.
       reconciliationSummary = x$reconciliationSummary,
+      # The index of the cells this dataset's report withholds; empty in a
+      # newly calculated dataset.
+      withheld = withheld_index(),
       usage_density_rate_table = usage_density_rate_table,
       antibiotic_utilization_table =
         get_antibiotic_utilization_table(x, use_cache, include_quartiles = FALSE),
@@ -524,11 +536,14 @@ calculate_department_data <- function(x, use_cache = TRUE) {
 #' `infectious_agent_resistance_rate_table`.
 #'
 #' @returns A neoipcr_bnch_ds. Each dataset's `metadata`,
-#'  `validationSummary`, and `reconciliationSummary` are carried under the
-#'  dataset's name — a dataset serialized before a summary existed, or
-#'  calculated from a raw dataset written before it existed, contributes no
-#'  entry to it — and the counts and tables are merged with the names as
-#'  column suffixes. `not_comparable` holds one row per table and dataset not
+#'  `validationSummary`, `reconciliationSummary`, and `withheld` index are
+#'  carried under the dataset's name — a dataset serialized before a slot
+#'  existed, or calculated from a raw dataset written before it existed,
+#'  contributes no entry to it — and the counts and tables are merged with the
+#'  names as column suffixes. `withheld` lists, under a dataset's name, the
+#'  coordinates of the cells that dataset withholds and never their values, so
+#'  a withheld cell is told from one the dataset lacks only by its standing in
+#'  the index. `not_comparable` holds one row per table and dataset not
 #'  joined: `table`, the table's slot, and `dataset`, the dataset's name.
 #' @export
 get_benchmark_data <- function(...) {
@@ -544,6 +559,7 @@ get_benchmark_data <- function(...) {
     metadata = list(),
     validationSummary = list(),
     reconciliationSummary = list(),
+    withheld = list(),
     not_comparable = .benchmark_not_comparable(comparable, ds_names))
   suffixes = ds_names |>
     sapply(\(x)ifelse(x=="",x,paste0("_",x)), USE.NAMES = FALSE)
@@ -586,6 +602,14 @@ get_benchmark_data <- function(...) {
     # says, and its consumer renders without the summary.
     output$validationSummary[[ds_name]] <- ds[["validationSummary"]]
     output$reconciliationSummary[[ds_name]] <- ds[["reconciliationSummary"]]
+
+    # The index of the cells a dataset withholds is its own account too, so it
+    # rides under the dataset's name and not merged by suffix.
+    # NEOIPC-PERMANENT(dataset-format): a dataset serialized before it had a
+    # `withheld` slot carries `NULL` there, and assigning `NULL` adds no entry,
+    # so such a dataset contributes none, as the return value's documentation
+    # says; a file on disk outlives the code that wrote it.
+    output$withheld[[ds_name]] <- ds[["withheld"]]
 
     # The counts: one row, a column per count and dataset.
     for (slot in c("n_departments", "n_surgical_departments", "n_patients",
@@ -1695,4 +1719,140 @@ rate_definition_columns <- c(
     }
   }
   order(order(attribute_place, attribute_tie, row_place, row_tie))
+}
+
+# ---- The withheld-figure representation --------------------------------------
+
+# A withheld cell of a calculated dataset is named by its coordinate, never by
+# its value, so that a serialized dataset cannot carry what its report
+# withholds. The index is one row per key column of each withheld cell, and its
+# columns hold only coordinates:
+#   1. `cell` identifies the withheld cell; every row of one cell shares it;
+#   2. `table` is the slot of the dataset the cell belongs to;
+#   3. `part` is the measure or figure part withheld, empty for a whole row;
+#   4. `key_column` and `key_value` name the row the cell sits on, one column
+#      and its value per row. A cell with no row key is one row carrying an
+#      empty `key_column`; a key whose value is missing — an unrecorded
+#      category, say — keeps its `key_column` and carries an `NA` `key_value`,
+#      so a cell keyed on a missing value is named apart from one that has no
+#      key at all.
+# A cell the dataset withholds and a cell it lacks are told apart only by
+# whether the index holds the coordinate, which keeps the value itself out of
+# the dataset entirely.
+
+# The empty index of a dataset's withheld cells.
+#' @returns A 0-row tibble carrying the coordinate columns.
+#' @noRd
+withheld_index <- function() {
+  tibble::tibble(
+    cell = integer(),
+    table = character(),
+    part = character(),
+    key_column = character(),
+    key_value = character()
+  )
+}
+
+# `index`, the withheld index of a dataset, with one cell added at the
+# coordinate `table`, `part`, and the named character `keys`: one row per key
+# column, or one row carrying no key where `keys` is empty.
+#' @param index A withheld index, or `NULL` to begin from an empty one.
+#' @param table `part` A single non-missing string naming the slot, and the
+#'   measure or figure part withheld.
+#' @param keys A character vector naming every element with its key column, or
+#'   empty for a cell with no row key. A key's value may be `NA`.
+#' @returns `index` with one more cell recorded.
+#' @noRd
+withheld_mark <- function(index = withheld_index(), table, part = "",
+                          keys = character()) {
+  if (is.null(index))
+    index <- withheld_index()
+  table <- .withheld_scalar(table, "table")
+  part <- .withheld_scalar(part, "part")
+  key_column <- .withheld_key_names(keys)
+  n <- length(key_column)
+  cell <- if (nrow(index) == 0L) 1L else max(index$cell) + 1L
+  dplyr::bind_rows(index, tibble::tibble(
+    cell = rep(cell, max(n, 1L)),
+    table = rep(table, max(n, 1L)),
+    part = rep(part, max(n, 1L)),
+    key_column = if (n == 0L) NA_character_ else key_column,
+    key_value = if (n == 0L) NA_character_ else as.character(unname(keys))
+  ))
+}
+
+# Whether `index` holds a withheld cell at the coordinate `table`, `part`, and
+# the named character `keys`. A coordinate matches only on its whole key set,
+# whatever the order of its key columns, so a row withheld for two key columns
+# is not told for a subset of them; a coordinate with no key matches an empty
+# `keys`, and a query for a slot or part that is missing matches nothing.
+#' @param index A withheld index, or `NULL`.
+#' @param table `part` A single string naming the slot and the part.
+#' @param keys As for `withheld_mark()`.
+#' @returns `TRUE` where the coordinate stands in `index`, `FALSE` otherwise.
+#' @noRd
+withheld_is_withheld <- function(index, table, part = "",
+                                 keys = character()) {
+  if (is.null(index) || nrow(index) == 0L)
+    return(FALSE)
+  if (length(table) != 1L || length(part) != 1L || is.na(table) || is.na(part))
+    return(FALSE)
+  key_column <- .withheld_key_names(keys)
+  wanted <- .withheld_signature(key_column,
+    if (length(key_column) == 0L) NA_character_ else as.character(unname(keys)))
+  rows <- !is.na(index$table) & index$table == table &
+    !is.na(index$part) & index$part == part
+  for (cell in unique(index$cell[rows])) {
+    held <- index$cell == cell
+    if (identical(.withheld_signature(index$key_column[held],
+                                      index$key_value[held]), wanted))
+      return(TRUE)
+  }
+  FALSE
+}
+
+# `value` as a single non-missing string, or an internal error: a coordinate
+# names one concrete slot and part, never a missing or vector one.
+#' @noRd
+.withheld_scalar <- function(value, what) {
+  if (length(value) != 1L || is.na(value))
+    rlang::abort(
+      sprintf("A withheld coordinate's `%s` must be one string, not %s.",
+              what, if (length(value) == 0L) "nothing" else "a vector"),
+      class = "neoipcr_withheld_coordinate", .internal = TRUE)
+  as.character(value)
+}
+
+# The key columns of `keys`, an internal error where a non-empty `keys` leaves
+# any element unnamed: an unnamed value cannot name the row it identifies, so
+# it must not be mistaken for the empty coordinate that stands for no key.
+#' @noRd
+.withheld_key_names <- function(keys) {
+  if (length(keys) == 0L)
+    return(character())
+  key_names <- names(keys)
+  if (is.null(key_names) || anyNA(key_names) || any(key_names == ""))
+    rlang::abort(
+      "Every `keys` element must name its key column, or `keys` must be empty.",
+      class = "neoipcr_withheld_keys", .internal = TRUE)
+  as.character(key_names)
+}
+
+# The signature of a coordinate's key columns and values: its key pairs, sorted,
+# so two coordinates name one cell when their key sets agree in any order. A
+# coordinate with no key has the empty signature. Each pair is self-delimiting:
+# the lengths of the column and the value come before them, so a value may hold
+# any character — a carriage return or the string "NA" among them — and one
+# coordinate can never encode the string another does. A missing value is a real
+# coordinate, not the absence of a key, so it carries the length `-1`, which no
+# value has, rather than a sentinel a value could also be. The signature's order
+# is collation-dependent, so it is a comparison value within one process only.
+.withheld_signature <- function(key_column, key_value) {
+  keep <- !is.na(key_column)
+  kc <- key_column[keep]
+  if (length(kc) == 0L)
+    return(character())
+  kv <- key_value[keep]
+  n <- ifelse(is.na(kv), -1L, nchar(kv))
+  sort(sprintf("%d:%d:%s:%s", nchar(kc), n, kc, ifelse(is.na(kv), "", kv)))
 }

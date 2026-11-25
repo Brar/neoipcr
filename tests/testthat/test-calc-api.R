@@ -429,11 +429,12 @@ test_that("get_benchmark_data takes a calculated dataset without a validation su
 
 # --- Versions of the rate definitions and the benchmark's guard ------------
 
-# The tables of a calculated dataset: every slot but its metadata and the
-# import's summaries.
+# The tables of a calculated dataset: every slot but its metadata, the import's
+# summaries, and the index of the cells it withholds.
 calculated_tables <- function(calculated)
   setdiff(names(calculated),
-          c("metadata", "validationSummary", "reconciliationSummary"))
+          c("metadata", "validationSummary", "reconciliationSummary",
+            "withheld"))
 
 # The tables that read the tree of the infectious-agent list over the
 # reporting groups, those that read it over the full ontology, those that
@@ -2629,6 +2630,231 @@ test_that("get_benchmark_data gives a row the reference lacks the number of depa
     expect_gt(nrow(vre), 0L)
     expect_identical(vre$quartile_departments_ref, rep(0L, nrow(vre)),
                      label = slot)
+  }
+})
+
+# --- The withheld-figure representation --------------------------------------
+
+# A withheld figure is named by its coordinate — the table it belongs to, the
+# part of it withheld, and the row's key columns — never by its values.
+
+test_that("a withheld index begins as an empty frame of the coordinate columns", {
+  index <- neoipcr:::withheld_index()
+  expect_s3_class(index, "data.frame")
+  expect_named(index, c("cell", "table", "part", "key_column", "key_value"))
+  expect_identical(index$cell, integer())
+  expect_identical(index$table, character())
+  expect_identical(nrow(index), 0L)
+})
+
+test_that("the withheld index holds coordinates only, with no column for a value", {
+  index <- neoipcr:::withheld_index() |>
+    neoipcr:::withheld_mark("birth_weight_figure", part = "density")
+  expect_false("value" %in% names(index))
+})
+
+test_that("withheld_mark records a part of a table that has no row key", {
+  index <- neoipcr:::withheld_mark(NULL, "n_patients", part = "q2")
+  expect_identical(nrow(index), 1L)
+  expect_identical(index$cell, 1L)
+  expect_identical(index$table, "n_patients")
+  expect_identical(index$part, "q2")
+  expect_identical(index$key_column, NA_character_)
+  expect_identical(index$key_value, NA_character_)
+})
+
+test_that("withheld_mark records a row once per key column, sharing one cell", {
+  index <- neoipcr:::withheld_mark(
+    NULL, "incidence_density_rate_table",
+    keys = c(inf = "bsi", department_key = "DEP_3"))
+  expect_identical(nrow(index), 2L)
+  expect_identical(index$cell, c(1L, 1L))
+  expect_identical(index$table, c("incidence_density_rate_table",
+                                  "incidence_density_rate_table"))
+  expect_identical(index$part, c("", ""))
+  expect_identical(index$key_column, c("inf", "department_key"))
+  expect_identical(index$key_value, c("bsi", "DEP_3"))
+})
+
+test_that("successive marks number each cell apart", {
+  index <- neoipcr:::withheld_index() |>
+    neoipcr:::withheld_mark("n_patients", part = "q2") |>
+    neoipcr:::withheld_mark("n_infections", part = "q1",
+                            keys = c(inf_type = "ssi", department_key = "D1"))
+  expect_identical(index$cell, c(1L, 2L, 2L))
+})
+
+test_that("withheld_is_withheld matches a coordinate by its whole key set", {
+  index <- neoipcr:::withheld_mark(
+    NULL, "incidence_density_rate_table",
+    keys = c(inf = "bsi", department_key = "DEP_3"))
+  expect_true(neoipcr:::withheld_is_withheld(
+    index, "incidence_density_rate_table",
+    keys = c(inf = "bsi", department_key = "DEP_3")))
+  expect_true(neoipcr:::withheld_is_withheld(
+    index, "incidence_density_rate_table",
+    keys = c(department_key = "DEP_3", inf = "bsi")))
+  expect_false(neoipcr:::withheld_is_withheld(
+    index, "incidence_density_rate_table", keys = c(inf = "bsi")))
+  expect_false(neoipcr:::withheld_is_withheld(
+    index, "incidence_density_rate_table",
+    keys = c(inf = "hap", department_key = "DEP_3")))
+})
+
+test_that("the part tells one withheld measure of a cell from another", {
+  index <- neoipcr:::withheld_mark(NULL, "n_infections", part = "q1",
+                                   keys = c(inf_type = "ssi"))
+  expect_true(neoipcr:::withheld_is_withheld(
+    index, "n_infections", part = "q1", keys = c(inf_type = "ssi")))
+  expect_false(neoipcr:::withheld_is_withheld(
+    index, "n_infections", part = "q2", keys = c(inf_type = "ssi")))
+  expect_false(neoipcr:::withheld_is_withheld(index, "n_patients", part = "q2"))
+})
+
+test_that("withheld_mark refuses a key that names no column", {
+  expect_error(neoipcr:::withheld_mark(NULL, "n_infections", keys = c("ssi")),
+               class = "neoipcr_withheld_keys")
+  expect_error(
+    neoipcr:::withheld_mark(NULL, "n_infections",
+                            keys = c(inf_type = "ssi", "x")),
+    class = "neoipcr_withheld_keys")
+})
+
+test_that("withheld_mark records a withheld row whose key value is NA", {
+  index <- neoipcr:::withheld_mark(
+    NULL, "incidence_density_rate_table",
+    keys = c(inf = "bsi", department_key = NA))
+  expect_identical(index$key_column, c("inf", "department_key"))
+  expect_identical(index$key_value, c("bsi", NA_character_))
+  expect_true(neoipcr:::withheld_is_withheld(
+    index, "incidence_density_rate_table",
+    keys = c(inf = "bsi", department_key = NA)))
+  expect_false(neoipcr:::withheld_is_withheld(
+    index, "incidence_density_rate_table", keys = c(inf = "bsi")))
+})
+
+test_that("an NA key value is not the literal string NA", {
+  na <- neoipcr:::withheld_mark(NULL, "n_infections", part = "q1",
+                                keys = c(inf_type = NA))
+  literal <- neoipcr:::withheld_mark(NULL, "n_infections", part = "q1",
+                                     keys = c(inf_type = "NA"))
+  expect_false(neoipcr:::withheld_is_withheld(
+    na, "n_infections", part = "q1", keys = c(inf_type = "NA")))
+  expect_false(neoipcr:::withheld_is_withheld(
+    literal, "n_infections", part = "q1", keys = c(inf_type = NA)))
+})
+
+test_that("a key value equal to a control character is not a missing key value", {
+  # A coordinate tells a value from a missing one by content, never by any
+  # reserved character: the literal U+0001 is a real value, so it never stands
+  # for a missing key value, nor the missing key value for it.
+  sentinel <- neoipcr:::withheld_mark(NULL, "n_infections", part = "q1",
+                                      keys = c(inf_type = "\u0001"))
+  missing <- neoipcr:::withheld_mark(NULL, "n_infections", part = "q1",
+                                     keys = c(inf_type = NA))
+  expect_false(neoipcr:::withheld_is_withheld(
+    sentinel, "n_infections", part = "q1", keys = c(inf_type = NA)))
+  expect_false(neoipcr:::withheld_is_withheld(
+    missing, "n_infections", part = "q1", keys = c(inf_type = "\u0001")))
+  expect_true(neoipcr:::withheld_is_withheld(
+    sentinel, "n_infections", part = "q1", keys = c(inf_type = "\u0001")))
+  expect_true(neoipcr:::withheld_is_withheld(
+    missing, "n_infections", part = "q1", keys = c(inf_type = NA)))
+})
+
+test_that("a restored index row with a missing part matches no key-less query", {
+  # An index can hold a row the writers never mark, such as one whose part is
+  # missing; a query that names no key column must not answer TRUE for a cell
+  # that was never withheld.
+  restored <- tibble::tibble(
+    cell = 1L, table = "surgery_rate_table", part = NA_character_,
+    key_column = "department_key", key_value = "D1")
+  expect_false(neoipcr:::withheld_is_withheld(
+    restored, "surgery_rate_table", part = ""))
+})
+
+test_that("a restored index row with a missing table matches no key-less query", {
+  # The counterpart of the missing-part row: an index row whose table is
+  # missing must not answer a query naming a concrete table.
+  restored <- tibble::tibble(
+    cell = 1L, table = NA_character_, part = "q1",
+    key_column = "department_key", key_value = "D1")
+  expect_false(neoipcr:::withheld_is_withheld(
+    restored, "n_patients", part = "q1"))
+})
+
+test_that("a coordinate is told by its whole key set, not a flattened one", {
+  # The signature keeps a column apart from its value by their lengths, so a
+  # colon inside a key column cannot move the boundary between one coordinate's
+  # column and another's value: two cells that a flattened column:value join
+  # would give one encoding are still told apart.
+  a <- neoipcr:::withheld_mark(NULL, "n_infections", part = "q1",
+                               keys = c("a:1" = "x", b = "2"))
+  b <- neoipcr:::withheld_mark(NULL, "n_infections", part = "q1",
+                               keys = c(a = "1:x", b = "2"))
+  expect_true(neoipcr:::withheld_is_withheld(
+    a, "n_infections", part = "q1", keys = c("a:1" = "x", b = "2")))
+  expect_false(neoipcr:::withheld_is_withheld(
+    a, "n_infections", part = "q1", keys = c(a = "1:x", b = "2")))
+  expect_true(neoipcr:::withheld_is_withheld(
+    b, "n_infections", part = "q1", keys = c(a = "1:x", b = "2")))
+  expect_false(neoipcr:::withheld_is_withheld(
+    b, "n_infections", part = "q1", keys = c("a:1" = "x", b = "2")))
+})
+
+test_that("a withheld coordinate must name a concrete slot and part", {
+  expect_error(neoipcr:::withheld_mark(NULL, NA_character_, part = "q2"),
+               class = "neoipcr_withheld_coordinate")
+  expect_error(
+    neoipcr:::withheld_mark(NULL, "n_patients", part = NA_character_),
+    class = "neoipcr_withheld_coordinate")
+  index <- neoipcr:::withheld_mark(NULL, "n_patients", part = "q2")
+  expect_false(neoipcr:::withheld_is_withheld(index, NA_character_, part = "q2"))
+  expect_false(
+    neoipcr:::withheld_is_withheld(index, "n_patients", part = NA_character_))
+})
+
+test_that("get_benchmark_data carries each dataset's withheld coordinates under its name", {
+  ds <- make_calc_test_ds()
+  own <- calculate_department_data(ds, use_cache = FALSE)
+  ref <- calculate_reference_data(ds, use_cache = FALSE)
+  own$withheld <- neoipcr:::withheld_mark(NULL, "n_patient_days",
+                                         part = "pooled_mean")
+  ref$withheld <- neoipcr:::withheld_mark(NULL, "birth_weight_figure",
+                                         part = "location_parameters")
+
+  benchmark <- get_benchmark_data(own = own, ref = ref)
+  expect_named(benchmark$withheld, c("own", "ref"))
+
+  expect_true(neoipcr:::withheld_is_withheld(
+    benchmark$withheld$own, "n_patient_days", part = "pooled_mean"))
+  expect_true(neoipcr:::withheld_is_withheld(
+    benchmark$withheld$ref, "birth_weight_figure", part = "location_parameters"))
+  expect_false(neoipcr:::withheld_is_withheld(
+    benchmark$withheld$ref, "birth_weight_figure", part = "density"))
+})
+
+test_that("a dataset without a withheld index contributes no withheld entry to the benchmark", {
+  ds <- make_calc_test_ds()
+  own <- calculate_department_data(ds, use_cache = FALSE)
+  ref <- calculate_reference_data(ds, use_cache = FALSE)
+  # As a dataset serialized before the slot existed: no `withheld` element.
+  ref$withheld <- NULL
+  own$withheld <- neoipcr:::withheld_mark(NULL, "n_patient_days",
+                                         part = "pooled_mean")
+
+  benchmark <- get_benchmark_data(own = own, ref = ref)
+
+  expect_named(benchmark$withheld, "own")
+})
+
+test_that("calculate_reference_data and calculate_department_data carry an empty withheld index", {
+  ds <- make_calc_test_ds()
+  own <- calculate_department_data(ds, use_cache = FALSE)
+  ref <- calculate_reference_data(ds, use_cache = FALSE)
+  for (calculated in list(own, ref)) {
+    expect_true("withheld" %in% names(calculated))
+    expect_identical(calculated$withheld, neoipcr:::withheld_index())
   }
 })
 
