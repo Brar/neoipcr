@@ -34,8 +34,14 @@ the procedure joins the first group, in the fixed order of the group
 levels, that any of its codes places, so the same procedure is grouped the
 same way whichever of its codes was entered as the main one. An approach
 code places a procedure only when it holds nothing but approach codes, and
-a code that is no surgical procedure drops out. A procedure whose codes
-place nothing — a valid code no rule places, a malformed value, or a code
-whose query is still pending — is placed by no group; the warnings ask
-what was done.
+a code that is no surgical procedure drops out. A code that places
+nothing — a valid code no rule places, a malformed value, or a code whose
+query is still pending — counts for nothing in the placement: the
+procedure takes its group from the codes that do place, and is no
+surgical procedure or placed by no group according as the codes left over
+are all codes that are no surgical procedure or place nowhere. Two of the
+pending codes hold their whole procedure: they name no operation which
+the procedure's other codes can be trusted to be, so a procedure holding
+one of them is placed by no group whatever else it holds, until the query
+is answered. The warnings ask what was done.
 }
