@@ -223,6 +223,8 @@ calculate_reference_data <- function(x, use_cache = TRUE) {
       reconciliationSummary = x$reconciliationSummary,
       usage_density_rate_table =
         get_usage_density_rate_table(x, use_cache),
+      patients_exposed_table =
+        get_patients_exposed_table(x, use_cache),
       antibiotic_utilization_table =
         get_antibiotic_utilization_table(x, use_cache),
       surgery_rate_table =
@@ -386,6 +388,8 @@ calculate_department_data <- function(x, use_cache = TRUE) {
       # before the slot existed; see `assert_reconciliation_summary()`.
       reconciliationSummary = x$reconciliationSummary,
       usage_density_rate_table = usage_density_rate_table,
+      patients_exposed_table =
+        get_patients_exposed_table(x, use_cache, include_quartiles = FALSE),
       antibiotic_utilization_table =
         get_antibiotic_utilization_table(x, use_cache, include_quartiles = FALSE),
       surgery_rate_table =
@@ -650,6 +654,21 @@ get_benchmark_data <- function(...) {
           output$usage_density_rate_table, suffixes,
           denominator_tbl = denominators$n_patient_days,
           multiplier = 100)
+      }
+    }
+    if (!is.na(joins[["patients_exposed_table"]])) {
+      tbl <- ds$patients_exposed_table |>
+        dplyr::rename_with(~ paste0(.x, suffix),
+                           !tidyselect::any_of(c("factor", "measure")))
+
+      if (is.null(output$patients_exposed_table)) {
+        output$patients_exposed_table <- tbl
+      } else if (!joins[["patients_exposed_table"]]) {
+        leave_empty("patients_exposed_table", tbl, c("factor", "measure"))
+      } else {
+        output$patients_exposed_table <- output$patients_exposed_table |>
+          dplyr::full_join(tbl, dplyr::join_by("factor", "measure")) |>
+          dplyr::arrange(.data$factor, .data$measure)
       }
     }
     if (!is.na(joins[["antibiotic_utilization_table"]])) {
@@ -1089,6 +1108,7 @@ rate_definition_versions <- c(
   birth_weight_figure = 1L,
   gestational_age_figure = 1L,
   usage_density_rate_table = 1L,
+  patients_exposed_table = 1L,
   antibiotic_utilization_table = 1L,
   surgery_rate_table = 1L,
   incidence_density_rate_table = 1L,
