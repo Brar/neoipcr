@@ -236,6 +236,12 @@ validation_rule_67 <- function(x, exceptions)
 # The first approach stem when approach codes and codes that are no surgical
 # procedure are all the procedure holds, else `NA`.
 .rule_procedure_approach_only_code <- function(df, i) {
+  # A held pending code means the procedure is no approach code's alone:
+  # the classifier places it in no group, and rule 68 asks about the code.
+  if (.procedure_holds_procedure(df$main_procedure_code[[i]],
+                                 df$side_procedure_code_1[[i]],
+                                 df$side_procedure_code_2[[i]]))
+    return(NA_character_)
   codes <- .rule_procedure_codes_of(df, i)
   stems <- unlist(lapply(codes, .procedure_stems_of_one), use.names = FALSE)
   if (length(stems) == 0L) return(NA_character_)

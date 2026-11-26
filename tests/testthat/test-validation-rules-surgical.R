@@ -344,6 +344,10 @@ test_that("rule 67 detects a procedure an approach code alone places", {
   # The approach stem inside an expression is found as the bare code is.
   expect_equal(nrow(neoipcr:::validation_rule_67(
     procedure_ds("PAK.FA.AA&XK9K"), NULL)), 1L)
+  # A pending code that places nothing holds nothing back: the operation
+  # behind the approach is still uncoded.
+  expect_equal(nrow(neoipcr:::validation_rule_67(
+    procedure_ds("PAK.FA.AA", "LZZ.DK.AH"), NULL)), 1L)
 })
 
 test_that("rule 67 leaves alone a procedure its operation places", {
@@ -357,6 +361,13 @@ test_that("rule 67 leaves alone a procedure its operation places", {
     procedure_ds("BCC.GA.AA"), NULL)), 0L)
   expect_equal(nrow(neoipcr:::validation_rule_67(
     procedure_ds("ZZZ.ZZ.ZZ"), NULL)), 0L)
+  # A held pending code holds the procedure out of every group, so it is
+  # no approach code's alone: the classifier places it in no group and
+  # rule 68 asks what was done.
+  expect_equal(nrow(neoipcr:::validation_rule_67(
+    procedure_ds("PAK.FA.AA", "NMR.MK.AB"), NULL)), 0L)
+  expect_equal(nrow(neoipcr:::validation_rule_68(
+    procedure_ds("PAK.FA.AA", "NMR.MK.AB"), NULL)), 1L)
 })
 
 test_that("rule 67 honours exceptions", {
