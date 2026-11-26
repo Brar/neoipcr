@@ -322,8 +322,9 @@ get_procedure_group <- function(main, side1 = NA_character_,
       "cardiac_great_vessel_surgery",
 
     # Non-cardiac thoracic surgery. The percutaneous drainage of the pleural
-    # cavity counts as surgery wherever it is coded, so the pleura's means
-    # admit the percutaneous approach where no other thoracic target does.
+    # cavity counts as surgery wherever it is coded, so the percutaneous
+    # means is admitted for a thoracic target only as the pleura's drainage;
+    # every thoracic target admits the open and endoscopic means.
     target %in% c(
       "MCX", # Interventions on diaphragm
       "JBF", # Interventions on lung parenchyma
@@ -332,7 +333,9 @@ get_procedure_group <- function(main, side1 = NA_character_,
       ) &
       means %in% c("AA", "AB") ~ "non_cardiac_thoracic_surgery",
     target == "JCB" &
-      means %in% c("AA", "AB", "AE") ~ "non_cardiac_thoracic_surgery",
+      (means %in% c("AA", "AB") |
+        (action == "JB" & means == "AE")) ~
+      "non_cardiac_thoracic_surgery",
 
     # The oesophagus is placed in the chest.
     target == "KBA" & means %in% c("AA", "AB") ~

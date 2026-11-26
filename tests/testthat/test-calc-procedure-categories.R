@@ -136,10 +136,13 @@ test_that("the axes place a first-time code of a placed family by the family", {
     as.character(neoipcr:::get_procedure_category("PAM.QQ.AA")),
     "inguinal_umbilical_hernia_repair")
   # A percutaneous pleural drain counts as surgery wherever it is coded; a
-  # percutaneous drainage of no other site does.
+  # percutaneous drainage or puncture of no other site does. The pleura's
+  # own target admits the percutaneous means for its drainage only; the
+  # open and endoscopic means stand for every action of it.
   expect_equal(
-    as.character(neoipcr:::get_procedure_category("JCB.QQ.AE")),
+    as.character(neoipcr:::get_procedure_category("JCB.QQ.AA")),
     "non_cardiac_thoracic_surgery")
+  expect_true(is.na(neoipcr:::.procedure_group_by_axis("JCB.QQ.AE")))
   expect_true(is.na(neoipcr:::.procedure_group_by_axis("JBF.QQ.AE")))
   expect_true(is.na(neoipcr:::.procedure_group_by_axis("KMA.QQ.AE")))
   # A transcatheter duct closure is a transcatheter heart intervention,
