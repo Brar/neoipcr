@@ -290,6 +290,13 @@ test_that("an expression places by the intervention stems it is built of", {
   # value no grammar reads is a code no group takes.
   expect_equal(group_of("KBF.LI.AA/NMR.MK.AB"), "no_group")
   expect_equal(group_of("KBF.LI.AAA"), "no_group")
+  # A value no grammar reads is a code no group takes, so the procedure is
+  # no surgical procedure only once the value is corrected: it does not
+  # fall back beside a code that is no surgical procedure, and a code that
+  # places still places.
+  expect_equal(group_of("NOT A CODE", "BCC.GA.AA"), "no_group")
+  expect_equal(group_of("KBF.LI.AAA", "PAM.MK.AA"),
+               "inguinal_umbilical_hernia_repair")
 })
 
 test_that("a procedure without any code is no procedure", {

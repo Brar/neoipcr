@@ -35,14 +35,14 @@ get_risk_population <- function(x, group_cols = NULL, use_cache = TRUE) {
     cache(x, cache_key)
 }
 
-# The surgery form's three code columns, an absent one standing in as
-# empty: a dataset taken from a form version without the side codes counts
-# like one whose procedures hold no side code.
+# The surgery form's three code columns, an absent one standing in as a
+# missing value in every row: a dataset taken from a form version without
+# the side codes counts like one whose procedures hold no side code.
 .surgery_code_columns <- function(surgeryData) {
   for (col in c("main_procedure_code", "side_procedure_code_1",
                 "side_procedure_code_2"))
     if (!(col %in% names(surgeryData)))
-      surgeryData <- dplyr::mutate(surgeryData, !!col := character())
+      surgeryData <- dplyr::mutate(surgeryData, !!col := NA_character_)
   surgeryData
 }
 

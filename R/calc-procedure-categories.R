@@ -385,8 +385,10 @@ get_procedure_group <- function(main, side1 = NA_character_,
 
 # The group the given stems of one procedure place: the earliest group of a
 # stem that is no approach code, an approach's group when nothing else
-# places, and no surgical procedure when every stem is.
-.procedure_group_of_stems <- function(stems) {
+# places, and no surgical procedure when every stem is. `ungrammatical`
+# marks that a filled code slot no grammar reads was left out of the stems;
+# it is a code no group takes, so it stands against the last fallback.
+.procedure_group_of_stems <- function(stems, ungrammatical = FALSE) {
   idx <- match(stems, .procedure_code_table$procedure_code)
   recorded <- !is.na(idx)
   groups <- .procedure_group_for_stem(stems)
@@ -400,8 +402,9 @@ get_procedure_group <- function(main, side1 = NA_character_,
   if (any(placed)) return(.procedure_first_group(groups[placed]))
   # A procedure is no surgical procedure only when every one of its codes
   # says so: a code no group takes among them asks what was done, and the
-  # answer could still place the procedure.
-  if (all(groups == "not_surgery")) return("not_surgery")
+  # answer could still place the procedure. A value no grammar reads asks
+  # too, until it is corrected.
+  if (all(groups == "not_surgery") && !ungrammatical) return("not_surgery")
   "no_group"
 }
 
@@ -448,11 +451,14 @@ get_procedure_category <- function(x, not_surgery_na = FALSE) {
   row <- function(m, s1, s2) {
     fields <- c(m, s1, s2)
     if (all(is.na(fields))) return(NA_character_)
-    stems <- unlist(lapply(fields, .procedure_stems_of_one),
-                    use.names = FALSE)
-    # A slot was filled and no grammar reads it: a code no group takes.
+    stems_per_field <- lapply(fields, .procedure_stems_of_one)
+    stems <- unlist(stems_per_field, use.names = FALSE)
+    # A slot was filled and no grammar reads it: a code no group takes,
+    # left out of the stems yet standing against the surgical fallback.
+    ungrammatical <- any(!is.na(fields) &
+                           vapply(stems_per_field, length, integer(1)) == 0L)
     if (length(stems) == 0L) return("no_group")
-    .procedure_group_of_stems(stems)
+    .procedure_group_of_stems(stems, ungrammatical = ungrammatical)
   }
   mapply(row, main, side1, side2, USE.NAMES = FALSE)
 }

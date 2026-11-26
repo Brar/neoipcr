@@ -230,6 +230,12 @@ test_that("surgical cache entries carry the definitions version", {
   invisible(get_surgery_rate_table(ds, use_cache = TRUE))
   v <- paste0("[.]v",
               as.character(neoipcr:::.surgical_definitions_version()), "$")
+  # The tag carries each of the four surgical definitions, so one of them
+  # rising alone retires the entries too.
+  expect_equal(
+    length(strsplit(as.character(
+      neoipcr:::.surgical_definitions_version()), ".", fixed = TRUE)[[1]]),
+    4L)
   keys <- ls(ds$.cache)
   surgical <- keys[grepl(
     "^(procedures|procedure_categories|surgery_risk|surgery_rate_table)",
@@ -241,6 +247,16 @@ test_that("surgical cache entries carry the definitions version", {
   stale <- tibble::tibble(n = 999L)
   ds$.cache$procedures <- stale
   expect_false(identical(get_procedures(ds, use_cache = TRUE), stale))
+})
+
+test_that("the surgical counts take a surgery form without the side codes", {
+  # A dataset taken from a form version that carries no side codes counts
+  # by the codes it does carry, standing in missing values row by row.
+  ds <- calc_ds
+  ds$surgeryData$side_procedure_code_1 <- NULL
+  ds$surgeryData$side_procedure_code_2 <- NULL
+  expect_equal(get_procedures(ds, use_cache = FALSE)$n, 1L)
+  expect_equal(get_surgery_risk(ds, use_cache = FALSE)$n_procedures, 1L)
 })
 
 test_that("incidence_density_rate_table BSI count matches fixture", {
