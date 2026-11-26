@@ -222,6 +222,21 @@ test_that("a procedure held by a pending code stays out of the surgical counts",
   expect_equal(get_surgery_risk(calc_ds, use_cache = FALSE)$n_procedures, 1L)
 })
 
+test_that("a procedure no group places stays out of the surgical counts", {
+  # A procedure only of codes no group takes asks what was done (rule 66);
+  # until its codes are placed, neither counting path counts it as a
+  # surgical procedure.
+  ungrouped <- calc_ds
+  ungrouped$surgeryData$main_procedure_code <- "PZX.AA.JA"
+  expect_equal(get_procedures(ungrouped, use_cache = FALSE)$n, 0L)
+  expect_equal(get_surgery_risk(ungrouped, use_cache = FALSE)$n_procedures,
+               0L)
+  # The fixture's own code places, so it is the ungrouped code that leaves
+  # the procedure out.
+  expect_equal(get_procedures(calc_ds, use_cache = FALSE)$n, 1L)
+  expect_equal(get_surgery_risk(calc_ds, use_cache = FALSE)$n_procedures, 1L)
+})
+
 test_that("surgical cache entries carry the definitions version", {
   ds <- make_calc_test_ds()
   invisible(get_procedures(ds, use_cache = TRUE))
