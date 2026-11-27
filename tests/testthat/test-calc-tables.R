@@ -223,7 +223,7 @@ test_that("a procedure held by a pending code stays out of the surgical counts",
 })
 
 test_that("a procedure no group places stays out of the surgical counts", {
-  # A procedure only of codes no group takes asks what was done (rule 66);
+  # A procedure only of codes no group takes asks what was done (rule 68);
   # until its codes are placed, neither counting path counts it as a
   # surgical procedure.
   ungrouped <- calc_ds
@@ -235,6 +235,17 @@ test_that("a procedure no group places stays out of the surgical counts", {
   # the procedure out.
   expect_equal(get_procedures(calc_ds, use_cache = FALSE)$n, 1L)
   expect_equal(get_surgery_risk(calc_ds, use_cache = FALSE)$n_procedures, 1L)
+})
+
+test_that("a procedure its side code places counts in both paths", {
+  # Both counts judge the procedure over all three of its codes, as the
+  # classifier does: a main code no group takes beside a placing side
+  # code is a placed procedure and counts in each path alike.
+  sided <- calc_ds
+  sided$surgeryData$main_procedure_code <- "ZZZ.ZZ.ZZ"
+  sided$surgeryData$side_procedure_code_1 <- "PAM.MK.AA"
+  expect_equal(get_procedures(sided, use_cache = FALSE)$n, 1L)
+  expect_equal(get_surgery_risk(sided, use_cache = FALSE)$n_procedures, 1L)
 })
 
 test_that("surgical cache entries carry the definitions version", {

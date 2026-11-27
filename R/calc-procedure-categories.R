@@ -2,11 +2,12 @@
 # them, and the classifier the reports and the validation rules share.
 #
 # A surgical procedure is grouped by the site its codes place it at and the
-# tract it opens, as the protocol's review decided it; the recorded codes
+# tract it opens, as API-DESIGN.md §13.9.2 defines it; the recorded codes
 # with their groups, tracts, approach codes and pending codes are the test
-# cases of these rules. A code the table holds is placed as the table says;
-# the axes of target, action and means below serve only a code it does not
-# hold, and never contradict the table. An ICHI code expression is read as
+# cases of these rules. A code the table holds is placed as the table says,
+# and it stands wherever an axis below would place the code otherwise: the
+# axes serve only a code the table does not hold, and never contradict the
+# table. An ICHI code expression is read as
 # the intervention stems it is built of, and only the stems place; a value
 # no grammar reads places nothing. A code no group takes stays out of
 # every group: the warnings ask the partners what was done, and only the
@@ -17,8 +18,9 @@
 #' @description
 #' `get_procedure_group()` classifies a surgical procedure, given by its main
 #' procedure code and its two side procedure codes, into one of the eight
-#' procedure groups: the site the procedure is placed at, as the protocol's
-#' review of the ICHI codes decided it. Each slot may hold a full ICHI code
+#' procedure groups: the site the procedure is placed at, as API-DESIGN.md
+#' §13.9.2 defines it and the placement table of this file records it. Each
+#' slot may hold a full ICHI code
 #' expression, and every intervention stem of every slot counts among the
 #' procedure's codes; a malformed value is a code no group takes. Every code
 #' of a procedure counts:
@@ -42,7 +44,10 @@
 #'   stands for a slot that holds no code, and one `NA` covers a whole
 #'   vector of procedures without a first side code.
 #' @param side2 Character vector of second side ICHI procedure codes, with
-#'   the same meaning. The arguments are recycled to a common length.
+#'   the same meaning. The arguments recycle as `vctrs` does: length 1
+#'   covers a whole vector, an empty argument makes the result empty, and a
+#'   length that is neither of these is refused. A factor stands for its
+#'   labels.
 #' @returns A factor with the eight procedure groups as levels in their
 #'   fixed order, plus `not_surgery` for a procedure all of whose codes are
 #'   no surgical procedure, `no_group` for one its codes place nowhere, and
@@ -50,7 +55,24 @@
 #' @export
 get_procedure_group <- function(main, side1 = NA_character_,
                                 side2 = NA_character_) {
-  n <- max(vapply(list(main, side1, side2), length, integer(1)))
+  # A factor stands for its labels; the lengths recycle as vctrs does: an
+  # empty argument decides an empty result, length 1 covers a whole vector,
+  # and any other mismatch is a mistake in the call, not something to
+  # silently repeat.
+  main <- as.character(main)
+  side1 <- as.character(side1)
+  side2 <- as.character(side2)
+  lens <- c(length(main), length(side1), length(side2))
+  if (any(lens == 0L))
+    return(factor(character(0),
+                  levels = c(.procedure_group_levels, "not_surgery",
+                             "no_group")))
+  n <- max(lens)
+  if (!all(lens %in% c(1L, n)))
+    rlang::abort(c(
+      "Arguments to `get_procedure_group()` must share one length or have length 1.",
+      i = sprintf("Lengths given: %d, %d and %d.",
+                  lens[[1]], lens[[2]], lens[[3]])))
   main <- rep_len(main, n)
   side1 <- rep_len(side1, n)
   side2 <- rep_len(side2, n)
@@ -83,12 +105,8 @@ get_procedure_group <- function(main, side1 = NA_character_,
 # The shunt codes: beside one of them, `KMA.FA.AA` is the shunt's
 # peritoneal end and its placement asks nothing; without one it is an
 # operation on the peritoneum and the warning asks what was done.
-.procedure_shunt_codes <- c("AAE.JB.AA", # Ventricular shunt to abdominal cavity and drain
-                            "AAE.KA.AA", # Replacement of peritoneal end of ventricular shunt
-                            "AAE.LH.AA", # Removal of ventricular shunt
-                            "AAE.LI.AA", # Insertion of ventricular shunt
-                            "AAE.LI.AB", # Laparoscopic insertion of ventricular shunt
-                            "AAE.SN.AA") # Management of ventricular shunt
+.procedure_shunt_codes <- c("AAE.JB.AA", "AAE.KA.AA", "AAE.LH.AA",
+                            "AAE.LI.AA", "AAE.LI.AB", "AAE.SN.AA")
 
 # The placement of every ICHI code the production data carries: its group,
 # the tract it opens, whether it is an approach code, and — among the pending
@@ -98,138 +116,138 @@ get_procedure_group <- function(main, side1 = NA_character_,
 .procedure_code_table <- local({
   chunks <- list(
     list("neurosurgery", "none", c(
-      "AAA.JB.AA", # Tricuspid valvotomy with incision
-      "AAE.DN.AA", # Resection of choroid plexus through incision
-      "AAE.GA.AE", # External drainage of cerebrospinal fluid from head via ventricles
-      "AAE.JB.AA", # Ventricular shunt to abdominal cavity and drain
-      "AAE.JD.AA", # Insertion of ventricular catheter
-      "AAE.KA.AA", # Replacement of peritoneal end of ventricular shunt
-      "AAE.LH.AA", # Removal of ventricular shunt
-      "AAE.LI.AA", # Insertion of ventricular shunt
-      "AAE.LI.AB", # Laparoscopic insertion of ventricular shunt
-      "AAE.SN.AA", # Management of ventricular shunt
-      "AAG.DN.AA", # Evacuation of intracranial hematoma or hemorrhage through incision
-      "ABA.FC.AA", # Closure of myelomeningocele and meninges with prosthesis
-      "ABA.MK.AA", # Repair of meningocele of spinal cord
-      "ABA.ML.AA", # Repair of myelomeningocele
-      "ABG.LI.AA", # Placement of catheter into spinal canal for drainage
-      "MAA.FA.AA"  # Craniotomy
+      "AAA.JB.AA",
+      "AAE.DN.AA",
+      "AAE.GA.AE",
+      "AAE.JB.AA",
+      "AAE.JD.AA",
+      "AAE.KA.AA",
+      "AAE.LH.AA",
+      "AAE.LI.AA",
+      "AAE.LI.AB",
+      "AAE.SN.AA",
+      "AAG.DN.AA",
+      "ABA.FC.AA",
+      "ABA.MK.AA",
+      "ABA.ML.AA",
+      "ABG.LI.AA",
+      "MAA.FA.AA"
     )),
     list("cardiac_great_vessel_surgery", "none", c(
-      "HBB.JD.AA", # Insertion of prosthetic covering of heart using open approach
-      "HIJ.LA.AA", # Ligation of patent ductus arteriosus
-      "HIJ.LA.AB", # Laparoscopic ligation of patent ductus arteriosus
-      "HIK.MK.AA"  # Repair of coarctation of aorta
+      "HBB.JD.AA",
+      "HIJ.LA.AA", # the arterial duct closes with the heart, whoever performs it
+      "HIJ.LA.AB",
+      "HIK.MK.AA"
     )),
     list("non_cardiac_thoracic_surgery", "none", c(
-      "HIK.LJ.AA", # Aortopexy
-      "JCA.JD.AA", # Insertion of prosthetic covering for pleura through incision
-      "JCB.JB.AE", # Percutaneous drainage of pleural cavity
-      "JCH.AE.AA", # Thoracoscopic surgery of thoracic cavity
-      "JCH.FA.AA", # Thoracotomy
-      "MCX.MK.AA", # Repair of diaphragmatic eventration or hernia
-      "MCX.MK.AB"  # Laparoscopic repair of diaphragmatic eventration or hernia
+      "HIK.LJ.AA",
+      "JCA.JD.AA",
+      "JCB.JB.AE", # the pleura's drainage is the one percutaneous means that counts
+      "JCH.AE.AA",
+      "JCH.FA.AA",
+      "MCX.MK.AA", # the diaphragm sits with the chest, by either approach
+      "MCX.MK.AB"
     )),
     list("non_cardiac_thoracic_surgery", "respiratory", c(
-      "JBA.MK.AA", # Repair of trachea
-      "JBF.JJ.AA", # Lobectomy of lung
-      "JBF.LL.AA"  # Thoracoscopic wedge resection of lung
+      "JBA.MK.AA",
+      "JBF.JJ.AA",
+      "JBF.LL.AA"
     )),
     list("non_cardiac_thoracic_surgery", "gastrointestinal", c(
       # The oesophagus is placed in the chest.
-      "KBA.LB.AA", # Mobilization of esophagus
-      "KBA.MK.AA"  # Repair of esophageal atresia with or without fistula
+      "KBA.LB.AA",
+      "KBA.MK.AA"
     )),
     list("abdominal_surgery", "none", c(
-      "DJA.MK.AA", # Repair of pyloric stenosis
-      "IED.LA.AA", # Ligation of ductus venosus
-      "KBZ.LD.AA", # Reduction of rectal prolapse
-      "KMA.DN.AA", # Resection of peritoneum with excision and reanastomosis
-      "KMA.FA.AA", # Creation of peritoneal (peritoneum) dialysis access
-      "KMA.FC.AA", # Closure of peritoneostomy
-      "KMA.JA.AA", # Aspiration of peritoneal cavity through incision
-      "KMA.JB.AA", # Drainage of peritoneal cavity with incision
-      "KMA.JJ.AA", # Biopsy of peritoneum with incision
-      "KMA.KA.AA", # Replacement of peritoneal drainage device with incision
-      "KMA.MK.AA", # Repair of umbilical vein
-      "PAK.AE.AA", # Endoscopy of abdomen
-      "PAK.AE.AB", # Laparoscopy
-      "PAK.FA.AA", # Abdominal incision
-      "PAK.FC.AA", # Closure of laparostomy
-      "PAK.FC.AB", # Laparoscopic fascial closure
-      "PAK.JB.AA", # Drainage of abdomen with incision
-      "PAL.FA.AA"  # Incision of abdominal wall
+      "DJA.MK.AA",
+      "IED.LA.AA",
+      "KBZ.LD.AA",
+      "KMA.DN.AA",
+      "KMA.FA.AA",
+      "KMA.FC.AA",
+      "KMA.JA.AA",
+      "KMA.JB.AA",
+      "KMA.JJ.AA",
+      "KMA.KA.AA",
+      "KMA.MK.AA",
+      "PAK.AE.AA",
+      "PAK.AE.AB",
+      "PAK.FA.AA",
+      "PAK.FC.AA",
+      "PAK.FC.AB",
+      "PAK.JB.AA",
+      "PAL.FA.AA"
     )),
     list("abdominal_surgery", "gastrointestinal", c(
-      "KBF.AE.AB", # Laparotomy with gastroscopy
-      "KBF.LI.AA", # Division of pyloric muscle
-      "KBF.LI.AB", # Laparoscopic division of pyloric muscle
-      "KBF.MK.AA", # Repair of gastric perforation
-      "KBI.LB.AA", # Mobilization of duodenal atresia
-      "KBI.MK.AA", # Repair of duodenal atresia with or without web
-      "KBI.ML.AA", # Resection and anastomosis of duodenum
-      "KBK.JI.AA", # Resection of intestine through incision
-      "KBK.JJ.AA", # Enterotomy
-      "KBK.JJ.AB", # Laparoscopic enterotomy
-      "KBK.LB.AA", # Mobilization of intestine
-      "KBK.LI.AA", # Lysis of intestinal adhesion
-      "KBK.LI.AB", # Laparoscopic lysis of intestinal adhesion
-      "KBK.MK.AA", # Repair of perforation of intestine, not elsewhere classified
-      "KBK.MK.AB", # Laparoscopic repair of perforation of intestine, not elsewhere classified
-      "KBO.JK.AA", # Appendicectomy
-      "KBO.JK.AB", # Laparoscopic appendicectomy
-      "KBP.FA.AB", # Laparoscopic mobilization of colon
-      "KBP.JJ.AA", # Colotomy
-      "KBP.LI.AA", # Lysis of adhesion of colon
-      "KBP.MK.AA", # Repair of perforation of colon
-      "KBW.JK.AA", # Resection of rectosigmoid colon with colostomy
-      "KBZ.JJ.AA", # Incision of large intestine
-      "KBZ.JJ.AB", # Laparoscopic incision of large intestine
-      "KBZ.LB.AA", # Mobilization of rectum
-      "KBZ.MK.AA", # Repair of large intestine, not elsewhere classified
-      "KZZ.MK.AA", # Repair of intestine, not elsewhere classified
-      "PTA.LA.AC", # Ligation of patent ductus venosus
-      "PTB.LA.AC"  # Ligation of patent ductus venosus
+      "KBF.AE.AB",
+      "KBF.LI.AA",
+      "KBF.LI.AB",
+      "KBF.MK.AA",
+      "KBI.LB.AA",
+      "KBI.MK.AA",
+      "KBI.ML.AA",
+      "KBK.JI.AA",
+      "KBK.JJ.AA",
+      "KBK.JJ.AB",
+      "KBK.LB.AA",
+      "KBK.LI.AA",
+      "KBK.LI.AB",
+      "KBK.MK.AA",
+      "KBK.MK.AB",
+      "KBO.JK.AA",
+      "KBO.JK.AB",
+      "KBP.FA.AB",
+      "KBP.JJ.AA",
+      "KBP.LI.AA",
+      "KBP.MK.AA",
+      "KBW.JK.AA",
+      "KBZ.JJ.AA",
+      "KBZ.JJ.AB",
+      "KBZ.LB.AA",
+      "KBZ.MK.AA",
+      "KZZ.MK.AA",
+      "PTA.LA.AC",
+      "PTB.LA.AC"
     )),
     list("abdominal_surgery", "unclear", c(
-      "KBF.FA.AA", # Exploration of stomach through incision
-      "KBZ.LC.AA"  # Washout of colon
+      "KBF.FA.AA",
+      "KBZ.LC.AA"
     )),
     list("abdominal_wall_surgery", "none", c(
-      "PAK.LI.AA", # Release of laparostomy
-      "PAL.MK.AA", # Suture of laceration of abdominal wall
-      "PAL.MK.AB", # Laparoscopic repair of laceration of abdominal wall
-      "PAL.ML.AA", # Resection of abdominal wall
-      "PAO.JI.AA"  # Resection of omphalomesenteric (vitelline) duct
+      "PAK.LI.AA", # re-entry of an open abdomen: the wall axis must not override this
+      "PAL.MK.AA",
+      "PAL.MK.AB",
+      "PAL.ML.AA",
+      "PAO.JI.AA"
     )),
     list("inguinal_umbilical_hernia_repair", "none", c(
-      "PAM.MK.AA", # Repair of inguinal hernia
-      "PAM.MK.AB", # Laparoscopic repair of inguinal hernia
-      "PAO.MK.AA", # Repair of umbilical hernia
-      "PAO.MK.AB"  # Laparoscopic repair of umbilical hernia
+      "PAM.MK.AA",
+      "PAM.MK.AB",
+      "PAO.MK.AA",
+      "PAO.MK.AB"
     )),
     list("head_neck_upper_airway_surgery", "respiratory", c(
-      "JAM.ML.AD", # Endoscopic resection of pharyngeal cyst or pharyngeal web
-      "JAN.JI.AD", # Endoscopic excision of subglottic stenosis
-      "JAN.MK.AD", # Endoscopic repair of larynx
-      "JBA.LI.AA"  # Tracheostomy
+      "JAM.ML.AD",
+      "JAN.JI.AD",
+      "JAN.MK.AD",
+      "JBA.LI.AA"
     )),
     list("head_neck_upper_airway_surgery", "unclear", c(
-      "KAA.AD.AA"  # Biopsy of lip
+      "KAA.AD.AA"
     )),
     list("head_neck_upper_airway_surgery", "gastrointestinal", c(
       # A frenotomy is an incision of the mucosa.
-      "KAB.FB.AC"  # Lingual frenotomy
+      "KAB.FB.AC"
     )),
     list("skin_soft_tissue_urogenital_surgery", "none", c(
-      "LAB.LL.AA", # Reduction of skin and subcutaneous cell tissue of trunk
-      "LAG.JG.AA", # Debridement of skin and subcutaneous cell tissue of head, neck and cranial cavity
-      "LCA.JG.AA", # Debridement of breast with incision
-      "NGL.LC.AA", # Orchiopexy
-      "PAW.JB.AA"  # Drainage of perineum
+      "LAB.LL.AA",
+      "LAG.JG.AA",
+      "LCA.JG.AA",
+      "NGL.LC.AA",
+      "PAW.JB.AA"
     )),
     list("skin_soft_tissue_urogenital_surgery", "urinary", c(
-      "NAM.MK.AA"  # Repair of urethra
+      "NAM.MK.AA"
     )))
   outside <- c(
     # Imaging, whatever the anatomical target.
@@ -295,23 +313,31 @@ get_procedure_group <- function(main, side1 = NA_character_,
 # A valid code no rule places, and a value that is no ICHI code at all, fall
 # to `NA`: the code no group takes.
 .procedure_group_by_axis <- function(x) {
+  # A pending code waits on the partners' answer, which may be an
+  # operation or no operation: the axes assert no placement for it.
+  pending <- .procedure_code_table$procedure_code[
+    is.na(.procedure_code_table$group)]
   target <- stringr::str_extract(x, "^([A-Za-z]{3})\\.", 1)
   action <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})", 2)
   means <- stringr::str_extract(x, "^([A-Za-z]{3})\\.([A-Za-z]{2})\\.([A-Za-z]{2})", 3)
 
   dplyr::case_when(
+    x %in% pending ~ NA_character_,
     # Neurosurgery: interventions on the brain, its ventricles and
-    # coverings, the spinal cord and canal, and the skull, by an incision,
-    # an excision or a percutaneous analytic approach.
+    # coverings, the spinal cord and canal, and the skull, by an incision
+    # or an excision; the percutaneous means is admitted only as the
+    # external drainage the recorded codes show it for, a needle puncture
+    # of the skull or canal being no incision.
     target %in% c(
-      "AAA", # Interventions on brain, multiple sites
-      "AAE", # Interventions on ventricles of brain
-      "AAG", # Interventions on intracranial space
-      "ABA", # Interventions on spinal cord
-      "ABG", # Interventions on spinal canal
-      "MAA"  # Interventions on skull
+      "AAA", # brain, several sites at once
+      "AAE", # brain's ventricles
+      "AAG", # intracranial space
+      "ABA", # spinal cord
+      "ABG", # spinal canal
+      "MAA"  # skull
       ) &
-      means %in% c("AA", "AB", "AE") ~ "neurosurgery",
+      (means %in% c("AA", "AB") |
+        (action == "GA" & means == "AE")) ~ "neurosurgery",
 
     # Cardiac and great-vessel surgery. Vascular catheters and ports, and
     # transcatheter heart interventions, never count, so the axis admits the
@@ -326,10 +352,10 @@ get_procedure_group <- function(main, side1 = NA_character_,
     # means is admitted for a thoracic target only as the pleura's drainage;
     # every thoracic target admits the open and endoscopic means.
     target %in% c(
-      "MCX", # Interventions on diaphragm
-      "JBF", # Interventions on lung parenchyma
-      "JCA", # Interventions on pleura, visceral
-      "JCH"  # Interventions on thoracic cavity
+      "MCX", # diaphragm
+      "JBF", # lung
+      "JCA", # visceral pleura
+      "JCH"  # thoracic cavity
       ) &
       means %in% c("AA", "AB") ~ "non_cardiac_thoracic_surgery",
     target == "JCB" &
@@ -344,22 +370,67 @@ get_procedure_group <- function(main, side1 = NA_character_,
     # Abdominal surgery, the abdominal wall's and the hernia's repairs
     # aside; the shunt's distal ends follow their target's means.
     target %in% c(
-      "KBF", # Interventions on stomach
-      "KBI", # Interventions on duodenum
-      "KBK", # Interventions on small intestine, not elsewhere classified
-      "KBO", # Interventions on appendix
-      "KBP", # Interventions on colon
-      "KBZ", # Interventions on large intestine, not elsewhere classified
-      "KMA", # Interventions on peritoneum
-      "PAK"  # Interventions on abdomen, not otherwise specified
+      "KBF", # stomach
+      "KBI", # duodenum
+      "KBK", # small intestine, site left open
+      "KBO", # appendix
+      "KBP", # colon
+      "KBZ", # large intestine, site left open
+      "KMA", # peritoneum
+      "PAK"  # abdomen, site left open
       ) &
-      means %in% c("AA", "AB") ~ "abdominal_surgery",
+      means %in% c("AA", "AB") &
+      !(target == "PAK" & action == "LI") ~ "abdominal_surgery",
     target %in% c("PTA", "PTB") & action == "LA" & means == "AC" ~
-      "abdominal_surgery",
+      "abdominal_surgery", # the two recorded stoma closures
+
+    # The abdominal wall, the recorded release of a laparostomy's band and
+    # the wall's repairs; the wall's incision rests with the abdomen's.
+    target == "PAL" & action != "FA" & means %in% c("AA", "AB") ~
+      "abdominal_wall_surgery",
+    target == "PAO" & action != "MK" & means %in% c("AA", "AB") ~
+      "abdominal_wall_surgery",
 
     # Inguinal and umbilical hernia repair.
     target == "PAM" & means %in% c("AA", "AB") ~
       "inguinal_umbilical_hernia_repair",
+    target == "PAO" & action == "MK" & means %in% c("AA", "AB") ~
+      "inguinal_umbilical_hernia_repair",
+
+    # Head, neck and upper airway: the pharynx, the larynx, the lip and
+    # the tongue, the trachea's tracheostomy among them; the looking
+    # about through a natural orifice is no incision. The trachea's other
+    # operations rest with the chest's group.
+    target %in% c(
+      "JAM", # pharynx
+      "JAN", # larynx
+      "KAA", # lip
+      "KAB"  # tongue
+      ) &
+      action != "AE" & means %in% c("AA", "AB", "AC", "AD") ~
+      "head_neck_upper_airway_surgery",
+    target == "JBA" & action == "LI" & means %in% c("AA", "AB") ~
+      "head_neck_upper_airway_surgery",
+
+    # Skin, soft tissue, perineal and urogenital surgery.
+    target %in% c(
+      "LAB", # skin and soft tissue of the trunk
+      "LAG", # skin and soft tissue of head and neck
+      "LCA", # breast
+      "NAM", # urethra
+      "NGL", # testis
+      "PAW"  # perineum
+      ) &
+      means %in% c("AA", "AB") ~ "skin_soft_tissue_urogenital_surgery",
+
+    # The codes that are no surgical procedure: imaging, the transluminal
+    # and the external means, education, and every percutaneous drainage
+    # of a site but the pleura's, which the chest's clauses place first.
+    action == "BA" & means %in% c("BH", "BC") ~ "not_surgery",
+    means == "AF" ~ "not_surgery",
+    means == "AH" ~ "not_surgery",
+    action == "PM" ~ "not_surgery",
+    action == "JB" & means == "AE" ~ "not_surgery",
 
     .default = NA_character_)
 }
@@ -432,8 +503,8 @@ get_procedure_category <- function(x, not_surgery_na = FALSE) {
   }
   levels <- c(.procedure_group_levels,
               if (!not_surgery_na) c("not_surgery", "no_group"))
-   factor(group, levels = levels)
- }
+  factor(group, levels = levels)
+}
 
 # Whether any of a procedure's codes holds the whole procedure out of every
 # group: the held pending codes, which name no operation the other codes of

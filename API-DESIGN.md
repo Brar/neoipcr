@@ -109,6 +109,7 @@ Where a row's return-class slug is scheduled for rename by task 1.2 (the class-s
 | 39 | `validation_summary` | [R/validation.R](R/validation.R) | `(findings)` | tibble (`rule_id`, `record_kind`, `n_flagged`, `n_exempted`) | external-stable | experimental | — | Counts a `validate()` result's flagged and exempted records per rule and record kind, as `import_dhis2()` stores them in `validationSummary`; reads the result's `findings_exempted` attribute and refuses a result without the attributes `validate()` sets (`neoipcr_invalid_validation_result`). |
 | 40 | `validation_exception_usage` | [R/validation-exceptions.R](R/validation-exceptions.R) | `(x, exceptions, findings)` | tibble (the list's records for the dataset's departments, with `matched` and `n_exempted`) | external-stable | experimental | — | Whether each record of an exception list matches the dataset, and how many records it exempted in a `validate()` result, `NA` for a rule the result did not run; a record for a department the dataset does not hold is left out, so a list with department codes needs a dataset that carries them (`neoipcr_validation_needs_facts`). For the upkeep of the list. |
 | 41 | `validation_rule_severities` | [R/validation.R](R/validation.R) | `()` | named character vector (`"error"` or `"warning"`, per rule id) | external-stable | experimental | — | Each rule's severity as the registry declares it, for consumers that present a warning differently from an error. The import's pass removes the patients an error flags and keeps those only a warning flags; `validationSummary$n_warned` counts every record a warning flags, whether or not an error removed its patient. |
+| 42 | `get_procedure_group` | [R/calc-procedure-categories.R](R/calc-procedure-categories.R) | `(main, side1 = NA_character_, side2 = NA_character_)` | factor (the 8 groups in their fixed order, `not_surgery`, `no_group`) | internal-stable | experimental | — | The classifier of §13.9.2: the group of a surgical procedure from its main code and its two side codes, every code counting, approach codes giving way, and the two held pending codes holding their whole procedure out. The surgical counts, the surgery table and warnings 66 to 69 group through it, so a report groups its procedures as the package does. A factor level, never prose; `NA` for a procedure with no code. |
 
 ### §3.1. Naming patterns and inconsistencies (A1 findings, feed into §9)
 
@@ -397,29 +398,36 @@ Two corrections to the A4 problem-statement in the plan file:
 1. **No `B` (bug) cases exist.** `gettext()` translates each of its arguments and returns one element per string (`?gettext`), and both catalogue extractors collect every argument (§6.8.3), so the two multi-argument calls drop nothing: they translate the column headers that `pretty_names.neoipcr_tbl_sr_ref()` and `get_procedure_categories()` attach, which makes them the two `C` cases.
 2. **No `D` (DHIS2-display passthrough) cases exist today.** The feared pattern — wrapping DHIS2 `displayName` output in `gettext` — does not appear. DHIS2 localization is already consumed correctly (see §6.3).
 
-The real issue is confined to **two files and one function family**: the 11 factor-level label calls in `get_procedure_category_pretty()` and the two column-header calls.
+The real issue is confined to **two files and one function family**: the 18 factor-level label calls in `get_procedure_category_pretty()` — 11 for the procedure groups and 7 for the categories the groups replace — and the two column-header calls.
 
 #### §6.1.1. All F-Class and C-Class Call Sites (Individually Enumerated)
 
-The 13 non-M sites each need distinct treatment in Phase 2, so they're individually enumerated here. M-class sites follow in §6.1.2.
+The 20 non-M sites each need distinct treatment in Phase 2, so they're individually enumerated here. M-class sites follow in §6.1.2.
 
 | File:line | Call shape | Surrounding function | Class | Migration target |
 |-----------|------------|----------------------|-------|------------------|
-| [R/calc-api.R:951](R/calc-api.R#L951) | `gettext("Procedure category","N","Pooled","Q1","Q2","Q3")` | `pretty_names.neoipcr_tbl_sr_ref` | C | Rewrite as explicit per-column lookup against `procedure_category_labels` tibble (§7.1 row 2). The other headers — `"N"`, `"Pooled"`, `"Q1"`…`"Q3"` — either stay English or move to YAML cascade. |
-| [R/calc-procedure-categories.R:45](R/calc-procedure-categories.R#L45) | `gettext("Procedure code","Procedure category")` | `get_procedure_categories` | C | Keep on `gettext` OR move to YAML cascade (decide alongside §5 row 7 promotion). |
-| [R/calc-procedure-categories.R:215](R/calc-procedure-categories.R#L215) | `gettext("Overall")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (§7.1 row 2, code `"overall"`). |
-| [R/calc-procedure-categories.R:216](R/calc-procedure-categories.R#L216) | `gettext("Abdominal surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"abdominal_surgery"`). |
-| [R/calc-procedure-categories.R:217](R/calc-procedure-categories.R#L217) | `gettext("Neurosurgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>`. |
-| [R/calc-procedure-categories.R:218](R/calc-procedure-categories.R#L218) | `gettext("Inguinal hernia surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>`. |
-| [R/calc-procedure-categories.R:219](R/calc-procedure-categories.R#L219) | `gettext("Cardiac- / large vessel surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>`. |
-| [R/calc-procedure-categories.R:220](R/calc-procedure-categories.R#L220) | `gettext("Lung- / pleural space- / thoracic surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>`. |
-| [R/calc-procedure-categories.R:221](R/calc-procedure-categories.R#L221) | `gettext("Oesophageal surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>`. |
-| [R/calc-procedure-categories.R:222](R/calc-procedure-categories.R#L222) | `gettext("Other")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>`. |
-| [R/calc-procedure-categories.R:223](R/calc-procedure-categories.R#L223) | `gettext("Not a surgical procedure")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>`. |
-| [R/calc-procedure-categories.R:224](R/calc-procedure-categories.R#L224) | `gettext("Not yet categorized")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"to_be_categorized"`). |
-| [R/calc-procedure-categories.R:231](R/calc-procedure-categories.R#L231) | `gettext("Not yet categorized")` | `get_procedure_category_pretty` | F | Same read, for code `"to_be_categorised"` — the `NEOIPC-PERMANENT(dataset-format)` recode that renders datasets serialized under the pre-`-ize` spelling. The lookup must keep accepting this code; only the `gettext` wrapper goes. |
+| [R/calc-api.R:953](R/calc-api.R#L953) | `gettext("Procedure category","N","Pooled","Q1","Q2","Q3")` | `pretty_names.neoipcr_tbl_sr_ref` | C | Rewrite as explicit per-column lookup against `procedure_category_labels` tibble (§7.1 row 2). The other headers — `"N"`, `"Pooled"`, `"Q1"`…`"Q3"` — either stay English or move to YAML cascade. |
+| [R/calc-procedure-categories.R:683](R/calc-procedure-categories.R#L683) | `gettext("Procedure code","Procedure category")` | `get_procedure_categories` | C | Keep on `gettext` OR move to YAML cascade (decide alongside §5 row 7 promotion). |
+| [R/calc-procedure-categories.R:606](R/calc-procedure-categories.R#L606) | `gettext("Overall")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (§7.1 row 2, code `"overall"`). |
+| [R/calc-procedure-categories.R:607](R/calc-procedure-categories.R#L607) | `gettext("Neurosurgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"neurosurgery"`). |
+| [R/calc-procedure-categories.R:609](R/calc-procedure-categories.R#L609) | `gettext("Cardiac and great-vessel surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"cardiac_great_vessel_surgery"`). |
+| [R/calc-procedure-categories.R:610](R/calc-procedure-categories.R#L610) | `gettext("Non-cardiac thoracic surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"non_cardiac_thoracic_surgery"`). |
+| [R/calc-procedure-categories.R:611](R/calc-procedure-categories.R#L611) | `gettext("Abdominal surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"abdominal_surgery"`). |
+| [R/calc-procedure-categories.R:612](R/calc-procedure-categories.R#L612) | `gettext("Abdominal wall surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"abdominal_wall_surgery"`). |
+| [R/calc-procedure-categories.R:614](R/calc-procedure-categories.R#L614) | `gettext("Inguinal and umbilical hernia repair")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"inguinal_umbilical_hernia_repair"`). |
+| [R/calc-procedure-categories.R:616](R/calc-procedure-categories.R#L616) | `gettext("Head, neck, and upper airway surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"head_neck_upper_airway_surgery"`). |
+| [R/calc-procedure-categories.R:618](R/calc-procedure-categories.R#L618) | `gettext("Skin, soft tissue, perineal, and urogenital surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"skin_soft_tissue_urogenital_surgery"`). |
+| [R/calc-procedure-categories.R:619](R/calc-procedure-categories.R#L619) | `gettext("Not a surgical procedure")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"not_surgery"`). |
+| [R/calc-procedure-categories.R:620](R/calc-procedure-categories.R#L620) | `gettext("Placed by no procedure group")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"no_group"`). |
+| [R/calc-procedure-categories.R:627](R/calc-procedure-categories.R#L627) | `gettext("Cardiac- / large vessel surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"cardiac_and_large_vessel_surgery"`, a category the procedure groups replace). |
+| [R/calc-procedure-categories.R:628](R/calc-procedure-categories.R#L628) | `gettext("Lung- / pleural space- / thoracic surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"lung_pleural_space_thoracic_surgery"`, a category the procedure groups replace). |
+| [R/calc-procedure-categories.R:629](R/calc-procedure-categories.R#L629) | `gettext("Oesophageal surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"oesophageal_surgery"`, a category the procedure groups replace). |
+| [R/calc-procedure-categories.R:630](R/calc-procedure-categories.R#L630) | `gettext("Inguinal hernia surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"inguinal_hernia_surgery"`, a category the procedure groups replace). |
+| [R/calc-procedure-categories.R:631](R/calc-procedure-categories.R#L631) | `gettext("Other")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"other"`, a category the procedure groups replace). |
+| [R/calc-procedure-categories.R:632](R/calc-procedure-categories.R#L632) | `gettext("Not yet categorized")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"to_be_categorized"`, a category the procedure groups replace). |
+| [R/calc-procedure-categories.R:633](R/calc-procedure-categories.R#L633) | `gettext("Not yet categorized")` | `get_procedure_category_pretty` | F | Same read, for code `"to_be_categorised"` — the `NEOIPC-PERMANENT(dataset-format)` recode that renders datasets serialized under the pre-`-ize` spelling. The lookup must keep accepting this code; only the `gettext` wrapper goes. |
 
-The 11 F-class calls at lines 215–231 also require removing the `Sys.getlocale("LC_MESSAGES")` fallback at [R/calc-procedure-categories.R:14](R/calc-procedure-categories.R#L14), in the `pretty` branch of `get_procedure_categories()` — the accessor pattern honours the resolution chain via the explicit `locale` argument instead.
+The 18 F-class calls at lines 606–633 also require removing the `Sys.getlocale("LC_MESSAGES")` fallback at [R/calc-procedure-categories.R:652](R/calc-procedure-categories.R#L652), in the `pretty` branch of `get_procedure_categories()` — the accessor pattern honours the resolution chain via the explicit `locale` argument instead.
 
 #### §6.1.2. M-Class Call Sites
 
@@ -431,7 +439,7 @@ Validation findings and reconciliation counts carry no message. `validate()` ret
 
 - **Entry point**: `dhis2_dataset_options()` accepts `locale = NULL` (signature in [R/dhis2-options.R](R/dhis2-options.R)).
 - **Only correct consumer**: [R/dhis2-metadata.R:8–12](R/dhis2-metadata.R#L8) — passes `locale` to the DHIS2 API when `dataset_options$translate && rlang::is_character(dataset_options$locale, n = 1)`.
-- **Broken consumers**: every R-level `gettext` / `gettextf` call. They consult `Sys.getlocale("LC_MESSAGES")` and `Sys.getenv("LANGUAGE")` — not `opts$locale`. Concretely: [R/calc-procedure-categories.R:14](R/calc-procedure-categories.R#L14) falls back to `Sys.getlocale("LC_MESSAGES")` in the `pretty` branch of `get_procedure_categories()`, before it calls `get_procedure_category_pretty()`.
+- **Broken consumers**: every R-level `gettext` / `gettextf` call. They consult `Sys.getlocale("LC_MESSAGES")` and `Sys.getenv("LANGUAGE")` — not `opts$locale`. Concretely: [R/calc-procedure-categories.R:652](R/calc-procedure-categories.R#L652) falls back to `Sys.getlocale("LC_MESSAGES")` in the `pretty` branch of `get_procedure_categories()`, before it calls `get_procedure_category_pretty()`.
 - **Result**: a caller who sets `dhis2_dataset_options(locale = "de")` gets German-translated DHIS2 metadata, but condition messages and procedure-category labels in the R session's language, German only where the session's `LANGUAGE` or `LC_MESSAGES` selects it.
 
 ### §6.3. `display*` Field Inventory (Current)
@@ -500,7 +508,7 @@ labels <- get_procedure_category_labels(locale = opts$locale)  # explicit arg wi
 |---|---|---|
 | [R/calc-api.R:951](R/calc-api.R#L951) | C | Rewrite as an explicit tibble lookup against the new `procedure_category_labels`; remove the six-argument `gettext`. |
 | `R/calc-procedure-categories.R:45` | C | Keep on `gettext` *or* move to YAML cascade (decide alongside string-resources promotion, §5 row 7). |
-| [R/calc-procedure-categories.R:215–231](R/calc-procedure-categories.R#L215-L231) (11 calls) | F → data-layer | Replace with reads from `procedure_category_labels` tibble. `get_procedure_category_pretty()` becomes `get_procedure_category_labels(locale = NULL)`; locale-resolution chain applied; the `"to_be_categorised"` recode at :231 stays as a code the lookup accepts. Remove the `Sys.getlocale("LC_MESSAGES")` fallback at line 14 of `get_procedure_categories()`. |
+| [R/calc-procedure-categories.R:606–633](R/calc-procedure-categories.R#L606-L633) (18 calls) | F → data-layer | Replace with reads from `procedure_category_labels` tibble. `get_procedure_category_pretty()` becomes `get_procedure_category_labels(locale = NULL)`; locale-resolution chain applied; the `"to_be_categorised"` recode at :633 stays as a code the lookup accepts. Remove the `Sys.getlocale("LC_MESSAGES")` fallback at line 652 of `get_procedure_categories()`. |
 | Condition messages and the print method (§6.1.2) | M | No action required. Stay as-is. Optionally document that `gettext` returns the English source string where the catalogue has no translation (`?gettext`) — useful for vignette writers. |
 
 **Phase 2 sequencing.** The migration has exactly one non-trivial step: create `procedure_category_labels`, populate it, rewrite `get_procedure_category_pretty()` to read from it, delete the 11 `gettext` lines. Everything else is either "do nothing" (M-class) or a short rewrite of the two column-header calls (C-class). Estimate: half a day of work plus catalogue regeneration.
@@ -595,7 +603,7 @@ rlang::abort(c(
 
 | # | Candidate | Current inline location | Shape today | Target (package data) | Int/Ext | Accessor | Blocking |
 |---|-----------|-------------------------|-------------|-----------------------|---------|----------|----------|
-| 1 | Procedure-category map (ICHI → category code) | [R/calc-procedure-categories.R:69–210](R/calc-procedure-categories.R#L69) — `case_when` inside `get_procedure_category()` | Inline `case_when` over 9 factor levels (7 surgical categories, `not_surgery`, `to_be_categorized`) | Tibble `procedure_category_map` in `sysdata.Rda` with columns `ichi_code`, `category_code` | internal | `get_procedure_category()` (existing) | **Superseded by §13.9.2**, whose 8 procedure groups replace the 7 categories; the placement of the codes, which replaces this map, comes with the change that implements them. |
+| 1 | Procedure-category map (ICHI → category code) | [R/calc-procedure-categories.R:491](R/calc-procedure-categories.R#L491) — `get_procedure_category()` over `.procedure_group_of_stems()` and `.procedure_code_table` | Bundled table of the recorded codes, axes for the unrecorded ones, returning the 8 procedure groups plus `not_surgery` and `no_group` | Tibble `procedure_category_map` in `sysdata.Rda` with columns `ichi_code`, `category_code` | internal | `get_procedure_group()` | **Superseded by §13.9.2**, whose 8 procedure groups replace the 7 categories; the placement of the codes that replaces this map is landed, as `.procedure_code_table` of this file, versioned per §13.1.7. A bundled tibble or CSV stays unadopted. |
 | 2 | Procedure-category pretty-name labels | [R/calc-procedure-categories.R:215–231](R/calc-procedure-categories.R#L215-L231) — 11 `gettext()` calls (A4a F-1…F-11) | 11 factor-level label calls routed through gettext | Tibble `procedure_category_labels` in `sysdata.Rda` with locale-keyed columns (`category_code`, `label_en`, `label_de`, …) — the `countrycode` pattern | internal | new: `get_procedure_category_labels(locale = NULL)` | **Depends on D-H.** The 11 factor-label calls are the primary motivation for D-H. |
 | 3 | AWaRe categories (code → label) | [R/calc-denominators.R:218–224, 294–300](R/calc-denominators.R#L218-L224) — inline factor construction over `{"a", "w", "r"}` | Factor with levels `c("a", "w", "r")`; labels hardcoded English (Access / Watch / Reserve) | Tibble `aware_categories` in `sysdata.Rda`: `code`, `label_en`, `label_de` | internal | new: `get_aware_categories(locale = NULL)` | **Depends on D-H.** Codes come from DHIS2 option groups (read at import time); labels need the locale-column pattern. |
 | 4 | BW/GA breakpoints | [R/scales.R:1–75](R/scales.R) — hardcoded arithmetic in `ga7`, `bw50`, `bw125`, `bw250`, `bw500` | Hardcoded `floor(...)`-arithmetic in five functions | Named-list `scales_parameters` in `sysdata.Rda` (one sublist per binning) | internal | new: `get_scales_parameters()` returning the list; five binning fns consume it | **None.** Pure numeric constants. Promotable immediately (Phase 2 or earlier). |
@@ -639,7 +647,7 @@ metadata/common/
 
 | # | Candidate | Source path(s) under `metadata/common/` | Status |
 |---|-----------|-----------------------------------------|--------|
-| 1 | Procedure-category map (ICHI → category) | *(file does not yet exist)* — needs new `metadata/common/procedure-categories/NeoIPC-Procedure-Categories.csv` with columns `ichi_code`, `category_code` | **Superseded by §13.9.2**, whose 8 procedure groups replace the 7 categories; the placement of the codes, which replaces this map, comes with the change that implements them. |
+| 1 | Procedure-category map (ICHI → category) | *(file does not yet exist)* — a `metadata/common/procedure-categories/NeoIPC-Procedure-Categories.csv` was considered; none was added | **Superseded by §13.9.2**, whose 8 procedure groups replace the 7 categories; the placement of the codes that replaces this map is landed in `.procedure_code_table` of [R/calc-procedure-categories.R](R/calc-procedure-categories.R), so no CSV is needed. |
 | 2 | Procedure-category labels | *(file does not yet exist)* — needs `metadata/common/procedure-categories/ListElements.csv` + `ListElements.de.csv` + `ListElements.es.csv` following the locale-file convention | **New files required** + depends on D-H. |
 | 3 | AWaRe categories (code → label) | Taxonomy: `antibiotics/WHO-AWaRe-Classification-2021.csv` (exists). Labels: `antibiotics/ListElements.csv` (+ `.de.csv`, `.es.csv`) — verify the `a` / `w` / `r` codes have label entries there | **Verify first.** If labels exist, ingest; if not, extend `ListElements.csv` with three rows. Depends on D-H. |
 | 4 | BW/GA breakpoints | *(no source file needed)* — these are numeric constants, not metadata | **None.** Numbers ship inline in `sysdata.Rda` per row 4 of §7.1. Optionally document them in the Surveillance-Toolkit protocol text, but no machine-readable file is warranted. |
@@ -1064,7 +1072,7 @@ Each subsection states the question, the recommendation with rationale, and a "P
 
 ### §10.1. D-A. Audience tier per public-surface symbol
 
-**Question.** For each of the 41 public-surface symbols in §3 — 38 `export()` entries and 3 `S3method()` entries — which audience tier applies? External-stable (documented for data scientists / researchers / clinicians as part of the stable public API) or internal-stable (stable for the NeoIPC internal pipeline but not primarily targeted at external users)? The lifecycle — stable or experimental (API may change, warn external users) — is §3's separate column, on top of the tier.
+**Question.** For each of the 42 public-surface symbols in §3 — 39 `export()` entries and 3 `S3method()` entries — which audience tier applies? External-stable (documented for data scientists / researchers / clinicians as part of the stable public API) or internal-stable (stable for the NeoIPC internal pipeline but not primarily targeted at external users)? The lifecycle — stable or experimental (API may change, warn external users) — is §3's separate column, on top of the tier.
 
 **Recommendation.** Accept the tier column proposed in §3 as the default assignment. Key assignments, counted over that column:
 
@@ -2142,9 +2150,8 @@ definitions this section versions (§13.1.7), the recorded codes being its test 
 placement: [R/calc-procedure-categories.R](R/calc-procedure-categories.R) holds it, as `.procedure_code_table` of every
 recorded code with its group, the tract it opens, and whether it is an approach code, and `get_procedure_group()` gives
 the group of a procedure from its three codes, so that a report groups its procedures as the package does. It places the
-oesophagus in
-the chest: an oesophageal atresia repair is non-cardiac thoracic surgery (group 3). The approach codes recorded so far
-are `MAA.FA.AA` in neurosurgery (group 1), `JCH.AE.AA` and `JCH.FA.AA` in non-cardiac thoracic surgery (group 3), and
+oesophagus in the chest: an oesophageal atresia repair is non-cardiac thoracic surgery (group 3). The approach codes
+recorded so far are `MAA.FA.AA` in neurosurgery (group 1), `JCH.AE.AA` and `JCH.FA.AA` in non-cardiac thoracic surgery (group 3), and
 `PAK.AE.AA`, `PAK.AE.AB`, and `PAK.FA.AA` in abdominal surgery (group 4). Of the codes of percutaneous drainage, only
 the pleura's counts (§13.9.1), and that of any other site, the abdomen's (`PAK.JB.AE`) and the peritoneum's
 (`KMA.JB.AE`) included, is a needle puncture and no surgical procedure, a drain placed through an incision being coded
@@ -2159,7 +2166,10 @@ A procedure counts once, by all its codes, whichever of them was entered as the 
 
 A procedure whose only codes that a group takes are approach codes counts in the approach's group, its definitive
 operation unknown. `KMA.FA.AA`, an operation on the peritoneum that is no approach code and also covers the revision of
-a ventricular shunt's peritoneal end, is abdominal surgery unless the procedure holds a shunt code. A procedure none of
+a ventricular shunt's peritoneal end, is abdominal surgery unless the procedure holds a shunt code. A code whose query is
+still pending places nothing, and the procedure takes its group from the codes that do place. Two of the pending codes,
+`NMR.MK.AB` and `BAA.BA.AD`, name no operation that the procedure's other codes can be trusted to be: a procedure that
+holds one of them is one whose codes no group takes, whatever else it holds, until the query is answered. A procedure none of
 whose codes a group takes, such as one holding only a code that is no valid ICHI code, leaves the surgery table, the
 dataset's surgical counts, and the SSI rate's denominator until its codes are corrected, and §13.10.1 states what it
 does to the attribution of an SSI. Validation rules report, as warnings that remove no record, a procedure that holds
@@ -2247,8 +2257,8 @@ unsuppressed, which the Partner Report compares with the reference's. The per-cl
   surgical procedure that left an implant. A procedure recorded as a revision (`NEOIPC_SURGERY_REVISION_PROCEDURE`)
   ends, on its date, the window of every earlier surgical procedure of the patient record and opens its own: the form
   names neither the procedure revised nor its area, which the protocol's "revision in the same area" would need. A
-  revision whose codes no group takes (§13.9.2), on any date but that of death, ends the earlier windows as well and
-  opens none. A record whose codes are no surgical procedure (§13.9.1), such as a catheter's insertion or a needle
+  revision whose codes no group takes, held pending or placed nowhere (§13.9.2), on any date but that of death, ends the
+  earlier windows as well and opens none. A record whose codes are no surgical procedure (§13.9.1), such as a catheter's insertion or a needle
   puncture, neither ends nor opens a window. A procedure on the date of a surveillance-end form that records the
   patient's death, whatever its codes and a revision included, is absent for attribution: it ends no window, voids no
   attribution, and takes no SSI but one recorded as present at its own surgery, which leaves with it (Counted); any

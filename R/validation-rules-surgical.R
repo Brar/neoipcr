@@ -133,18 +133,25 @@ validation_rule_24 <- function(x, exceptions)
   c("main_procedure_code", "side_procedure_code_1", "side_procedure_code_2")
 
 # The procedure events with their codes and any further form columns a rule
-# reads, or a skip when the dataset lacks one of them.
+# reads, or a skip when the dataset lacks the main code or one of those
+# further columns. An absent side-code column stands in as a missing value
+# in every row, as in the surgical counts: a dataset from a form version
+# without them is counted and asked about alike.
 .rule_procedures <- function(x, rule_id, extra_cols = character()) {
-  need <- c(.rule_procedure_code_cols, extra_cols)
+  need <- c("main_procedure_code", extra_cols)
   if (!all(need %in% names(x$surgeryData)))
     return(.rule_skipped(
       rule_id,
       sprintf("the surgery form's %s", paste(need, collapse = ", "))))
+  surgeryData <- .surgery_code_columns(x$surgeryData)
   x$events |>
     dplyr::filter(.data$event_type_key == "pro") |>
     dplyr::select("patient_key", "enrollment_key", "event_key") |>
     dplyr::inner_join(
-      x$surgeryData |> dplyr::select(tidyselect::all_of(c("event_key", need))),
+      surgeryData |>
+        dplyr::select(
+          tidyselect::all_of(c("event_key", .rule_procedure_code_cols,
+                               extra_cols))),
       dplyr::join_by("event_key"))
 }
 
@@ -285,18 +292,16 @@ validation_rule_68 <- function(x, exceptions)
       .keep = "none")
 }
 
-# The first code no group takes — a pending stem, a stem the placement
-# table and the axes alike leave out, or a value no grammar reads — else
-# the first queried code the procedure does not settle, else `NA`.
+# The first code no group takes — a pending stem or a stem the placement
+# table and the axes alike leave out — else the first queried code the
+# procedure does not settle, else `NA`. A value no ICHI grammar reads is
+# rules 22 to 24's to report, an error on the same form: this warning asks
+# of valid codes only.
 .rule_procedure_ungrouped_code <- function(df, i) {
   codes <- .rule_procedure_codes_of(df, i)
   if (length(codes) == 0L) return(NA_character_)
-  stems_per_code <- lapply(codes, .procedure_stems_of_one)
-  # A slot holds a value no grammar reads: the expression itself is what
-  # the partners must be shown.
-  invalid <- which(vapply(stems_per_code, length, integer(1)) == 0L)
-  if (length(invalid) > 0L) return(codes[[invalid[[1]]]])
-  stems <- unlist(stems_per_code, use.names = FALSE)
+  stems <- unlist(lapply(codes, .procedure_stems_of_one), use.names = FALSE)
+  if (length(stems) == 0L) return(NA_character_)
   ungrouped <- which(.procedure_group_for_stem(stems) == "no_group")
   if (length(ungrouped) > 0L) return(stems[[ungrouped[[1]]]])
   idx <- match(stems, .procedure_code_table$procedure_code)

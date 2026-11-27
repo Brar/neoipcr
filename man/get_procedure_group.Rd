@@ -14,7 +14,10 @@ stands for a slot that holds no code, and one \code{NA} covers a whole
 vector of procedures without a first side code.}
 
 \item{side2}{Character vector of second side ICHI procedure codes, with
-the same meaning. The arguments are recycled to a common length.}
+the same meaning. The arguments recycle as \code{vctrs} does: length 1
+covers a whole vector, an empty argument makes the result empty, and a
+length that is neither of these is refused. A factor stands for its
+labels.}
 }
 \value{
 A factor with the eight procedure groups as levels in their
@@ -25,8 +28,9 @@ no surgical procedure, \code{no_group} for one its codes place nowhere, and
 \description{
 \code{get_procedure_group()} classifies a surgical procedure, given by its main
 procedure code and its two side procedure codes, into one of the eight
-procedure groups: the site the procedure is placed at, as the protocol's
-review of the ICHI codes decided it. Each slot may hold a full ICHI code
+procedure groups: the site the procedure is placed at, as API-DESIGN.md
+§13.9.2 defines it and the placement table of this file records it. Each
+slot may hold a full ICHI code
 expression, and every intervention stem of every slot counts among the
 procedure's codes; a malformed value is a code no group takes. Every code
 of a procedure counts:

@@ -383,6 +383,21 @@ test_that("rule 67 skips without a warning when no code column is present", {
   expect_null(result)
 })
 
+test_that("rules 66 to 69 take a surgery form without the side codes", {
+  # An absent side-code column stands in as a missing value in every row,
+  # as in the surgical counts: a dataset from a form version without them
+  # is counted and asked about alike.
+  ds <- procedure_ds("PAK.FA.AA")
+  ds$surgeryData$side_procedure_code_1 <- NULL
+  ds$surgeryData$side_procedure_code_2 <- NULL
+  expect_equal(nrow(neoipcr:::validation_rule_67(ds, NULL)), 1L)
+  ds <- procedure_ds("NMR.MK.AB", "KBF.LI.AA")
+  ds$surgeryData$side_procedure_code_2 <- NULL
+  result <- neoipcr:::validation_rule_68(ds, NULL)
+  expect_equal(nrow(result), 1L)
+  expect_equal(result$context[[1]]$procedure_code, "NMR.MK.AB")
+})
+
 test_that("rule 68 detects a code no group takes", {
   # A code pending an answer, a valid code no rule places, and a held-pending
   # code: each needs the partners to say what was done.
@@ -410,10 +425,15 @@ test_that("rule 68 detects a code no group takes", {
     procedure_ds("KBF.LI.AA&XK9K/ZZZ.ZZ.ZZ"), NULL)
   expect_equal(nrow(result), 1L)
   expect_equal(result$context[[1]]$procedure_code, "ZZZ.ZZ.ZZ")
-  # A value no grammar reads is asked about whole.
-  result <- neoipcr:::validation_rule_68(procedure_ds("KBF.LI.AAA"), NULL)
+  # A value no grammar reads is left to rules 22 to 24, which report it as
+  # an error on the same form: this warning asks of valid codes only, and
+  # beside a valid ungrouped code it asks of that code.
+  expect_equal(nrow(neoipcr:::validation_rule_68(
+    procedure_ds("KBF.LI.AAA"), NULL)), 0L)
+  result <- neoipcr:::validation_rule_68(
+    procedure_ds("KBF.LI.AAA", "ZZZ.ZZ.ZZ"), NULL)
   expect_equal(nrow(result), 1L)
-  expect_equal(result$context[[1]]$procedure_code, "KBF.LI.AAA")
+  expect_equal(result$context[[1]]$procedure_code, "ZZZ.ZZ.ZZ")
 })
 
 test_that("rule 68 detects the peritoneum code whose group turns on a shunt", {

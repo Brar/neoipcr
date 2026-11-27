@@ -211,8 +211,7 @@ validation_rules <- list(
   list(id = 62L, level = "enrollment", event_types = "end",
        context = c("substance_code", "substance", "substance_days", "ab_days"),
        fun = validation_rule_62),
-  # The rule numbers skip 63 to 65: those ids belong to rules that read
-  # forms other than the surgery pass.
+  # The rule numbers skip 63 to 65: the ids keep their gaps.
   list(id = 66L, level = "event", event_types = "pro", severity = "warning",
        context = c("wound_class", "procedure_code"),
        fun = validation_rule_66),

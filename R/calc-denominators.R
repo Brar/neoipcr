@@ -88,26 +88,17 @@ get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE) {
             dplyr::select(c("enrollment_key","event_key")) |>
             dplyr::inner_join(
               surgeryData |>
-                dplyr::mutate(
-                  main_procedure_category = get_procedure_category(.data$main_procedure_code, not_surgery_na = TRUE),
-                  dplyr::across(
-                    tidyselect::any_of(
-                      "side_procedure_code_1"),
-                    ~ get_procedure_category(.x, not_surgery_na = TRUE),
-                    .names = "side_procedure_1_category"),
-                  dplyr::across(
-                    tidyselect::any_of(
-                      "side_procedure_code_2"),
-                    ~ get_procedure_category(.x, not_surgery_na = TRUE),
-                    .names = "side_procedure_2_category")) |>
-                # The surgical count holds only a code a group takes, and a
-                # procedure a held pending code keeps unknown stays out.
+                # The count holds a procedure only where the classifier
+                # places it among the groups: its verdict over the main and
+                # the side codes together, which holds out a pending code
+                # that holds the whole procedure and lets in a procedure
+                # whose side code places.
                 dplyr::filter(
-                  !.procedure_holds_procedure(
+                  as.character(get_procedure_group(
                     .data$main_procedure_code,
                     .data$side_procedure_code_1,
-                    .data$side_procedure_code_2),
-                  dplyr::if_any(tidyselect::matches("procedure_(\\d_)?category$"), ~ !is.na(.x))),
+                    .data$side_procedure_code_2)) %in%
+                    .procedure_group_levels),
               dplyr::join_by("event_key")),
           dplyr::join_by("enrollment_key")),
       dplyr::join_by("patient_key")) |>
@@ -177,21 +168,26 @@ get_procedures <- function(x, group_cols = NULL, use_cache = TRUE) {
     return(r)
 
   surgeryData <- .surgery_code_columns(x$surgeryData)
+  # The count holds a procedure only where the classifier places it among
+  # the groups — its verdict over the main and the side codes together, as
+  # in get_surgery_risk(), so a procedure whose side code places counts in
+  # both paths and one a held pending code keeps unknown stays out of both.
+  surgeryData <- dplyr::filter(
+    surgeryData,
+    as.character(get_procedure_group(
+      .data$main_procedure_code, .data$side_procedure_code_1,
+      .data$side_procedure_code_2)) %in% .procedure_group_levels)
+  if ("pro_cat" %in% group_cols)
+    # The table's rows are the main code's category until the rebuild onto
+    # the groups; the codes beside the main one only decide whether the
+    # procedure is counted at all.
+    surgeryData <- dplyr::inner_join(
+      surgeryData,
+      get_procedure_categories(x, use_cache = use_cache),
+      dplyr::join_by("main_procedure_code" == "procedure_code"))
 
   x$events |>
-    dplyr::inner_join(
-      surgeryData |>
-        dplyr::inner_join(
-          get_procedure_categories(x, use_cache = use_cache),
-          dplyr::join_by("main_procedure_code" == "procedure_code")),
-      dplyr::join_by("event_key")) |>
-    # The surgical count holds only a code a group takes: a code that is no
-    # surgical procedure and a code no group takes alike stay out, and so
-    # does a procedure a held pending code keeps unknown.
-    dplyr::filter(!.procedure_holds_procedure(.data$main_procedure_code,
-                                              .data$side_procedure_code_1,
-                                              .data$side_procedure_code_2),
-                  !.data$pro_cat %in% c("not_surgery", "no_group")) |>
+    dplyr::inner_join(surgeryData, dplyr::join_by("event_key")) |>
     dplyr::group_by(dplyr::across(tidyselect::all_of(group_cols))) |>
     dplyr::summarise(n = dplyr::n(), .groups = "drop") |>
     cache(x, cache_key)

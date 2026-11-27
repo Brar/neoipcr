@@ -108,11 +108,15 @@ test_that("no pending code places anything", {
   expect_identical(as.character(result), rep("no_group", length(pending_codes)))
 })
 
-test_that("the axes place no code that is no surgical procedure and no pending code", {
-  # The axes only ever serve a code the placement table does not hold, and
-  # an axis must never contradict the table's decision that a code is
-  # outside surgery or pending.
-  expect_true(all(is.na(neoipcr:::.procedure_group_by_axis(outside_surgery))))
+test_that("the axes agree with the table wherever they speak about a recorded code", {
+  # The axes only ever serve a code the placement table does not hold,
+  # and wherever they speak about a recorded code they confirm the
+  # table's decision: the codes outside surgery stand outside it, and a
+  # pending code waits on its answer, so the axes place it nowhere.
+  table <- neoipcr:::.procedure_code_table
+  group <- table$group[match(recorded_all, table$procedure_code)]
+  axis <- neoipcr:::.procedure_group_by_axis(recorded_all)
+  expect_true(all(is.na(axis) | axis == group))
   expect_true(all(is.na(neoipcr:::.procedure_group_by_axis(pending_codes))))
 })
 
@@ -146,10 +150,45 @@ test_that("the axes place a first-time code of a placed family by the family", {
   expect_true(is.na(neoipcr:::.procedure_group_by_axis("JBF.QQ.AE")))
   expect_true(is.na(neoipcr:::.procedure_group_by_axis("KMA.QQ.AE")))
   # A transcatheter duct closure is a transcatheter heart intervention,
-  # which never counts: the cardiac axis admits the open means only.
-  expect_true(is.na(neoipcr:::.procedure_group_by_axis("HIJ.LA.AF")))
+  # which never counts: the cardiac axis admits the open means only, and
+  # the transluminal means stands outside surgery for every target.
   expect_equal(
-    as.character(neoipcr::get_procedure_group("HIJ.LA.AF")), "no_group")
+    neoipcr:::.procedure_group_by_axis("HIJ.LA.AF"), "not_surgery")
+  expect_equal(
+    as.character(neoipcr::get_procedure_group("HIJ.LA.AF")), "not_surgery")
+  # The body wall, the head and neck, and the skin and urogenital tract
+  # place first-time codes by their own axes too.
+  expect_equal(
+    as.character(neoipcr:::get_procedure_category("PAL.QQ.AA")),
+    "abdominal_wall_surgery")
+  expect_equal(
+    as.character(neoipcr:::get_procedure_category("JAN.QQ.AD")),
+    "head_neck_upper_airway_surgery")
+  expect_equal(
+    as.character(neoipcr:::get_procedure_category("LAB.QQ.AA")),
+    "skin_soft_tissue_urogenital_surgery")
+  # And so do the codes outside surgery: imaging, the transluminal and
+  # the external means, education, and every percutaneous drainage of a
+  # site but the pleura's are no surgical procedure from the first time.
+  expect_equal(
+    as.character(neoipcr:::get_procedure_category("JCA.BA.BH")), "not_surgery")
+  expect_equal(
+    as.character(neoipcr:::get_procedure_category("KMA.DL.AF")), "not_surgery")
+  expect_equal(
+    as.character(neoipcr:::get_procedure_category("KBF.QQ.AH")), "not_surgery")
+  expect_equal(
+    as.character(neoipcr:::get_procedure_category("KAB.PM.ZZ")), "not_surgery")
+  expect_equal(
+    as.character(neoipcr:::get_procedure_category("ABG.JB.AE")), "not_surgery")
+  # A percutaneous puncture of the skull or canal is no incision and no
+  # drainage: the neurosurgery axis admits the percutaneous means for the
+  # external drainage alone, and such a code asks of its own.
+  expect_equal(
+    as.character(neoipcr:::get_procedure_category("AAE.JA.AE")), "no_group")
+  expect_equal(
+    as.character(neoipcr:::get_procedure_category("MAA.QQ.AE")), "no_group")
+  expect_equal(
+    as.character(neoipcr:::get_procedure_category("AAE.GA.AB")), "neurosurgery")
 })
 
 test_that("a valid code no rule places, and a malformed value, are a code no group takes", {
@@ -321,6 +360,29 @@ test_that("get_procedure_group recycles its arguments and returns a factor of th
   expect_identical(as.character(result),
                    c("inguinal_umbilical_hernia_repair", "abdominal_surgery",
                      "no_group", NA_character_))
+})
+
+test_that("get_procedure_group takes its arguments as vctrs recycles them", {
+  # An empty argument decides an empty result of the same factor levels,
+  # length 1 covers a whole vector, any other mismatch is refused, and a
+  # factor stands for its labels.
+  empty <- neoipcr::get_procedure_group(character(0))
+  expect_length(empty, 0L)
+  expect_equal(levels(empty),
+               c(neoipcr:::.procedure_group_levels, "not_surgery",
+                 "no_group"))
+  expect_identical(
+    as.character(neoipcr::get_procedure_group(
+      c("KBF.LI.AA", "PAM.MK.AA"), NA_character_)),
+    c("abdominal_surgery", "inguinal_umbilical_hernia_repair"))
+  expect_error(
+    neoipcr::get_procedure_group(
+      c("KBF.LI.AA", "PAM.MK.AA"),
+      c("KBF.LI.AA", "PAM.MK.AA", "PZX.AA.JA")),
+    "share one length")
+  expect_identical(
+    as.character(neoipcr::get_procedure_group(factor("KBF.LI.AA"))),
+    "abdominal_surgery")
 })
 
 test_that("get_procedure_group is exported", {
