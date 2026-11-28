@@ -142,7 +142,11 @@ validation_rule_24 <- function(x, exceptions)
   if (!all(need %in% names(x$surgeryData)))
     return(.rule_skipped(
       rule_id,
-      sprintf("the surgery form's %s", paste(need, collapse = ", "))))
+      sprintf("the surgery form's %s",
+              if (length(need) == 1L) need
+              else if (length(need) == 2L) paste(need, collapse = " and ")
+              else paste0(paste(need[-length(need)], collapse = ", "),
+                          ", and ", need[length(need)]))))
   surgeryData <- .surgery_code_columns(x$surgeryData)
   x$events |>
     dplyr::filter(.data$event_type_key == "pro") |>
@@ -252,12 +256,9 @@ validation_rule_67 <- function(x, exceptions)
   codes <- .rule_procedure_codes_of(df, i)
   stems <- unlist(lapply(codes, .procedure_stems_of_one), use.names = FALSE)
   if (length(stems) == 0L) return(NA_character_)
-  idx <- match(stems, .procedure_code_table$procedure_code)
-  recorded <- !is.na(idx)
   groups <- .procedure_group_for_stem(stems)
   placed <- groups %in% .procedure_group_levels
-  is_approach <- logical(length(stems))
-  is_approach[recorded] <- .procedure_code_table$approach[idx[recorded]]
+  is_approach <- .procedure_stems_are_approach(stems)
   if (any(placed & !is_approach)) return(NA_character_)
   approach_hits <- which(placed & is_approach)
   if (length(approach_hits) == 0L) NA_character_ else stems[[approach_hits[[1]]]]

@@ -121,7 +121,7 @@ test_that("the axes agree with the table wherever they speak about a recorded co
 })
 
 test_that("a code the table holds is placed by the table, whatever its family", {
-  # `PAK.LI.AA` is a laparostomy closure, an abdominal wall procedure, while
+  # `PAK.LI.AA` is the release of a laparostomy, an abdominal wall procedure, while
   # its target's family falls in abdominal surgery: the recorded placement
   # of a code outranks the axis of its family.
   expect_equal(
@@ -220,16 +220,6 @@ test_that("get_procedure_category keeps NA for a code that was not recorded", {
     as.character(neoipcr:::get_procedure_category(NA_character_)), NA_character_)
 })
 
-test_that("get_procedure_category turns every code that places nothing out with not_surgery_na", {
-  # The flag serves the surgical counts: only a code a group takes may hold
-  # a procedure in them, so a code that is no surgical procedure and a code
-  # no group takes alike read as missing there.
-  result <- neoipcr:::get_procedure_category(
-    c("BCC.GA.AA", "ZZZ.ZZ.ZZ", "KBF.LI.AA"), not_surgery_na = TRUE)
-  expect_identical(
-    as.character(result), c(NA_character_, NA_character_, "abdominal_surgery"))
-})
-
 test_that("the placement table holds no code twice and no unknown group", {
   table <- neoipcr:::.procedure_code_table
   expect_equal(sum(duplicated(table$procedure_code)), 0L)
@@ -281,6 +271,33 @@ test_that("a procedure whose only placed codes are approach codes counts in the 
   # A code that is no surgical procedure drops out first, so this procedure
   # holds nothing but its approach code.
   expect_equal(group_of("PAK.JB.AE", "PAK.AE.AA"), "abdominal_surgery")
+})
+
+test_that("an approach code entered for the first time gives way like its recorded stems", {
+  # The endoscopic and incised entries into the skull, the chest and the
+  # abdomen are approaches whatever means code they carry; the recorded
+  # stems are their test cases.
+  expect_equal(group_of("PAK.FA.AB", "PAM.MK.AB"),
+               "inguinal_umbilical_hernia_repair")
+  expect_equal(group_of("JCH.FA.AB", "PAM.MK.AB"),
+               "inguinal_umbilical_hernia_repair")
+  expect_equal(group_of("MAA.FA.AB", "PAM.MK.AB"),
+               "inguinal_umbilical_hernia_repair")
+  # The give-way does not depend on which slot holds the first-time code.
+  expect_equal(group_of("PAM.MK.AB", "PAK.FA.AB"),
+               "inguinal_umbilical_hernia_repair")
+  # Alone, each still counts in its own approach's group.
+  expect_equal(group_of("PAK.FA.AB"), "abdominal_surgery")
+  expect_equal(group_of("JCH.FA.AB"), "non_cardiac_thoracic_surgery")
+  expect_equal(group_of("MAA.FA.AB"), "neurosurgery")
+  expect_equal(group_of("JCH.AE.AB"), "non_cardiac_thoracic_surgery")
+})
+
+test_that("an operation entered for the first time does not hide behind a recorded approach code", {
+  # `KBF.MK.AB` is no approach and places the abdominal surgery the
+  # craniotomy was made through, whichever slot either code holds.
+  expect_equal(group_of("MAA.FA.AA", "KBF.MK.AB"), "abdominal_surgery")
+  expect_equal(group_of("KBF.MK.AB", "MAA.FA.AA"), "abdominal_surgery")
 })
 
 test_that("codes that are no surgical procedure drop out", {

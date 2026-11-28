@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: neoipcr 0.0.0.9008\n"
 "Report-Msgid-Bugs-To: https://github.com/NeoIPC/neoipcr/issues\n"
-"POT-Creation-Date: 2026-11-28 11:04+0100\n"
+"POT-Creation-Date: 2026-11-28 14:19+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -21,7 +21,6 @@ msgid "No dataset to benchmark: pass at least one calculated dataset."
 msgstr ""
 
 #: R/calc-api.R:955
-#: R/calc-procedure-categories.R:689
 msgid "Procedure category"
 msgstr ""
 
@@ -75,80 +74,76 @@ msgid "Arguments to `get_procedure_group()` must share one length or have length
 msgstr ""
 
 #: R/calc-procedure-categories.R:72
-msgid "Lengths given: %d, %d and %d."
-msgstr ""
-
-#: R/calc-procedure-categories.R:612
-msgid "Overall"
-msgstr ""
-
-#: R/calc-procedure-categories.R:613
-msgid "Neurosurgery"
-msgstr ""
-
-#: R/calc-procedure-categories.R:615
-msgid "Cardiac and great-vessel surgery"
-msgstr ""
-
-#: R/calc-procedure-categories.R:616
-msgid "Non-cardiac thoracic surgery"
-msgstr ""
-
-#: R/calc-procedure-categories.R:617
-msgid "Abdominal surgery"
-msgstr ""
-
-#: R/calc-procedure-categories.R:618
-msgid "Abdominal wall surgery"
+msgid "Lengths given: %d, %d, and %d."
 msgstr ""
 
 #: R/calc-procedure-categories.R:620
-msgid "Inguinal and umbilical hernia repair"
+msgid "Overall"
 msgstr ""
 
-#: R/calc-procedure-categories.R:622
-msgid "Head, neck, and upper airway surgery"
+#: R/calc-procedure-categories.R:621
+msgid "Neurosurgery"
+msgstr ""
+
+#: R/calc-procedure-categories.R:623
+msgid "Cardiac and great-vessel surgery"
 msgstr ""
 
 #: R/calc-procedure-categories.R:624
-msgid "Skin, soft tissue, perineal, and urogenital surgery"
+msgid "Non-cardiac thoracic surgery"
 msgstr ""
 
 #: R/calc-procedure-categories.R:625
-msgid "Not a surgical procedure"
+msgid "Abdominal surgery"
 msgstr ""
 
 #: R/calc-procedure-categories.R:626
-msgid "Placed by no procedure group"
+msgid "Abdominal wall surgery"
+msgstr ""
+
+#: R/calc-procedure-categories.R:628
+msgid "Inguinal and umbilical hernia repair"
+msgstr ""
+
+#: R/calc-procedure-categories.R:630
+msgid "Head, neck, and upper airway surgery"
+msgstr ""
+
+#: R/calc-procedure-categories.R:632
+msgid "Skin, soft tissue, perineal, and urogenital surgery"
 msgstr ""
 
 #: R/calc-procedure-categories.R:633
-msgid "Cardiac- / large vessel surgery"
+msgid "Not a surgical procedure"
 msgstr ""
 
 #: R/calc-procedure-categories.R:634
+msgid "Placed by no procedure group"
+msgstr ""
+
+#: R/calc-procedure-categories.R:641
+msgid "Cardiac- / large vessel surgery"
+msgstr ""
+
+#: R/calc-procedure-categories.R:642
 msgid "Lung- / pleural space- / thoracic surgery"
 msgstr ""
 
-#: R/calc-procedure-categories.R:635
+#: R/calc-procedure-categories.R:643
 msgid "Oesophageal surgery"
 msgstr ""
 
-#: R/calc-procedure-categories.R:636
+#: R/calc-procedure-categories.R:644
 msgid "Inguinal hernia surgery"
 msgstr ""
 
-#: R/calc-procedure-categories.R:637
+#: R/calc-procedure-categories.R:645
 msgid "Other"
 msgstr ""
 
-#: R/calc-procedure-categories.R:638
-#: R/calc-procedure-categories.R:639
+#: R/calc-procedure-categories.R:646
+#: R/calc-procedure-categories.R:647
 msgid "Not yet categorized"
-msgstr ""
-
-#: R/calc-procedure-categories.R:689
-msgid "Procedure code"
 msgstr ""
 
 #: R/calc-tables.R:163

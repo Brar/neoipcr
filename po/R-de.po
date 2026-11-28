@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: neoipcr 0.1.0\n"
 "Report-Msgid-Bugs-To: https://github.com/NeoIPC/neoipcr/issues\n"
-"POT-Creation-Date: 2026-11-28 11:04+0100\n"
+"POT-Creation-Date: 2026-11-28 14:19+0100\n"
 "PO-Revision-Date: 2025-05-27 16:54+0200\n"
 "Last-Translator: Brar Piening <brar.piening@charite.de>\n"
 "Language-Team: NeoIPC-Support <NeoIPC-Support@charite.de>\n"
@@ -20,7 +20,7 @@ msgstr ""
 msgid "No dataset to benchmark: pass at least one calculated dataset."
 msgstr ""
 
-#: R/calc-api.R:955 R/calc-procedure-categories.R:689
+#: R/calc-api.R:955
 msgid "Procedure category"
 msgstr "Prozedur-Kategorie"
 
@@ -82,85 +82,81 @@ msgid ""
 msgstr ""
 
 #: R/calc-procedure-categories.R:72
-msgid "Lengths given: %d, %d and %d."
+msgid "Lengths given: %d, %d, and %d."
 msgstr ""
 
-#: R/calc-procedure-categories.R:612
+#: R/calc-procedure-categories.R:620
 msgid "Overall"
 msgstr "Gesamt"
 
-#: R/calc-procedure-categories.R:613
+#: R/calc-procedure-categories.R:621
 msgid "Neurosurgery"
 msgstr "Neurochirurgie"
 
-#: R/calc-procedure-categories.R:615
+#: R/calc-procedure-categories.R:623
 #, fuzzy
 msgid "Cardiac and great-vessel surgery"
 msgstr "Herz- und Großgefäßchirurgie"
 
-#: R/calc-procedure-categories.R:616
+#: R/calc-procedure-categories.R:624
 #, fuzzy
 msgid "Non-cardiac thoracic surgery"
 msgstr "Lungen-, Pleura- und Thoraxchirurgie"
 
-#: R/calc-procedure-categories.R:617
+#: R/calc-procedure-categories.R:625
 msgid "Abdominal surgery"
 msgstr "Abdominalchirurgie"
 
-#: R/calc-procedure-categories.R:618
+#: R/calc-procedure-categories.R:626
 #, fuzzy
 msgid "Abdominal wall surgery"
 msgstr "Abdominalchirurgie"
 
-#: R/calc-procedure-categories.R:620
+#: R/calc-procedure-categories.R:628
 #, fuzzy
 msgid "Inguinal and umbilical hernia repair"
 msgstr "Leistenhernienchirurgie"
 
-#: R/calc-procedure-categories.R:622
+#: R/calc-procedure-categories.R:630
 msgid "Head, neck, and upper airway surgery"
 msgstr ""
 
-#: R/calc-procedure-categories.R:624
+#: R/calc-procedure-categories.R:632
 msgid "Skin, soft tissue, perineal, and urogenital surgery"
 msgstr ""
 
-#: R/calc-procedure-categories.R:625
+#: R/calc-procedure-categories.R:633
 msgid "Not a surgical procedure"
 msgstr "Kein chirurgischer Eingriff"
 
-#: R/calc-procedure-categories.R:626
+#: R/calc-procedure-categories.R:634
 msgid "Placed by no procedure group"
 msgstr ""
 
-#: R/calc-procedure-categories.R:633
+#: R/calc-procedure-categories.R:641
 msgid "Cardiac- / large vessel surgery"
 msgstr "Herz- und Großgefäßchirurgie"
 
-#: R/calc-procedure-categories.R:634
+#: R/calc-procedure-categories.R:642
 msgid "Lung- / pleural space- / thoracic surgery"
 msgstr "Lungen-, Pleura- und Thoraxchirurgie"
 
-#: R/calc-procedure-categories.R:635
+#: R/calc-procedure-categories.R:643
 msgid "Oesophageal surgery"
 msgstr "Ösophaguschirurgie"
 
-#: R/calc-procedure-categories.R:636
+#: R/calc-procedure-categories.R:644
 msgid "Inguinal hernia surgery"
 msgstr "Leistenhernienchirurgie"
 
-#: R/calc-procedure-categories.R:637
+#: R/calc-procedure-categories.R:645
 msgid "Other"
 msgstr "Sonstige"
 
-#: R/calc-procedure-categories.R:638 R/calc-procedure-categories.R:639
+#: R/calc-procedure-categories.R:646 R/calc-procedure-categories.R:647
 #, fuzzy
 msgid "Not yet categorized"
 msgstr "Noch nicht kategorisiert"
-
-#: R/calc-procedure-categories.R:689
-msgid "Procedure code"
-msgstr "Prozedur-Code"
 
 #: R/calc-tables.R:163
 msgid "The calculated dataset has no table %s."
@@ -990,6 +986,9 @@ msgid "`%s` holds %d value that cannot be read as a date: %s."
 msgid_plural "`%s` holds %d values that cannot be read as a date: %s."
 msgstr[0] ""
 msgstr[1] ""
+
+#~ msgid "Procedure code"
+#~ msgstr "Prozedur-Code"
 
 #~ msgid "The patient record does not have an enrolment."
 #~ msgstr "Die Patientenakte hat keine Patientenregistrierung."

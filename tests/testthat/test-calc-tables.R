@@ -257,10 +257,26 @@ test_that("a procedure its side code places counts in both paths", {
   expect_false("no_group" %in% as.character(table$pro_cat))
 })
 
+test_that("procedures count for the stay's department, not the recording desk's", {
+  # The split fixture: the patient record stands in department 1, the stay
+  # in department 2, and its procedure is recorded at department 3's desk.
+  # The surgical counts follow the stay's side, as get_risk_population()
+  # and get_risk_time() do; a grouping by the event's or the record's side
+  # would answer 3 or 1 here.
+  ds <- make_split_department_calc_ds()
+  procedures <- get_procedures(
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  expect_equal(as.integer(procedures$enrollment_department_key), 2L)
+  expect_equal(procedures$n, 1L)
+  risk <- get_surgery_risk(
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  expect_equal(as.integer(risk$enrollment_department_key), 2L)
+  expect_equal(risk$n_procedures, 1L)
+})
+
 test_that("surgical cache entries carry the definitions version", {
   ds <- make_calc_test_ds()
   invisible(get_procedures(ds, use_cache = TRUE))
-  invisible(get_procedure_categories(ds, use_cache = TRUE))
   invisible(get_surgery_risk(ds, use_cache = TRUE))
   invisible(get_surgery_rate_table(ds, use_cache = TRUE))
   v <- paste0("[.]v",
@@ -273,9 +289,8 @@ test_that("surgical cache entries carry the definitions version", {
     4L)
   keys <- ls(ds$.cache)
   surgical <- keys[grepl(
-    "^(procedures|procedure_categories|surgery_risk|surgery_rate_table)",
-    keys)]
-  expect_true(length(surgical) >= 4L)
+    "^(procedures|surgery_risk|surgery_rate_table)", keys)]
+  expect_true(length(surgical) >= 3L)
   expect_true(all(grepl(v, surgical)))
   # An entry restored with its dataset under the old untagged key answers
   # nothing after the bump: the counts are recomputed, not mislabelled.

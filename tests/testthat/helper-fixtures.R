@@ -1201,9 +1201,9 @@ make_calc_test_ds <- function() {
 
 # A calculation fixture of one stay with the hierarchy pair at its widest
 # spread: the patient record stands in department 1, the stay, its admission,
-# and its surveillance end in department 2, and the recording desk of its one
-# sepsis in department 3. The stay spans 100 patient-days, enough to enter a
-# reference quartile.
+# and its surveillance end in department 2, and its one sepsis and its one
+# procedure are recorded at department 3's desk. The stay spans 100
+# patient-days, enough to enter a reference quartile.
 make_split_department_calc_ds <- function() {
   md <- read_test_metadata(
     dataset_options = dhis2_dataset_options(
@@ -1222,14 +1222,14 @@ make_split_department_calc_ds <- function() {
     include_event      = "full")
 
   events <- make_test_events(
-    n                         = 3L,
-    enrollment_keys           = c(1, 1, 1),
-    patient_keys              = c(1, 1, 1),
-    event_type_keys           = c("adm", "end", "bsi"),
+    n                         = 4L,
+    enrollment_keys           = c(1, 1, 1, 1),
+    patient_keys              = c(1, 1, 1, 1),
+    event_type_keys           = c("adm", "end", "bsi", "pro"),
     occurredAt                = as.Date(c(
-      "2024-01-01", "2024-01-15", "2024-01-08")),
-    event_department_key      = c(2L, 2L, 3L),
-    enrollment_department_key = rep(2L, 3))
+      "2024-01-01", "2024-01-15", "2024-01-08", "2024-01-08")),
+    event_department_key      = c(2L, 2L, 3L, 3L),
+    enrollment_department_key = rep(2L, 4))
 
   make_test_ds(
     metadata                = md,
@@ -1244,6 +1244,7 @@ make_split_department_calc_ds <- function() {
     surveillanceEndData     = make_test_surveillance_end_data(
       2L, patient_days = 100L),
     sepsisData              = make_test_sepsis_data(3L, dol = 8L, los = 7L),
+    surgeryData             = make_test_surgery_data(4L),
     infectiousAgentFindings = make_test_iaf(3L),
     substanceDays           = make_test_substance_days(2L))
 }

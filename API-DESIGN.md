@@ -21,7 +21,7 @@
 - [x] Each of the four custom classes (`neoipcr_ds`, `neoipcr_rep_ds`, `neoipcr_ref_ds`, `neoipcr_tbl_sr_ref`) has a §4 subsection with constructor site, columns, invariants, and pointer to the relevant `R/schema-*.R`.
 - [x] The `_iaf` / `_sbd` / `_udr` subclasses each have a §4 row (§4.5) under the post-task-1.2 names with an explicit "depends on task 1.2" callout. Three additional subclasses surfaced and are flagged in §3.2 for task 1.2 expansion.
 - [x] Every helper from the Phase 2 sketch of the task file appears in §5 (46 rows) with target `R/*.R` file + signature. Rejected promotions listed in §5.2 with rationale.
-- [x] Every `gettext` / `gettextf` call site in `R/` is classified in §6.1. F-class + C-class (13 sites) individually enumerated in §6.1.1; the M-class sites, every condition message, the two credential prompts, and the print method's text, share a single migration action in §6.1.2, and §6.8 describes their catalogue.
+- [x] Every `gettext` / `gettextf` call site in `R/` is classified in §6.1. F-class + C-class (19 sites) individually enumerated in §6.1.1; the M-class sites, every condition message, the two credential prompts, and the print method's text, share a single migration action in §6.1.2, and §6.8 describes their catalogue.
 - [x] §6 states the architectural split (messages vs. data) as a decision, not a proposal — §6.5, governed by D-H (§10.8) for PI confirmation.
 - [x] §6 cites 5 established R-ecosystem precedents — §6.4 (countrycode, Writing R Extensions, scales, rlang/cli, potools).
 - [x] The unified locale-resolution chain is stated in §6.7 and referenced from relevant decisions in §10.
@@ -138,7 +138,7 @@ The four main classes span two shapes: dataset lists (`neoipcr_ds`, `neoipcr_rep
 
 ### §4.1. `neoipcr_ds`
 
-**Constructor site**: [R/import-dhis2.R:481](R/import-dhis2.R#L481) — `structure(..., class = c("neoipcr_ds", "list"))`.
+**Constructor site**: [R/import-dhis2.R:496](R/import-dhis2.R#L496) — `structure(..., class = c("neoipcr_ds", "list"))`.
 
 **Shape**: list of tibbles (member slots) + `metadata` + `.cache`.
 
@@ -183,7 +183,7 @@ The four main classes span two shapes: dataset lists (`neoipcr_ds`, `neoipcr_rep
 
 ### §4.2. `neoipcr_rep_ds` → post-1.2 `neoipcr_report_ds`
 
-**Constructor site**: [R/calc-api.R:423](R/calc-api.R#L423) — `structure(..., class = c("neoipcr_rep_ds", "list"))`.
+**Constructor site**: [R/calc-api.R:358](R/calc-api.R#L358) — `structure(..., class = c("neoipcr_rep_ds", "list"))`.
 
 **Shape**: list of tibbles — computed view of an imported `neoipcr_ds`, aggregated at department level.
 
@@ -212,7 +212,7 @@ The four main classes span two shapes: dataset lists (`neoipcr_ds`, `neoipcr_rep
 
 ### §4.3. `neoipcr_ref_ds` → post-1.2 `neoipcr_reference_ds`
 
-**Constructor site**: [R/calc-api.R:253](R/calc-api.R#L253) — `structure(..., class = c("neoipcr_ref_ds", "neoipcr_rep_ds", "list"))`. **Inherits from `neoipcr_rep_ds`.**
+**Constructor site**: [R/calc-api.R:157](R/calc-api.R#L157) — `structure(..., class = c("neoipcr_ref_ds", "neoipcr_rep_ds", "list"))`. **Inherits from `neoipcr_rep_ds`.**
 
 **Shape**: same member structure as `neoipcr_rep_ds` with additional quartile statistics.
 
@@ -236,7 +236,7 @@ The four main classes span two shapes: dataset lists (`neoipcr_ds`, `neoipcr_rep
 
 ### §4.4. `neoipcr_tbl_sr_ref` → post-1.2 `neoipcr_surgery_rate_table_ref` (candidate — see §3.1)
 
-**Constructor sites**: [R/calc-tables.R:551](R/calc-tables.R#L551) and [R/calc-tables.R:634](R/calc-tables.R#L634) — two `add_class()` calls in `get_ref_surgery_rate_table()`.
+**Constructor sites**: [R/calc-tables.R:569](R/calc-tables.R#L569) and [R/calc-tables.R:652](R/calc-tables.R#L652) — two `add_class()` calls in `get_ref_surgery_rate_table()`.
 
 **Shape**: tibble (a single result table, not a dataset list).
 
@@ -269,10 +269,10 @@ The four cryptic-slug sub-classes below are all pending rename under task 1.2. E
 
 | Current slug | Post-1.2 candidate | Parent shape | Construction site | Represents |
 |---|---|---|---|---|
-| `neoipcr_iaf` | `neoipcr_agent_finding` | tibble slot on `neoipcr_ds` | [R/import-dhis2.R:449](R/import-dhis2.R#L449) | Per-event infectious-agent findings + resistance categories. |
-| `neoipcr_sbd` | `neoipcr_substance_day` | tibble slot on `neoipcr_ds` | [R/import-dhis2.R:448](R/import-dhis2.R#L448) | Antibiotic-substance-day exposures per event/enrollment. |
-| `neoipcr_tbl_udr` | `neoipcr_usage_density_rate_table` | result tibble | [R/calc-tables.R:241](R/calc-tables.R#L241) | Usage-density rate table (pooled rates per therapeutic category). |
-| `neoipcr_tbl_udr_ref` | `neoipcr_usage_density_rate_table_ref` | result tibble | [R/calc-tables.R:317](R/calc-tables.R#L317) | Reference variant with quartile statistics. |
+| `neoipcr_iaf` | `neoipcr_agent_finding` | tibble slot on `neoipcr_ds` | [R/import-dhis2.R:492](R/import-dhis2.R#L492) | Per-event infectious-agent findings + resistance categories. |
+| `neoipcr_sbd` | `neoipcr_substance_day` | tibble slot on `neoipcr_ds` | [R/import-dhis2.R:491](R/import-dhis2.R#L491) | Antibiotic-substance-day exposures per event/enrollment. |
+| `neoipcr_tbl_udr` | `neoipcr_usage_density_rate_table` | result tibble | [R/calc-tables.R:247](R/calc-tables.R#L247) | Usage-density rate table (pooled rates per therapeutic category). |
+| `neoipcr_tbl_udr_ref` | `neoipcr_usage_density_rate_table_ref` | result tibble | [R/calc-tables.R:323](R/calc-tables.R#L323) | Reference variant with quartile statistics. |
 
 All four **depend on task 1.2**. See §3.2 for additional classes (`neoipcr_bnch_ds`, `neoipcr_tbl_rtr(_ref)`, `neoipcr_tbl_sec_bsi(_ref)`) that surfaced during this audit and should be added to task 1.2's rename table.
 
@@ -383,56 +383,50 @@ Already present: `dplyr`, `lubridate`, `rlang`, `readr`, `stringr`, `tidyr`, `ti
 
 1. the **condition messages**, every user-facing string of an `rlang::abort()` or `rlang::warn()` call and the text of `print.neoipcr_dhis2_conopt()`, spread across many files of `R/` and governed by §6.8;
 2. the **two credential prompts** of [R/dhis2-connect.R](R/dhis2-connect.R), the password prompt of `get_password()` and the username prompt of `get_auth_data()`, which a person reads in an interactive session and which §6.8 governs as well;
-3. **13 call sites that translate labels rather than messages**, classified and enumerated below.
+3. **19 call sites that translate labels rather than messages**, classified and enumerated below.
 
 | Classification | Count | Locations |
 |---|---|---|
 | M — Message (a condition, a prompt, or console text a person reads) | every condition message and both prompts | §6.1.2, §6.8 |
-| C — Column header | 2 | [R/calc-api.R:955](R/calc-api.R#L955) and [R/calc-procedure-categories.R:689](R/calc-procedure-categories.R#L689) |
-| F — Factor-level label | 18 | All in [R/calc-procedure-categories.R:612–639](R/calc-procedure-categories.R#L612-L639) (`get_procedure_category_pretty()`; the last, at :639, is the `NEOIPC-PERMANENT(dataset-format)` recode of the pre-`-ize` category spelling) |
+| C — Column header | 1 | [R/calc-api.R:955](R/calc-api.R#L955) |
+| F — Factor-level label | 18 | All in [R/calc-procedure-categories.R:620–647](R/calc-procedure-categories.R#L620-L647) (`get_procedure_category_pretty()`; the last, at :647, is the `NEOIPC-PERMANENT(dataset-format)` recode of the pre-`-ize` category spelling) |
 | D — DHIS2-display passthrough (redundant wrap) | 0 | — |
 | B — Bug (multi-arg `gettext` with silently dropped args) | 0 | — |
 
 Two corrections to the A4 problem-statement in the plan file:
 
-1. **No `B` (bug) cases exist.** `gettext()` translates each of its arguments and returns one element per string (`?gettext`), and both catalogue extractors collect every argument (§6.8.3), so the two multi-argument calls drop nothing: they translate the column headers that `pretty_names.neoipcr_tbl_sr_ref()` and `get_procedure_categories()` attach, which makes them the two `C` cases.
+1. **No `B` (bug) cases exist.** `gettext()` translates each of its arguments and returns one element per string (`?gettext`), and both catalogue extractors collect every argument (§6.8.3), so the one multi-argument call drops nothing: it translates the six column headers that `pretty_names.neoipcr_tbl_sr_ref()` attaches, which makes it the one `C` case.
 2. **No `D` (DHIS2-display passthrough) cases exist today.** The feared pattern — wrapping DHIS2 `displayName` output in `gettext` — does not appear. DHIS2 localization is already consumed correctly (see §6.3).
 
 The real issue is confined to **two files and one function family**: the 18 factor-level label calls in
 `get_procedure_category_pretty()` — 11 for the overall row, the 8 groups, and the 2 residual codes, and 7 for the
-categories the groups replace — and the two column-header calls.
+categories the groups replace — and the one column-header call.
 
 #### §6.1.1. All F-Class and C-Class Call Sites (Individually Enumerated)
 
-The 20 non-M sites each need distinct treatment in Phase 2, so they're individually enumerated here. M-class sites follow in §6.1.2.
+The 19 non-M sites each need distinct treatment in Phase 2, so they're individually enumerated here. M-class sites follow in §6.1.2.
 
 | File:line | Call shape | Surrounding function | Class | Migration target |
 |-----------|------------|----------------------|-------|------------------|
 | [R/calc-api.R:955](R/calc-api.R#L955) | `gettext("Procedure category","N","Pooled","Q1","Q2","Q3")` | `pretty_names.neoipcr_tbl_sr_ref` | C | Rewrite as explicit per-column lookup against `procedure_category_labels` tibble (§7.1 row 2). The other headers — `"N"`, `"Pooled"`, `"Q1"`…`"Q3"` — either stay English or move to YAML cascade. |
-| [R/calc-procedure-categories.R:689](R/calc-procedure-categories.R#L689) | `gettext("Procedure code","Procedure category")` | `get_procedure_categories` | C | Keep on `gettext` OR move to YAML cascade (decide alongside §5 row 7 promotion). |
-| [R/calc-procedure-categories.R:612](R/calc-procedure-categories.R#L612) | `gettext("Overall")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (§7.1 row 2, code `"overall"`). |
-| [R/calc-procedure-categories.R:613](R/calc-procedure-categories.R#L613) | `gettext("Neurosurgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"neurosurgery"`). |
-| [R/calc-procedure-categories.R:615](R/calc-procedure-categories.R#L615) | `gettext("Cardiac and great-vessel surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"cardiac_great_vessel_surgery"`). |
-| [R/calc-procedure-categories.R:616](R/calc-procedure-categories.R#L616) | `gettext("Non-cardiac thoracic surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"non_cardiac_thoracic_surgery"`). |
-| [R/calc-procedure-categories.R:617](R/calc-procedure-categories.R#L617) | `gettext("Abdominal surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"abdominal_surgery"`). |
-| [R/calc-procedure-categories.R:618](R/calc-procedure-categories.R#L618) | `gettext("Abdominal wall surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"abdominal_wall_surgery"`). |
-| [R/calc-procedure-categories.R:620](R/calc-procedure-categories.R#L620) | `gettext("Inguinal and umbilical hernia repair")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"inguinal_umbilical_hernia_repair"`). |
-| [R/calc-procedure-categories.R:622](R/calc-procedure-categories.R#L622) | `gettext("Head, neck, and upper airway surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"head_neck_upper_airway_surgery"`). |
-| [R/calc-procedure-categories.R:624](R/calc-procedure-categories.R#L624) | `gettext("Skin, soft tissue, perineal, and urogenital surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"skin_soft_tissue_urogenital_surgery"`). |
-| [R/calc-procedure-categories.R:625](R/calc-procedure-categories.R#L625) | `gettext("Not a surgical procedure")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"not_surgery"`). |
-| [R/calc-procedure-categories.R:626](R/calc-procedure-categories.R#L626) | `gettext("Placed by no procedure group")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"no_group"`). |
-| [R/calc-procedure-categories.R:633](R/calc-procedure-categories.R#L633) | `gettext("Cardiac- / large vessel surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"cardiac_and_large_vessel_surgery"`, a category the procedure groups replace). |
-| [R/calc-procedure-categories.R:634](R/calc-procedure-categories.R#L634) | `gettext("Lung- / pleural space- / thoracic surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"lung_pleural_space_thoracic_surgery"`, a category the procedure groups replace). |
-| [R/calc-procedure-categories.R:635](R/calc-procedure-categories.R#L635) | `gettext("Oesophageal surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"oesophageal_surgery"`, a category the procedure groups replace). |
-| [R/calc-procedure-categories.R:636](R/calc-procedure-categories.R#L636) | `gettext("Inguinal hernia surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"inguinal_hernia_surgery"`, a category the procedure groups replace). |
-| [R/calc-procedure-categories.R:637](R/calc-procedure-categories.R#L637) | `gettext("Other")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"other"`, a category the procedure groups replace). |
-| [R/calc-procedure-categories.R:638](R/calc-procedure-categories.R#L638) | `gettext("Not yet categorized")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"to_be_categorized"`, a category the procedure groups replace). |
-| [R/calc-procedure-categories.R:639](R/calc-procedure-categories.R#L639) | `gettext("Not yet categorized")` | `get_procedure_category_pretty` | F | Same read, for code `"to_be_categorised"` — the `NEOIPC-PERMANENT(dataset-format)` recode that renders datasets serialized under the pre-`-ize` spelling. The lookup must keep accepting this code; only the `gettext` wrapper goes. |
-
-The 18 F-class calls at lines 612–639 also require removing the `Sys.getlocale("LC_MESSAGES")` fallback at
-[R/calc-procedure-categories.R:658](R/calc-procedure-categories.R#L658), in the `pretty` branch of
-`get_procedure_categories()` — the accessor pattern honours the resolution chain via the explicit `locale`
-argument instead.
+| [R/calc-procedure-categories.R:620](R/calc-procedure-categories.R#L620) | `gettext("Overall")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (§7.1 row 2, code `"overall"`). |
+| [R/calc-procedure-categories.R:621](R/calc-procedure-categories.R#L621) | `gettext("Neurosurgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"neurosurgery"`). |
+| [R/calc-procedure-categories.R:623](R/calc-procedure-categories.R#L623) | `gettext("Cardiac and great-vessel surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"cardiac_great_vessel_surgery"`). |
+| [R/calc-procedure-categories.R:624](R/calc-procedure-categories.R#L624) | `gettext("Non-cardiac thoracic surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"non_cardiac_thoracic_surgery"`). |
+| [R/calc-procedure-categories.R:625](R/calc-procedure-categories.R#L625) | `gettext("Abdominal surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"abdominal_surgery"`). |
+| [R/calc-procedure-categories.R:626](R/calc-procedure-categories.R#L626) | `gettext("Abdominal wall surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"abdominal_wall_surgery"`). |
+| [R/calc-procedure-categories.R:628](R/calc-procedure-categories.R#L628) | `gettext("Inguinal and umbilical hernia repair")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"inguinal_umbilical_hernia_repair"`). |
+| [R/calc-procedure-categories.R:630](R/calc-procedure-categories.R#L630) | `gettext("Head, neck, and upper airway surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"head_neck_upper_airway_surgery"`). |
+| [R/calc-procedure-categories.R:632](R/calc-procedure-categories.R#L632) | `gettext("Skin, soft tissue, perineal, and urogenital surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"skin_soft_tissue_urogenital_surgery"`). |
+| [R/calc-procedure-categories.R:633](R/calc-procedure-categories.R#L633) | `gettext("Not a surgical procedure")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"not_surgery"`). |
+| [R/calc-procedure-categories.R:634](R/calc-procedure-categories.R#L634) | `gettext("Placed by no procedure group")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"no_group"`). |
+| [R/calc-procedure-categories.R:641](R/calc-procedure-categories.R#L641) | `gettext("Cardiac- / large vessel surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"cardiac_and_large_vessel_surgery"`, a category the procedure groups replace). |
+| [R/calc-procedure-categories.R:642](R/calc-procedure-categories.R#L642) | `gettext("Lung- / pleural space- / thoracic surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"lung_pleural_space_thoracic_surgery"`, a category the procedure groups replace). |
+| [R/calc-procedure-categories.R:643](R/calc-procedure-categories.R#L643) | `gettext("Oesophageal surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"oesophageal_surgery"`, a category the procedure groups replace). |
+| [R/calc-procedure-categories.R:644](R/calc-procedure-categories.R#L644) | `gettext("Inguinal hernia surgery")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"inguinal_hernia_surgery"`, a category the procedure groups replace). |
+| [R/calc-procedure-categories.R:645](R/calc-procedure-categories.R#L645) | `gettext("Other")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"other"`, a category the procedure groups replace). |
+| [R/calc-procedure-categories.R:646](R/calc-procedure-categories.R#L646) | `gettext("Not yet categorized")` | `get_procedure_category_pretty` | F | Replace with read from `procedure_category_labels$label_<locale>` (code `"to_be_categorized"`, a category the procedure groups replace). |
+| [R/calc-procedure-categories.R:647](R/calc-procedure-categories.R#L647) | `gettext("Not yet categorized")` | `get_procedure_category_pretty` | F | Same read, for code `"to_be_categorised"` — the `NEOIPC-PERMANENT(dataset-format)` recode that renders datasets serialized under the pre-`-ize` spelling. The lookup must keep accepting this code; only the `gettext` wrapper goes. |
 
 #### §6.1.2. M-Class Call Sites
 
@@ -444,7 +438,7 @@ Validation findings and reconciliation counts carry no message. `validate()` ret
 
 - **Entry point**: `dhis2_dataset_options()` accepts `locale = NULL` (signature in [R/dhis2-options.R](R/dhis2-options.R)).
 - **Only correct consumer**: [R/dhis2-metadata.R:8–12](R/dhis2-metadata.R#L8) — passes `locale` to the DHIS2 API when `dataset_options$translate && rlang::is_character(dataset_options$locale, n = 1)`.
-- **Broken consumers**: every R-level `gettext` / `gettextf` call. They consult `Sys.getlocale("LC_MESSAGES")` and `Sys.getenv("LANGUAGE")` — not `opts$locale`. Concretely: [R/calc-procedure-categories.R:658](R/calc-procedure-categories.R#L658) falls back to `Sys.getlocale("LC_MESSAGES")` in the `pretty` branch of `get_procedure_categories()`, before it calls `get_procedure_category_pretty()`.
+- **Broken consumers**: every R-level `gettext` / `gettextf` call. They consult `Sys.getlocale("LC_MESSAGES")` and `Sys.getenv("LANGUAGE")` — not `opts$locale`.
 - **Result**: a caller who sets `dhis2_dataset_options(locale = "de")` gets German-translated DHIS2 metadata, but condition messages and procedure-category labels in the R session's language, German only where the session's `LANGUAGE` or `LC_MESSAGES` selects it.
 
 ### §6.3. `display*` Field Inventory (Current)
@@ -464,11 +458,11 @@ All of these `display*` values are **preserved only when the relevant `include_*
 
 | # | Package / source | Mechanism demonstrated | Concrete example | Applicability to neoipcr |
 |---|------------------|------------------------|------------------|--------------------------|
-| 1 | **[`countrycode`](https://github.com/vincentarelbundock/countrycode)** | Locale-as-column-selector on taxonomy tibbles. Data is English-canonical; labels live in separate `country.name.en`, `country.name.de`, `country.name.fr` columns of the `codelist` tibble. Accessor takes a `destination` parameter and reads the appropriate column. | `codelist` (~600 rows) with ~30 locale-keyed columns, e.g. `country.name.en` / `country.name.de` / `country.name.fr`. No gettext wraps around row values. | Directly applicable to the 11 F-class calls. `get_procedure_category_pretty()` migrates to a `procedure_category_labels` tibble in `sysdata.Rda` with `label_en` / `label_de` columns, served by `get_procedure_category_labels(locale = NULL)`. neoipcr's accessor over its bundled tables, `get_infectious_agents()`, gives the infectious-agent list's English names alone (§7.5), so the idiom is new to the package. |
-| 2 | **"Writing R Extensions", § Translations** (R-core / CRAN manual) | Establishes that `gettext` / `gettextf` are for messages shown to users (errors, warnings, diagnostics). Data-layer labels (column names, factor levels, taxonomy terms) are not in scope for PO catalogues — they're part of the package's data contract. | The manual enumerates the set of `gettext`-wrapped user-facing messages and explicitly does not place factor labels, taxonomy tables, or column headers in that set. | Validates the split. The condition messages stay on `gettext()` / `gettextf()` / `ngettext()` (§6.8); the 11 F-class calls migrate to locale-keyed columns per #1 above. |
+| 1 | **[`countrycode`](https://github.com/vincentarelbundock/countrycode)** | Locale-as-column-selector on taxonomy tibbles. Data is English-canonical; labels live in separate `country.name.en`, `country.name.de`, `country.name.fr` columns of the `codelist` tibble. Accessor takes a `destination` parameter and reads the appropriate column. | `codelist` (~600 rows) with ~30 locale-keyed columns, e.g. `country.name.en` / `country.name.de` / `country.name.fr`. No gettext wraps around row values. | Directly applicable to the 18 F-class calls. `get_procedure_category_pretty()` migrates to a `procedure_category_labels` tibble in `sysdata.Rda` with `label_en` / `label_de` columns, served by `get_procedure_category_labels(locale = NULL)`. neoipcr's accessor over its bundled tables, `get_infectious_agents()`, gives the infectious-agent list's English names alone (§7.5), so the idiom is new to the package. |
+| 2 | **"Writing R Extensions", § Translations** (R-core / CRAN manual) | Establishes that `gettext` / `gettextf` are for messages shown to users (errors, warnings, diagnostics). Data-layer labels (column names, factor levels, taxonomy terms) are not in scope for PO catalogues — they're part of the package's data contract. | The manual enumerates the set of `gettext`-wrapped user-facing messages and explicitly does not place factor labels, taxonomy tables, or column headers in that set. | Validates the split. The condition messages stay on `gettext()` / `gettextf()` / `ngettext()` (§6.8); the 18 F-class calls migrate to locale-keyed columns per #1 above. |
 | 3 | **[`scales`](https://scales.r-lib.org)** (tidyverse) | Separates formatter construction from locale consumption. `scales::label_date()`, `scales::label_number()`, `scales::label_currency()` take format strings and locale hints as **explicit parameters**; they do not consult `Sys.getlocale()` silently at definition time. | `scales::label_date(format = "%b %d", locale = "de")` — caller is responsible for passing the locale. | Informs the unified resolution chain (§6.7). Every neoipcr entry point that produces localized output accepts an explicit `locale` argument that wins over `opts$locale`, which wins over `Sys.getlocale("LC_MESSAGES")`, which wins over `"en"`. |
 | 4 | **[`rlang`](https://rlang.r-lib.org)** + **[`cli`](https://cli.r-lib.org)** (tidyverse) | Class-tagged condition system: `rlang::abort()` / `cli::cli_abort()` / `cli::cli_warn()` attach a class to the condition; error handlers and tests dispatch on the class, not on the human-readable message. Translation of the message is **orthogonal** — it happens via gettext if you want it, but the class is what programs check. | `rlang::abort(class = "neoipcr_missing_token", message = gettext("…"))`. Tests assert on `class`, not on the translated string. | **Adopted.** neoipcr raises every condition with `rlang::abort()` or `rlang::warn()` and wraps each user-facing string in `gettext()`, `gettextf()`, or `ngettext()` (§6.8.2). Tests run in the `C` language, so a test that matches a class is unaffected by translation, and one that matches English text still passes (§6.8.4). |
-| 5 | **[`potools`](https://cran.r-project.org/package=potools)** | Package-scoped message catalogues. `potools::create_catalog()` extracts every `gettext(...)` call from `R/` and writes a single `.pot`; translators add `.po` files. `potools` does not split catalogues by message class — the split happens **at the source level** before extraction. | `potools::create_catalog()` → `po/R-<pkg>.pot`. Data-layer labels (taxonomy tibbles in `sysdata.Rda`) are not scanned because they're not `gettext` calls. | Confirms D-G (single `R-neoipcr.pot`), which neoipcr builds with its own `tools/update_po.R` (§6.8.3). Once the 18 F-class calls migrate out of `gettext`, the catalogue holds the condition messages, the credential prompts, and the print method's text — no clutter from data labels, unless the `:689` call keeps its two column headers on `gettext` (§6.5 row C), which would add exactly those two. |
+| 5 | **[`potools`](https://cran.r-project.org/package=potools)** | Package-scoped message catalogues. `potools::create_catalog()` extracts every `gettext(...)` call from `R/` and writes a single `.pot`; translators add `.po` files. `potools` does not split catalogues by message class — the split happens **at the source level** before extraction. | `potools::create_catalog()` → `po/R-<pkg>.pot`. Data-layer labels (taxonomy tibbles in `sysdata.Rda`) are not scanned because they're not `gettext` calls. | Confirms D-G (single `R-neoipcr.pot`), which neoipcr builds with its own `tools/update_po.R` (§6.8.3). Once the 18 F-class calls migrate out of `gettext`, the catalogue holds the condition messages, the credential prompts, and the print method's text — no clutter from data labels, unless the column headers of the `calc-api.R:955` call stay on `gettext` (§6.5 row C), which keeps exactly those in. |
 
 **Mainstream consensus.** Five sources converge on: (i) `gettext` is for user-facing messages only; (ii) data labels live in locale-keyed columns or equivalent structured data (not in PO catalogues); (iii) locale selection is explicit (parameter or resolver), never implicit from `Sys.getlocale()` alone; (iv) a single `.pot` per package is standard. neoipcr is already close on (i), (iii-partial), and (iv); the M/F split is what brings it into (ii).
 
@@ -488,8 +482,8 @@ Nothing is in both tracks.
 | Class | Count | Mechanism under new architecture |
 |---|---|---|
 | **M** — Message | every condition message | Stay on `gettext()` / `gettextf()` / `ngettext()`. No call-site change in Phase 2 (other than the `Sys.getlocale` cleanup in §6.7's locale chain). The catalogue is regenerated with `tools/update_po.R` (§6.8.3) after the F-class calls exit. |
-| **C** — Column header | 2 | [R/calc-api.R:955](R/calc-api.R#L955) — the `pretty_names.neoipcr_tbl_sr_ref` six-argument `gettext` — rewritten as an explicit locale-aware mapping against the `procedure_category_labels` tibble. [R/calc-procedure-categories.R:689](R/calc-procedure-categories.R#L689) — the two-argument `gettext("Procedure code", "Procedure category")` — kept on `gettext`, *or* moved to YAML cascade if those headers are report-visible (decide in Phase 2 when the string-resources promotion lands). New column headers use the YAML resource cascade (via `get_string_resources()` promoted in §5 row 7), not `gettext`. |
-| **F** — Factor-level label | 18 | Migrate to package data. All 18 are procedure-group and category labels in [R/calc-procedure-categories.R:612–639](R/calc-procedure-categories.R#L612-L639). Target: the `procedure_category_labels` tibble proposed in §7 row 2, served by a new `get_procedure_category_labels(locale = NULL)`. Migration is the only non-trivial code change in Phase 2. |
+| **C** — Column header | 1 | [R/calc-api.R:955](R/calc-api.R#L955) — the `pretty_names.neoipcr_tbl_sr_ref` six-argument `gettext` — rewritten as an explicit locale-aware mapping against the `procedure_category_labels` tibble. New column headers use the YAML resource cascade (via `get_string_resources()` promoted in §5 row 7), not `gettext`. |
+| **F** — Factor-level label | 18 | Migrate to package data. All 18 are procedure-group and category labels in [R/calc-procedure-categories.R:620–647](R/calc-procedure-categories.R#L620-L647). Target: the `procedure_category_labels` tibble proposed in §7 row 2, served by a new `get_procedure_category_labels(locale = NULL)`. Migration is the only non-trivial code change in Phase 2. |
 | **D** — DHIS2-display passthrough | 0 | None exist today. Entry points already consume DHIS2's `display*` fields directly (see §6.3). Document this pattern in every public entry point's roxygen. |
 
 **What this looks like to a caller.**
@@ -497,7 +491,7 @@ Nothing is in both tracks.
 ```r
 # Before (current):
 #   Sys.setlocale("LC_MESSAGES", "de_DE.UTF-8")
-#   get_procedure_category_pretty(codes)  # uses Sys.getlocale
+#   get_procedure_category_pretty(codes)  # follows the session locale, not opts$locale
 
 # After:
 opts <- dhis2_dataset_options(locale = "de_DE")
@@ -505,18 +499,17 @@ labels <- get_procedure_category_labels(locale = opts$locale)  # explicit arg wi
 # or: labels <- get_procedure_category_labels()  # resolution chain kicks in
 ```
 
-**What this looks like to a translator.** After the migration, `R-neoipcr.pot` holds the condition messages, the credential prompts, and the print method's text (§6.8), all of them messages a person reads, plus the two column headers of `calc-procedure-categories.R:689` if that call stays on `gettext` rather than moving to the YAML cascade. The F- and C-class calls account for 24 of today's msgids, fewer than their 26 strings, because duplicates collapse to one entry: the recode at `calc-procedure-categories.R:639` repeats the label at `:638`, and `"Procedure category"` heads both `calc-api.R:955` and `calc-procedure-categories.R:689`. Procedure-category labels are translated in the YAML / CSV under Surveillance-Toolkit's metadata/ (out of scope for this note; §7 row 2 coordinates with A5b).
+**What this looks like to a translator.** After the migration, `R-neoipcr.pot` holds the condition messages, the credential prompts, and the print method's text (§6.8), all of them messages a person reads, plus the six column headers of `calc-api.R:955` if that call stays on `gettext` rather than moving to the YAML cascade. The F- and C-class calls account for 23 of today's msgids, fewer than their 24 strings, because the recode at `calc-procedure-categories.R:647` repeats the label at `:646` and the two collapse to one entry. Procedure-category labels are translated in the YAML / CSV under Surveillance-Toolkit's metadata/ (out of scope for this note; §7 row 2 coordinates with A5b).
 
 ### §6.6. Migration Plan for Phase 2
 
 | Call site | Classification | Action in Phase 2 |
 |---|---|---|
 | [R/calc-api.R:955](R/calc-api.R#L955) | C | Rewrite as an explicit tibble lookup against the new `procedure_category_labels`; remove the six-argument `gettext`. |
-| `R/calc-procedure-categories.R:689` | C | Keep on `gettext` *or* move to YAML cascade (decide alongside string-resources promotion, §5 row 7). |
-| [R/calc-procedure-categories.R:612–639](R/calc-procedure-categories.R#L612-L639) (18 calls) | F → data-layer | Replace with reads from `procedure_category_labels` tibble. `get_procedure_category_pretty()` becomes `get_procedure_category_labels(locale = NULL)`; locale-resolution chain applied; the `"to_be_categorised"` recode at :639 stays as a code the lookup accepts. Remove the `Sys.getlocale("LC_MESSAGES")` fallback at line 658 of `get_procedure_categories()`. |
+| [R/calc-procedure-categories.R:620–647](R/calc-procedure-categories.R#L620-L647) (18 calls) | F → data-layer | Replace with reads from `procedure_category_labels` tibble. `get_procedure_category_pretty()` becomes `get_procedure_category_labels(locale = NULL)`; locale-resolution chain applied; the `"to_be_categorised"` recode at :647 stays as a code the lookup accepts. |
 | Condition messages and the print method (§6.1.2) | M | No action required. Stay as-is. Optionally document that `gettext` returns the English source string where the catalogue has no translation (`?gettext`) — useful for vignette writers. |
 
-**Phase 2 sequencing.** The migration has exactly one non-trivial step: create `procedure_category_labels`, populate it, rewrite `get_procedure_category_pretty()` to read from it, delete the 18 `gettext` lines. Everything else is either "do nothing" (M-class) or a short rewrite of the two column-header calls (C-class). Estimate: half a day of work plus catalogue regeneration.
+**Phase 2 sequencing.** The migration has exactly one non-trivial step: create `procedure_category_labels`, populate it, rewrite `get_procedure_category_pretty()` to read from it, delete the 18 `gettext` lines. Everything else is either "do nothing" (M-class) or a short rewrite of the column-header call (C-class). Estimate: half a day of work plus catalogue regeneration.
 
 **Catalogue regeneration.** After the F-class migration, run `Rscript tools/update_po.R` (§6.8.3), which regenerates `po/R-neoipcr.pot`, merges it into `po/R-de.po` and `po/R-en.po`, and recompiles `inst/po/{de,en}/LC_MESSAGES/R-neoipcr.mo`; the five files are committed with the code. Part of Phase 2.
 
@@ -545,7 +538,7 @@ explicit function argument → dhis2_dataset_options()$locale → Sys.getlocale(
 
 ### §6.8. Message Catalogue
 
-The catalogue is `po/R-neoipcr.pot`, merged into `po/R-de.po` and `po/R-en.po` and compiled into `inst/po/<lang>/LC_MESSAGES/R-neoipcr.mo` for each of the two languages. It holds 187 msgids, 7 of them plural entries: 17 are the F- and C-class strings of §6.1.1, whose fate §6.6 decides, 2 are the credential prompts, and 168 are condition messages and the print method's text. `msgfmt --statistics -o /dev/null po/R-neoipcr.pot` counts them, as untranslated messages.
+The catalogue is `po/R-neoipcr.pot`, merged into `po/R-de.po` and `po/R-en.po` and compiled into `inst/po/<lang>/LC_MESSAGES/R-neoipcr.mo` for each of the two languages. It holds 214 msgids, 10 of them plural entries: 23 are the F- and C-class strings of §6.1.1, whose fate §6.6 decides, 2 are the credential prompts, and 189 are condition messages and the print method's text. `msgfmt --statistics -o /dev/null po/R-neoipcr.pot` counts them, as untranslated messages.
 
 #### §6.8.1. What Is Translated, and What Stays English
 
@@ -608,9 +601,9 @@ rlang::abort(c(
 
 | # | Candidate | Current inline location | Shape today | Target (package data) | Int/Ext | Accessor | Blocking |
 |---|-----------|-------------------------|-------------|-----------------------|---------|----------|----------|
-| 1 | Procedure-category map (ICHI → category code) | [R/calc-procedure-categories.R:497](R/calc-procedure-categories.R#L497) — `get_procedure_category()` over `.procedure_group_of_stems()` and `.procedure_code_table` | Bundled table of the recorded codes, axes for the unrecorded ones, returning the 8 procedure groups plus `not_surgery` and `no_group` | Tibble `procedure_category_map` in `sysdata.Rda` with columns `ichi_code`, `category_code` | internal | `get_procedure_group()` | **Superseded by §13.9.2**, whose 8 procedure groups replace the 7 categories; the placement of the codes that replaces this map is landed, as `.procedure_code_table` of this file, versioned per §13.1.7. A bundled tibble or CSV stays unadopted. |
-| 2 | Procedure-category pretty-name labels | [R/calc-procedure-categories.R:612–639](R/calc-procedure-categories.R#L612-L639) — 18 `gettext()` calls (A4a F-1…F-18) | 18 factor-level label calls routed through gettext | Tibble `procedure_category_labels` in `sysdata.Rda` with locale-keyed columns (`category_code`, `label_en`, `label_de`, …) — the `countrycode` pattern | internal | new: `get_procedure_category_labels(locale = NULL)` | **Depends on D-H.** The 18 factor-label calls are the primary motivation for D-H. |
-| 3 | AWaRe categories (code → label) | [R/calc-denominators.R:218–224, 294–300](R/calc-denominators.R#L218-L224) — inline factor construction over `{"a", "w", "r"}` | Factor with levels `c("a", "w", "r")`; labels hardcoded English (Access / Watch / Reserve) | Tibble `aware_categories` in `sysdata.Rda`: `code`, `label_en`, `label_de` | internal | new: `get_aware_categories(locale = NULL)` | **Depends on D-H.** Codes come from DHIS2 option groups (read at import time); labels need the locale-column pattern. |
+| 1 | Procedure-category map (ICHI → category code) | [R/calc-procedure-categories.R:511](R/calc-procedure-categories.R#L511) — `get_procedure_category()` over `.procedure_group_of_stems()` and `.procedure_code_table` | Bundled table of the recorded codes, axes for the unrecorded ones, returning the 8 procedure groups plus `not_surgery` and `no_group` | Tibble `procedure_category_map` in `sysdata.Rda` with columns `ichi_code`, `category_code` | internal | `get_procedure_group()` | **Superseded by §13.9.2**, whose 8 procedure groups replace the 7 categories; the placement of the codes that replaces this map is landed, as `.procedure_code_table` of this file, versioned per §13.1.7. A bundled tibble or CSV stays unadopted. |
+| 2 | Procedure-category pretty-name labels | [R/calc-procedure-categories.R:620–647](R/calc-procedure-categories.R#L620-L647) — 18 `gettext()` calls (A4a F-1…F-18) | 18 factor-level label calls routed through gettext | Tibble `procedure_category_labels` in `sysdata.Rda` with locale-keyed columns (`category_code`, `label_en`, `label_de`, …) — the `countrycode` pattern | internal | new: `get_procedure_category_labels(locale = NULL)` | **Depends on D-H.** The 18 factor-label calls are the primary motivation for D-H. |
+| 3 | AWaRe categories (code → label) | [R/calc-denominators.R:237–243, 313–319](R/calc-denominators.R#L237-L243) — inline factor construction over `{"a", "w", "r"}` | Factor with levels `c("a", "w", "r")`; labels hardcoded English (Access / Watch / Reserve) | Tibble `aware_categories` in `sysdata.Rda`: `code`, `label_en`, `label_de` | internal | new: `get_aware_categories(locale = NULL)` | **Depends on D-H.** Codes come from DHIS2 option groups (read at import time); labels need the locale-column pattern. |
 | 4 | BW/GA breakpoints | [R/scales.R:1–75](R/scales.R) — hardcoded arithmetic in `ga7`, `bw50`, `bw125`, `bw250`, `bw500` | Hardcoded `floor(...)`-arithmetic in five functions | Named-list `scales_parameters` in `sysdata.Rda` (one sublist per binning) | internal | new: `get_scales_parameters()` returning the list; five binning fns consume it | **None.** Pure numeric constants. Promotable immediately (Phase 2 or earlier). |
 | 5 | Event-type vocabulary | [R/dhis2-metadata-reference.R:115–140](R/dhis2-metadata-reference.R#L115-L140) — two named lookup vectors resolved by `event_type_key_of()` into the event-type key (`adm`, `end`, `bsi`, `nec`, `hap`, `pro`, `ssi`) | 7-entry vector keyed by program-stage **code** (`NEOIPC_STG_*`), with a name-keyed vector behind it as a marked compatibility path for instances whose stages carry no code, plus inline factor levels | Tibble `event_type_map` in `sysdata.Rda`: `programStage`, `name`, `event_type_key`, `label_en`, `label_de` | internal | new: `get_event_type_map(locale = NULL)` | **Depends on D-H** *and* on a Surveillance-Toolkit source file (A5b). Also blocks (and is blocked by) the event-type promotion in A3 from [Validation-Report/_setup.qmd:135–137](https://github.com/NeoIPC/Surveillance-Toolkit/blob/5e74901ae1919816f349608f38bb904db84c347b/reports/Validation-Report/_setup.qmd#L135-L137). |
 | 6 | Resistance categories | The `applies_3gcr`, `applies_car`, `applies_cor`, `applies_mrsa`, and `applies_vre` columns of `internal_infectious_agent_classification` (§7.5) | Already package data | *(no change)* — derived from the list by [R/infectious-agent-ontology.R](R/infectious-agent-ontology.R) | internal | none: the infectious-agent tables read them, and `get_infectious_agents()` keeps them internal | **Complete.** |
@@ -858,7 +851,7 @@ Flat rename table. Renames are applied in Phase 3 of task 1.1 (not in this sessi
 | `neoipc_wilson_ci()` | `neoipcr_wilson_ci()` | Same — existing prefix doesn't match the package name. (D-D) |
 | `bootstrap_quantile_ci()` | `neoipcr_bootstrap_quantile_ci()` | Unifies with the other two CI functions under the package-matching `neoipcr_` prefix. (D-D) |
 
-**One rename proposal withdrawn.** D-C originally proposed `get_benchmark_data()` → `calculate_benchmark_data()` based on the task file's claim that the function "actually computes." Reading the source ([R/calc-api.R:530–931](R/calc-api.R#L530-L931)) shows it combines pre-computed datasets with fix-ups for zero events — not a calculation primitive. See §10.3. The task file claim is corrected in the same commit as this note.
+**One rename proposal withdrawn.** D-C originally proposed `get_benchmark_data()` → `calculate_benchmark_data()` based on the task file's claim that the function "actually computes." Reading the source ([R/calc-api.R:534–934](R/calc-api.R#L534-L934)) shows it combines pre-computed datasets with fix-ups for zero events — not a calculation primitive. See §10.3. The task file claim is corrected in the same commit as this note.
 
 No other renames proposed for the current exports (§3). Long table-function names stay (D-E — use `@family` grouping instead of shortening).
 
@@ -1107,7 +1100,7 @@ Task 1.4 (lifecycle badges) consumes §3's Lifecycle column verbatim — `lifecy
 
 **Recommendation.** **Reject the proposed rename. Keep `get_benchmark_data()` as-is.**
 
-**Rationale (corrected after reading the source).** The task file claims `get_benchmark_data()` "actually *computes*" — that claim is wrong. The function body in [R/calc-api.R:530–931](R/calc-api.R#L530-L931) takes pre-computed `neoipcr_rep_ds` / `neoipcr_ref_ds` inputs, prefixes their column names with the dataset name, and stitches them side-by-side via `bind_cols` / `full_join`, a table only across datasets whose stamps of it match. The roxygen at [calc-api.R:426](R/calc-api.R#L426) literally describes it as "*Creates* a NeoIPC benchmark data set *from* department report datasets and a reference data set." The only computations in the body are fix-ups for zero events: `fix_zero_event_ci()` (a small CI patch where merged-in zero-event departments produced garbage CIs) and, for the tables whose rows are infectious agents, `.complete_infectious_agent_table()`, which gives a dataset a row it lacks at 0 events, with their interval, over its own denominator of the row, and puts the rows in the reference's order; those are fix-ups, not calculation primitives.
+**Rationale (corrected after reading the source).** The task file claims `get_benchmark_data()` "actually *computes*" — that claim is wrong. The function body in [R/calc-api.R:534–934](R/calc-api.R#L534-L934) takes pre-computed `neoipcr_rep_ds` / `neoipcr_ref_ds` inputs, prefixes their column names with the dataset name, and stitches them side-by-side via `bind_cols` / `full_join`, a table only across datasets whose stamps of it match. The roxygen at [calc-api.R:430](R/calc-api.R#L430) literally describes it as "*Creates* a NeoIPC benchmark data set *from* department report datasets and a reference data set." The only computations in the body are fix-ups for zero events: `fix_zero_event_ci()` (a small CI patch where merged-in zero-event departments produced garbage CIs) and, for the tables whose rows are infectious agents, `.complete_infectious_agent_table()`, which gives a dataset a row it lacks at 0 events, with their interval, over its own denominator of the row, and puts the rows in the reference's order; those are fix-ups, not calculation primitives.
 
 So the symmetry argument with `calculate_department_data()` / `calculate_reference_data()` doesn't hold — those two compute rates and CIs from raw `neoipcr_ds`; this one combines already-computed datasets for side-by-side display.
 
@@ -1161,7 +1154,7 @@ We're already touching one of the three for the prefix-unification rename, and p
 
 **Recommendation.** Single catalogue. Matches `potools` convention (§6.4 row 5), matches R's own convention, matches the current state. Splitting catalogues creates a coordination burden for translators with no operational benefit.
 
-**Rationale.** After the F-class migration (§6.5), the catalogue holds the condition messages, the credential prompts, and the print method's text (§6.8) — plus the two column headers if the `:689` call keeps them on `gettext` — well within a single-file size. No need to complicate.
+**Rationale.** After the F-class migration (§6.5), the catalogue holds the condition messages, the credential prompts, and the print method's text (§6.8) — plus the six column headers if the `calc-api.R:955` call keeps them on `gettext` — well within a single-file size. No need to complicate.
 
 **PI resolution:** _pending_
 
@@ -1169,7 +1162,7 @@ We're already touching one of the three for the prefix-unification rename, and p
 
 **Question.** Confirm the messages-vs-data split architecture described in §6.5?
 
-**Recommendation.** Accept. Five independent ecosystem precedents (§6.4) converge on the same split; neoipcr is already close to it; the A4a enumeration showed the scope of the migration is narrow (one function family, 18 call sites, plus 2 column-header calls). Class-tagged conditions are already in place: every condition is raised with `rlang::abort()` or `rlang::warn()`, its user-facing strings wrapped for the catalogue (§6.8).
+**Recommendation.** Accept. Five independent ecosystem precedents (§6.4) converge on the same split; neoipcr is already close to it; the A4a enumeration showed the scope of the migration is narrow (one function family, 18 call sites, plus 1 column-header call). Class-tagged conditions are already in place: every condition is raised with `rlang::abort()` or `rlang::warn()`, its user-facing strings wrapped for the catalogue (§6.8).
 
 **What this commits:**
 
@@ -1177,7 +1170,7 @@ We're already touching one of the three for the prefix-unification rename, and p
 - Factor labels (the 18 procedure-group and category label calls, one of them the compatibility recode) migrate to `procedure_category_labels` tibble in `sysdata.Rda` (§7 row 2).
 - DHIS2 `display*` fields flow through unchanged; no `gettext` wraps added on top (§6.3 confirms none exist today).
 - Every neoipcr entry point that produces localized output accepts an explicit `locale` parameter; the resolution chain is `explicit_arg → opts$locale → Sys.getlocale("LC_MESSAGES") → "en"`.
-- The two column-header `gettext` calls ([calc-api.R:955](R/calc-api.R#L955), [calc-procedure-categories.R:689](R/calc-procedure-categories.R#L689)) rewritten in Phase 2 (§6.6).
+- The column-header `gettext` call ([calc-api.R:955](R/calc-api.R#L955)) rewritten in Phase 2 (§6.6).
 
 **Rationale.** See §6.4 precedents + §6.5 proposal + §6.6 migration plan. This is the most architecturally consequential decision in this note because §5, §7, §9, and Phase 2/4 all key off it.
 

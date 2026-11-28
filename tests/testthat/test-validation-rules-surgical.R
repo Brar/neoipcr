@@ -348,6 +348,12 @@ test_that("rule 67 detects a procedure an approach code alone places", {
   # behind the approach is still uncoded.
   expect_equal(nrow(neoipcr:::validation_rule_67(
     procedure_ds("PAK.FA.AA", "LZZ.DK.AH"), NULL)), 1L)
+  # An approach code entered for the first time is asked about as its
+  # recorded stems are.
+  expect_equal(nrow(neoipcr:::validation_rule_67(
+    procedure_ds("JCH.AE.AB"), NULL)), 1L)
+  expect_equal(nrow(neoipcr:::validation_rule_67(
+    procedure_ds("PAK.FA.AB"), NULL)), 1L)
 })
 
 test_that("rule 67 leaves alone a procedure its operation places", {
@@ -355,6 +361,10 @@ test_that("rule 67 leaves alone a procedure its operation places", {
     procedure_ds("PAK.FA.AA", "KBF.LI.AA"), NULL)), 0L)
   expect_equal(nrow(neoipcr:::validation_rule_67(
     procedure_ds("KBF.LI.AA"), NULL)), 0L)
+  # An operation entered for the first time stands beside the recorded
+  # approach: the operation behind the approach is coded.
+  expect_equal(nrow(neoipcr:::validation_rule_67(
+    procedure_ds("MAA.FA.AA", "KBF.MK.AB"), NULL)), 0L)
   # A procedure of no surgical procedure is placed by nothing, and one no
   # group takes is rule 68's.
   expect_equal(nrow(neoipcr:::validation_rule_67(

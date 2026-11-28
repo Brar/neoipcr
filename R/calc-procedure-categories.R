@@ -69,7 +69,7 @@ get_procedure_group <- function(main, side1 = NA_character_,
   if (!all(lens %in% ok))
     rlang::abort(c(
       gettext("Arguments to `get_procedure_group()` must share one length or have length 1."),
-      i = gettextf("Lengths given: %d, %d and %d.",
+      i = gettextf("Lengths given: %d, %d, and %d.",
                    lens[[1]], lens[[2]], lens[[3]])))
   if (any(lens == 0L))
     return(factor(character(0),
@@ -216,7 +216,7 @@ get_procedure_group <- function(main, side1 = NA_character_,
       "KBZ.LC.AA"
     )),
     list("abdominal_wall_surgery", "none", c(
-      "PAK.LI.AA", # re-entry of an open abdomen, placed with the wall
+      "PAK.LI.AA", # the release of a laparostomy, placed with the wall
       "PAL.MK.AA",
       "PAL.MK.AB",
       "PAL.ML.AA",
@@ -469,18 +469,33 @@ get_procedure_group <- function(main, side1 = NA_character_,
   group
 }
 
+# Whether each given stem is an approach code. The table's flag decides a
+# recorded stem; a first-time stem is an approach when its action opens one
+# of the targets that names a cavity itself — the skull, the thoracic
+# cavity, the abdomen — by endoscope or incision, as the recorded
+# craniotomy, thoracotomy, thoracoscopy, laparotomy and laparoscopy do. An
+# operation takes the cavity's group either way; the flag decides only
+# whether the code gives way to a partner.
+.procedure_stems_are_approach <- function(stems) {
+  idx <- match(stems, .procedure_code_table$procedure_code)
+  recorded <- !is.na(idx)
+  is_approach <- logical(length(stems))
+  is_approach[recorded] <- .procedure_code_table$approach[idx[recorded]]
+  is_approach[!recorded] <-
+    substr(stems[!recorded], 1L, 3L) %in% c("MAA", "JCH", "PAK") &
+      substr(stems[!recorded], 5L, 6L) %in% c("AE", "FA")
+  is_approach
+}
+
 # The group the given stems of one procedure place: the earliest group of a
 # stem that is no approach code, an approach's group when nothing else
 # places, and no surgical procedure when every stem is. `ungrammatical`
 # marks that a filled code slot no grammar reads was left out of the stems;
 # it is a code no group takes, so it stands against the last fallback.
 .procedure_group_of_stems <- function(stems, ungrammatical = FALSE) {
-  idx <- match(stems, .procedure_code_table$procedure_code)
-  recorded <- !is.na(idx)
   groups <- .procedure_group_for_stem(stems)
   placed <- groups %in% .procedure_group_levels
-  is_approach <- logical(length(stems))
-  is_approach[recorded] <- .procedure_code_table$approach[idx[recorded]]
+  is_approach <- .procedure_stems_are_approach(stems)
   non_approach <- placed & !is_approach
   if (any(non_approach)) {
     return(.procedure_first_group(groups[non_approach]))
@@ -494,7 +509,7 @@ get_procedure_group <- function(main, side1 = NA_character_,
   "no_group"
 }
 
-get_procedure_category <- function(x, not_surgery_na = FALSE) {
+get_procedure_category <- function(x) {
   group <- vapply(as.character(x), function(one) {
     if (is.na(one)) return(NA_character_)
     stems <- .procedure_stems_of_one(one)
@@ -502,14 +517,7 @@ get_procedure_category <- function(x, not_surgery_na = FALSE) {
     if (length(stems) == 0L) return("no_group")
     .procedure_group_of_stems(stems)
   }, character(1), USE.NAMES = FALSE)
-  if (not_surgery_na) {
-    # The surgical counts hold only a code a group takes: a code that is no
-    # surgical procedure and a code no group takes alike read as missing.
-    group[group %in% c("not_surgery", "no_group")] <- NA_character_
-  }
-  levels <- c(.procedure_group_levels,
-              if (!not_surgery_na) c("not_surgery", "no_group"))
-  factor(group, levels = levels)
+  factor(group, levels = c(.procedure_group_levels, "not_surgery", "no_group"))
 }
 
 # Whether any of a procedure's codes holds the whole procedure out of every
@@ -639,73 +647,4 @@ get_procedure_category_pretty <- function(x) {
     "to_be_categorised" ~ gettext("Not yet categorized"),
     default = x
   )
-}
-
-get_procedure_categories <- function(
-    x, pretty = FALSE, include_iche = FALSE, use_cache = TRUE) {
-  cache_key <- paste0("procedure_categories.v",
-                      .surgical_definitions_version())
-
-  # ToDo: Clarify licensing and inclusion criteria for ICHE information with WHO
-  # and add ICHE table
-  # if(include_iche)
-  #   cache_key <- paste0(cache_key, ".iche")
-
-  if(pretty)
-  {
-    l <- Sys.getenv("LANGUAGE")
-    if(l == "")
-      l <- Sys.getlocale("LC_MESSAGES")
-    if(l == "")
-      pretty <- FALSE # just in case
-    else
-      cache_key <- paste0(cache_key, ".", l)
-  }
-
-  if(use_cache && !is.null(r <- get_cached(x, cache_key)))
-    return(r)
-
-  r <- tibble::tibble(
-    procedure_code = c(
-      x$surgeryData$main_procedure_code,
-      x$surgeryData$side_procedure_code_1,
-      x$surgeryData$side_procedure_code_2) |>
-      unique() |>
-      sort() |>
-      as.character()) |>
-    dplyr::mutate(pro_cat = get_procedure_category(.data$procedure_code))
-
-  if(pretty)
-  {
-
-    with_pretty <- r |>
-      dplyr::select("pro_cat") |>
-      dplyr::mutate(
-        pretty_name = get_procedure_category_pretty(.data$pro_cat))
-
-    pairs <- with_pretty |> dplyr::distinct()
-
-    col_names <- stats::setNames(
-      gettext("Procedure code","Procedure category"),
-      c("procedure_code","pro_cat"))
-    row_names <- stats::setNames(pairs$pretty_name, pairs$pro_cat)
-
-    attr(r, "names.pretty") <- col_names
-    attr(r, "row.names.pretty") <- row_names
-
-    r <- r |>
-    dplyr::mutate(
-      pro_cat = with_pretty$pretty_name) |>
-    dplyr::rename(
-      !!col_names[["procedure_code"]] := .data$procedure_code,
-      !!col_names[["pro_cat"]] := .data$pro_cat)
-  }
-
-  # if(include_iche)
-  #   r <- r |>
-  #   dplyr::inner_join(
-  #     ichi_health_interventions,join_by(main_procedure_code == code))
-
-  r |>
-    cache(x, cache_key)
 }
