@@ -246,6 +246,15 @@ test_that("a procedure its side code places counts in both paths", {
   sided$surgeryData$side_procedure_code_1 <- "PAM.MK.AA"
   expect_equal(get_procedures(sided, use_cache = FALSE)$n, 1L)
   expect_equal(get_surgery_risk(sided, use_cache = FALSE)$n_procedures, 1L)
+  # And the group it counts in is the classifier's over all its codes, not
+  # the main code's own: the procedure joins the hernia repair's row.
+  by_cat <- get_procedures(sided, group_cols = "pro_cat", use_cache = FALSE)
+  expect_identical(as.character(by_cat$pro_cat),
+                   "inguinal_umbilical_hernia_repair")
+  table <- get_surgery_rate_table(sided, use_cache = FALSE)
+  expect_true("inguinal_umbilical_hernia_repair" %in%
+                as.character(table$pro_cat))
+  expect_false("no_group" %in% as.character(table$pro_cat))
 })
 
 test_that("surgical cache entries carry the definitions version", {

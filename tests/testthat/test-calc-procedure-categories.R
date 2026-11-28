@@ -3,8 +3,8 @@
 # the risk strata, the labels, and the exported classifier.
 
 # The recorded codes with their groups: every code placed exactly once. These
-# are the test cases the group definitions must reproduce, as the decided
-# definitions state.
+# are the test cases the group definitions must reproduce, as API-DESIGN.md
+# §13.9.2 defines them.
 placed_neurosurgery <- c(
   "AAA.JB.AA", "AAE.DN.AA", "AAE.GA.AE", "AAE.JB.AA", "AAE.JD.AA", "AAE.KA.AA",
   "AAE.LH.AA", "AAE.LI.AA", "AAE.LI.AB", "AAE.SN.AA", "AAG.DN.AA", "ABA.FC.AA",
@@ -161,6 +161,16 @@ test_that("the axes place a first-time code of a placed family by the family", {
   expect_equal(
     as.character(neoipcr:::get_procedure_category("PAL.QQ.AA")),
     "abdominal_wall_surgery")
+  # The release of a laparostomy stands with the wall from the first time,
+  # as the recorded `PAK.LI.AA` does.
+  expect_equal(
+    as.character(neoipcr:::get_procedure_category("PAK.LI.AB")),
+    "abdominal_wall_surgery")
+  # And an incision of the abdominal wall rests with the abdomen from the
+  # first time, as the recorded `PAL.FA.AA` does.
+  expect_equal(
+    as.character(neoipcr:::get_procedure_category("PAL.FA.AB")),
+    "abdominal_surgery")
   expect_equal(
     as.character(neoipcr:::get_procedure_category("JAN.QQ.AD")),
     "head_neck_upper_airway_surgery")
@@ -379,6 +389,12 @@ test_that("get_procedure_group takes its arguments as vctrs recycles them", {
     neoipcr::get_procedure_group(
       c("KBF.LI.AA", "PAM.MK.AA"),
       c("KBF.LI.AA", "PAM.MK.AA", "PZX.AA.JA")),
+    "share one length")
+  # An empty argument is compatible only with empty or length-1 ones, as
+  # vctrs recycles: empty beside a whole vector is refused, not silenced.
+  expect_error(
+    neoipcr::get_procedure_group(
+      character(0), c("KBF.LI.AA", "PAM.MK.AA", "PZX.AA.JA")),
     "share one length")
   expect_identical(
     as.character(neoipcr::get_procedure_group(factor("KBF.LI.AA"))),

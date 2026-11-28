@@ -647,7 +647,7 @@ metadata/common/
 
 | # | Candidate | Source path(s) under `metadata/common/` | Status |
 |---|-----------|-----------------------------------------|--------|
-| 1 | Procedure-category map (ICHI → category) | *(file does not yet exist)* — a `metadata/common/procedure-categories/NeoIPC-Procedure-Categories.csv` was considered; none was added | **Superseded by §13.9.2**, whose 8 procedure groups replace the 7 categories; the placement of the codes that replaces this map is landed in `.procedure_code_table` of [R/calc-procedure-categories.R](R/calc-procedure-categories.R), so no CSV is needed. |
+| 1 | Procedure-category map (ICHI → category) | *(no such file exists)* — the placement lives in `.procedure_code_table` of [R/calc-procedure-categories.R](R/calc-procedure-categories.R), so none is needed | **Superseded by §13.9.2**, whose 8 procedure groups replace the 7 categories; the placement of the codes that replaces this map is landed, versioned per §13.1.7. |
 | 2 | Procedure-category labels | *(file does not yet exist)* — needs `metadata/common/procedure-categories/ListElements.csv` + `ListElements.de.csv` + `ListElements.es.csv` following the locale-file convention | **New files required** + depends on D-H. |
 | 3 | AWaRe categories (code → label) | Taxonomy: `antibiotics/WHO-AWaRe-Classification-2021.csv` (exists). Labels: `antibiotics/ListElements.csv` (+ `.de.csv`, `.es.csv`) — verify the `a` / `w` / `r` codes have label entries there | **Verify first.** If labels exist, ingest; if not, extend `ListElements.csv` with three rows. Depends on D-H. |
 | 4 | BW/GA breakpoints | *(no source file needed)* — these are numeric constants, not metadata | **None.** Numbers ship inline in `sysdata.Rda` per row 4 of §7.1. Optionally document them in the Surveillance-Toolkit protocol text, but no machine-readable file is warranted. |
@@ -2151,11 +2151,11 @@ placement: [R/calc-procedure-categories.R](R/calc-procedure-categories.R) holds 
 recorded code with its group, the tract it opens, and whether it is an approach code, and `get_procedure_group()` gives
 the group of a procedure from its three codes, so that a report groups its procedures as the package does. It places the
 oesophagus in the chest: an oesophageal atresia repair is non-cardiac thoracic surgery (group 3). The approach codes
-recorded so far are `MAA.FA.AA` in neurosurgery (group 1), `JCH.AE.AA` and `JCH.FA.AA` in non-cardiac thoracic surgery (group 3), and
-`PAK.AE.AA`, `PAK.AE.AB`, and `PAK.FA.AA` in abdominal surgery (group 4). Of the codes of percutaneous drainage, only
-the pleura's counts (§13.9.1), and that of any other site, the abdomen's (`PAK.JB.AE`) and the peritoneum's
-(`KMA.JB.AE`) included, is a needle puncture and no surgical procedure, a drain placed through an incision being coded
-as open drainage, such as the peritoneum's (`KMA.JB.AA`) or the abdomen's (`PAK.JB.AA`).
+recorded so far are `MAA.FA.AA` in neurosurgery (group 1), `JCH.AE.AA` and `JCH.FA.AA` in non-cardiac thoracic
+surgery (group 3), and `PAK.AE.AA`, `PAK.AE.AB`, and `PAK.FA.AA` in abdominal surgery (group 4). Of the codes of
+percutaneous drainage, only the pleura's counts (§13.9.1), and that of any other site, the abdomen's (`PAK.JB.AE`)
+and the peritoneum's (`KMA.JB.AE`) included, is a needle puncture and no surgical procedure, a drain placed through
+an incision being coded as open drainage, such as the peritoneum's (`KMA.JB.AA`) or the abdomen's (`PAK.JB.AA`).
 
 A procedure counts once, by all its codes, whichever of them was entered as the main code:
 
@@ -2165,12 +2165,12 @@ A procedure counts once, by all its codes, whichever of them was entered as the 
 3. the procedure joins the first group, in the order above, that one of its remaining codes places it in.
 
 A procedure whose only codes that a group takes are approach codes counts in the approach's group, its definitive
-operation unknown. `KMA.FA.AA`, an operation on the peritoneum that is no approach code and also covers the revision of
-a ventricular shunt's peritoneal end, is abdominal surgery unless the procedure holds a shunt code. A code whose query is
-still pending places nothing, and the procedure takes its group from the codes that do place. Two of the pending codes,
-`NMR.MK.AB` and `BAA.BA.AD`, name no operation that the procedure's other codes can be trusted to be: a procedure that
-holds one of them is one whose codes no group takes, whatever else it holds, until the query is answered. A procedure none of
-whose codes a group takes, such as one holding only a code that is no valid ICHI code, leaves the surgery table, the
+operation unknown. `KMA.FA.AA`, an operation on the peritoneum that is no approach code and also covers the revision
+of a ventricular shunt's peritoneal end, is abdominal surgery unless the procedure holds a shunt code. A code whose
+query is still pending places nothing, and the procedure takes its group from the codes that do place. Two of the
+pending codes, `NMR.MK.AB` and `BAA.BA.AD`, name no operation that the procedure's other codes can be trusted to be:
+a procedure that holds one of them is one whose codes no group takes, whatever else it holds, until the query is
+answered. A procedure none of whose codes a group takes, such as one holding only a code that is no valid ICHI code, leaves the surgery table, the
 dataset's surgical counts, and the SSI rate's denominator until its codes are corrected, and §13.10.1 states what it
 does to the attribution of an SSI. Validation rules report, as warnings that remove no record, a procedure that holds
 only an approach code, a code that no group takes or whose group depends on what was done, such as `KMA.FA.AA`, a

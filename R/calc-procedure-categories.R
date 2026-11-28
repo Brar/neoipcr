@@ -45,9 +45,9 @@
 #'   vector of procedures without a first side code.
 #' @param side2 Character vector of second side ICHI procedure codes, with
 #'   the same meaning. The arguments recycle as `vctrs` does: length 1
-#'   covers a whole vector, an empty argument makes the result empty, and a
-#'   length that is neither of these is refused. A factor stands for its
-#'   labels.
+#'   covers a whole vector; an empty argument makes the result empty unless
+#'   another holds more than one code; a length that is none of these is
+#'   refused. A factor stands for its labels.
 #' @returns A factor with the eight procedure groups as levels in their
 #'   fixed order, plus `not_surgery` for a procedure all of whose codes are
 #'   no surgical procedure, `no_group` for one its codes place nowhere, and
@@ -55,24 +55,26 @@
 #' @export
 get_procedure_group <- function(main, side1 = NA_character_,
                                 side2 = NA_character_) {
-  # A factor stands for its labels; the lengths recycle as vctrs does: an
-  # empty argument decides an empty result, length 1 covers a whole vector,
-  # and any other mismatch is a mistake in the call, not something to
-  # silently repeat.
+  # A factor stands for its labels; the lengths recycle as vctrs does:
+  # length 1 covers a whole vector, an empty argument is compatible only
+  # with empty and length-1 arguments and decides an empty result, and any
+  # other mismatch is a mistake in the call, not something to silently
+  # repeat.
   main <- as.character(main)
   side1 <- as.character(side1)
   side2 <- as.character(side2)
   lens <- c(length(main), length(side1), length(side2))
+  n <- max(lens)
+  ok <- if (n <= 1L) c(0L, 1L) else c(1L, n)
+  if (!all(lens %in% ok))
+    rlang::abort(c(
+      gettext("Arguments to `get_procedure_group()` must share one length or have length 1."),
+      i = gettextf("Lengths given: %d, %d and %d.",
+                   lens[[1]], lens[[2]], lens[[3]])))
   if (any(lens == 0L))
     return(factor(character(0),
                   levels = c(.procedure_group_levels, "not_surgery",
                              "no_group")))
-  n <- max(lens)
-  if (!all(lens %in% c(1L, n)))
-    rlang::abort(c(
-      "Arguments to `get_procedure_group()` must share one length or have length 1.",
-      i = sprintf("Lengths given: %d, %d and %d.",
-                  lens[[1]], lens[[2]], lens[[3]])))
   main <- rep_len(main, n)
   side1 <- rep_len(side1, n)
   side2 <- rep_len(side2, n)
@@ -214,7 +216,7 @@ get_procedure_group <- function(main, side1 = NA_character_,
       "KBZ.LC.AA"
     )),
     list("abdominal_wall_surgery", "none", c(
-      "PAK.LI.AA", # re-entry of an open abdomen: the wall axis must not override this
+      "PAK.LI.AA", # re-entry of an open abdomen, placed with the wall
       "PAL.MK.AA",
       "PAL.MK.AB",
       "PAL.ML.AA",
@@ -383,12 +385,16 @@ get_procedure_group <- function(main, side1 = NA_character_,
       !(target == "PAK" & action == "LI") ~ "abdominal_surgery",
     target %in% c("PTA", "PTB") & action == "LA" & means == "AC" ~
       "abdominal_surgery", # the two recorded stoma closures
+    target == "PAL" & action == "FA" & means %in% c("AA", "AB") ~
+      "abdominal_surgery", # the wall's incision rests with the abdomen's
 
-    # The abdominal wall, the recorded release of a laparostomy's band and
-    # the wall's repairs; the wall's incision rests with the abdomen's.
+    # The abdominal wall: the wall's repairs and the release of a
+    # laparostomy; the wall's incision rests with the abdomen's.
     target == "PAL" & action != "FA" & means %in% c("AA", "AB") ~
       "abdominal_wall_surgery",
     target == "PAO" & action != "MK" & means %in% c("AA", "AB") ~
+      "abdominal_wall_surgery",
+    target == "PAK" & action == "LI" & means %in% c("AA", "AB") ~
       "abdominal_wall_surgery",
 
     # Inguinal and umbilical hernia repair.
