@@ -257,7 +257,8 @@ test_that("patients_exposed_table gives the exposed patients and their mean days
   expect_equal(cvc_days$pooled, 31 / 7, tolerance = 0.01)
   # The mean days carry no interval: a Poisson interval on the exposed
   # patients as exposures treats every day of one stay as an independent
-  # event, and no interval for a mean over clustered patients stands yet.
+  # event, and the package has no interval for a mean over clustered
+  # patients.
   expect_true(is.na(cvc_days$ci_lower))
   expect_true(is.na(cvc_days$ci_upper))
 
@@ -386,6 +387,22 @@ test_that("patients_exposed_table counts a patient of the pseudo tier once in th
   expect_equal(mean_days$pooled, 9 / 2)
   # Two departments enter nothing.
   expect_equal(unique(result$quartile_departments), 0L)
+})
+
+test_that("the departments' quartiles follow the stays when patient records stand in other departments", {
+  # Department 1's patient records moved to department 2's unit while every
+  # stay stands unchanged: a figure that grouped by the record's own key
+  # would empty department 1 and show four entering departments of six
+  # patients instead of five, with the CVC share's quartiles gone NA.
+  moved_ds <- make_exposure_quartiles_test_ds()
+  moved_ds$patients$department_key[
+    moved_ds$patients$department_key == 1L] <- 2L
+  result <- get_patients_exposed_table(moved_ds, use_cache = FALSE)
+  cvc_share <- result[result$factor == "cvc" &
+                        result$measure == "patients_exposed", ]
+  expect_equal(cvc_share$quartile_departments, 5L)
+  expect_equal(c(cvc_share$q1, cvc_share$q2, cvc_share$q3),
+               100 * c(2, 3, 4) / 6, tolerance = 0.01)
 })
 
 test_that("dev_ass_incidence_density_rate_table CVC event matches fixture", {

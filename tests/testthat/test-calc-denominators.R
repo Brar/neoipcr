@@ -54,13 +54,13 @@ test_that("get_patient_exposure_days returns one row per patient with the eight 
   expect_equal(nrow(result), 16L)
   expect_setequal(
     names(result),
-    c("patient_key", "department_key",
+    c("patient_key", "enrollment_department_key",
       "cvc_days", "pvc_days", "inv_days", "niv_days", "ab_days",
       "human_milk_days", "probiotic_days", "kangaroo_care_days"))
   p3 <- result[result$patient_key == 3, ]
   expect_equal(p3$cvc_days, 10)
   expect_equal(p3$human_milk_days, 20)
-  expect_equal(p3$department_key, 1L)
+  expect_equal(p3$enrollment_department_key, 1L)
 })
 
 test_that("the stays of one patient sum to that patient, and a stay without an antibiotic entry counts", {
@@ -85,7 +85,23 @@ test_that("patients without an exposure day keep a row at zero", {
 test_that("the patients of a department gather under its key", {
   result <- neoipcr:::get_patient_exposure_days(exposure_ds, use_cache = FALSE)
   expect_equal(
-    result |> dplyr::count(.data$department_key, name = "n") |>
+    result |> dplyr::count(.data$enrollment_department_key, name = "n") |>
+      dplyr::pull(.data$n),
+    c(6L, 6L, 4L))
+})
+
+test_that("the stay's department wins over the patient record's own", {
+  # Patient 3's record moved to department 2's unit while its stay stands
+  # in department 1: a grouping that let the patient record's key win —
+  # which survives the join's name exclusion at the full tier, as the one
+  # column of the same name — would gather patient 3 under 2.
+  moved_ds <- make_exposure_patients_test_ds()
+  moved_ds$patients$department_key[3L] <- 2L
+  result <- neoipcr:::get_patient_exposure_days(moved_ds, use_cache = FALSE)
+  expect_equal(
+    result$enrollment_department_key[result$patient_key == 3L], 1L)
+  expect_equal(
+    result |> dplyr::count(.data$enrollment_department_key, name = "n") |>
       dplyr::pull(.data$n),
     c(6L, 6L, 4L))
 })
@@ -107,6 +123,24 @@ test_that("a stay with a blank day count adds none of its days, the known ones s
   cvc_days <- table_result[table_result$factor == "cvc" &
                              table_result$measure == "mean_days", ]
   expect_equal(cvc_days$n, 29L)
+})
+
+test_that("a patient whose day count is blank on every form counts as not exposed and stays in the denominator", {
+  blank_all <- make_exposure_patients_test_ds()
+  # Both of patient 1's surveillance-end forms, events 2 and 4, leave the
+  # CVC count blank: the patient gives no day of the factor at all, counts
+  # as not exposed, and stays among the sixteen the share divides by.
+  blank_all$surveillanceEndData$cvc_days[
+    blank_all$surveillanceEndData$event_key %in% c(2L, 4L)] <- NA_integer_
+  result <- neoipcr:::get_patient_exposure_days(blank_all, use_cache = FALSE)
+  p1 <- result[result$patient_key == 1, ]
+  expect_equal(nrow(p1), 1L)
+  expect_equal(p1$cvc_days, 0)
+  table_result <- get_patients_exposed_table(blank_all, use_cache = FALSE)
+  cvc <- table_result[table_result$factor == "cvc" &
+                        table_result$measure == "patients_exposed", ]
+  expect_equal(cvc$n, 6L)
+  expect_equal(cvc$pooled, 6 / 16 * 100)
 })
 
 test_that("a day column the surveillance-end forms lack fails where the exposure days read it", {

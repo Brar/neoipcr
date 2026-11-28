@@ -361,12 +361,14 @@ patients_exposed_factor_levels <- stringr::str_remove(
 #' factor's days over those exposed patients. The days per 100 patient-days of
 #' [get_usage_density_rate_table()] cannot tell breadth apart from duration;
 #' these two measures can. Durations are skewed, so a few long exposures raise
-#' the mean above the typical patient's days. The mean days carry no interval
-#' for now: a Poisson interval on the exposed patients as exposures treats
-#' every day of one patient's stay as an independent event, and the package
-#' has no interval for a mean over clustered patients yet; `ci_lower` and
-#' `ci_upper` and the quartiles' intervals of those rows are `NA` until it
-#' has one.
+#' the mean above the typical patient's days. The package has no interval for
+#' a mean over clustered patients — a Poisson interval on the exposed patients
+#' as exposures treats every day of one patient's stay as an independent
+#' event — so the mean days' `ci_lower` and `ci_upper` and their quartiles'
+#' intervals are `NA`. A blank day count adds no days to its stay: the eight
+#' day counts are compulsory on a completed surveillance-end form, so a
+#' patient whose count of a factor is blank on every form counts as not
+#' exposed and stays in the denominator.
 #'
 #' @inheritParams get_usage_density_rate_table
 #' @returns A table with `factor`, `measure`, the row's count `n`, its
@@ -452,7 +454,7 @@ get_patients_exposed_table <- function(
 
   if (include_quartiles) {
     pop_dept <- get_risk_population(
-      x, group_cols = "department_key", use_cache = use_cache)
+      x, group_cols = "enrollment_department_key", use_cache = use_cache)
     dept_counts <- patient_days |>
       tidyr::pivot_longer(
         cols = tidyselect::all_of(exposure_factor_day_columns),
@@ -463,18 +465,20 @@ get_patients_exposed_table <- function(
       dplyr::summarise(
         n_exposed = sum(.data$days > 0),
         days = sum(.data$days),
-        .by = c("department_key", "factor"))
+        .by = c("enrollment_department_key", "factor"))
     # Every department enters every factor's grid, at no exposed patient
     # where none of its patients has the factor: a department with the row's
     # denominator and none of its events enters the quartiles at 0.
     dept_grid <- tidyr::expand_grid(
-        department_key = sort(unique(pop_dept$department_key)),
+        enrollment_department_key = sort(unique(pop_dept$enrollment_department_key)),
         factor = patients_exposed_factor_levels) |>
-      dplyr::left_join(dept_counts, by = c("department_key", "factor")) |>
+      dplyr::left_join(
+        dept_counts,
+        by = c("enrollment_department_key", "factor")) |>
       dplyr::mutate(
         dplyr::across(c("n_exposed", "days"),
                       ~ dplyr::coalesce(.x, 0L))) |>
-      dplyr::left_join(pop_dept, by = "department_key")
+      dplyr::left_join(pop_dept, by = "enrollment_department_key")
 
     departments <- dplyr::bind_rows(
       dept_grid |>
@@ -482,7 +486,7 @@ get_patients_exposed_table <- function(
           .keep = "none",
           factor = .data$factor,
           measure = "patients_exposed",
-          department_key = .data$department_key,
+          enrollment_department_key = .data$enrollment_department_key,
           events = .data$n_exposed,
           denominator = .data$n_patients),
       dept_grid |>
@@ -490,7 +494,7 @@ get_patients_exposed_table <- function(
           .keep = "none",
           factor = .data$factor,
           measure = "mean_days",
-          department_key = .data$department_key,
+          enrollment_department_key = .data$enrollment_department_key,
           events = .data$days,
           denominator = .data$n_exposed))
 

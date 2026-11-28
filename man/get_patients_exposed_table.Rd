@@ -34,10 +34,12 @@ the factor over all patients, in percent; the \code{mean_days} measure gives the
 factor's days over those exposed patients. The days per 100 patient-days of
 \code{\link[=get_usage_density_rate_table]{get_usage_density_rate_table()}} cannot tell breadth apart from duration;
 these two measures can. Durations are skewed, so a few long exposures raise
-the mean above the typical patient's days. The mean days carry no interval
-for now: a Poisson interval on the exposed patients as exposures treats
-every day of one patient's stay as an independent event, and the package
-has no interval for a mean over clustered patients yet; \code{ci_lower} and
-\code{ci_upper} and the quartiles' intervals of those rows are \code{NA} until it
-has one.
+the mean above the typical patient's days. The package has no interval for
+a mean over clustered patients — a Poisson interval on the exposed patients
+as exposures treats every day of one patient's stay as an independent
+event — so the mean days' \code{ci_lower} and \code{ci_upper} and their quartiles'
+intervals are \code{NA}. A blank day count adds no days to its stay: the eight
+day counts are compulsory on a completed surveillance-end form, so a
+patient whose count of a factor is blank on every form counts as not
+exposed and stays in the denominator.
 }

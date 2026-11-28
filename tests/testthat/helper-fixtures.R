@@ -1682,11 +1682,11 @@ make_exposure_quartiles_test_ds <- function() {
 
 # Exposure-days fixture with the patients table pseudonymized: two patients
 # on three completed stays — patient 1 with one stay in each of two
-# departments, patient 1 readmission and patient 2 a single stay in the
-# first. The patients table of the pseudo tier carries no department, so the
-# only department left is the enrolment's, and patient 1 stands in two rows
-# of the per-department figures: the pooled figures must count that patient
-# once. CVC: patient 1 exposed 5 days over its two stays, patient 2 4.
+# departments and patient 2 a single stay in the first. The patients table of
+# the pseudo tier carries no department, so the only department left is the
+# enrolment's, and patient 1 stands in two rows of the per-department
+# figures: the pooled figures must count that patient once. CVC: patient 1
+# exposed 5 days over its two stays, patient 2 4.
 make_exposure_pseudo_patient_test_ds <- function() {
   md <- read_test_metadata(
     dataset_options = dhis2_dataset_options(

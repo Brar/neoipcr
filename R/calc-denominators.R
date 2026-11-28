@@ -160,7 +160,10 @@ exposure_factor_day_columns <- c(
   "human_milk_days", "probiotic_days", "kangaroo_care_days")
 
 # The exposure days of the eight factors, per patient: one row per patient
-# and department, the day columns summed over the patient's completed stays.
+# and stay department, the day columns summed over the patient's completed
+# stays. The enrolments pass through `.enrollment_hierarchy_cols()` so the
+# stay's own key survives the join's name exclusion at every tier and the
+# patient record's department never wins, as in `get_risk_time()`.
 # Unlike `get_risk_time()`, this joins only the surveillance-end forms: a
 # stay without an antibiotic entry keeps its exposure days here, since
 # `get_risk_time()`'s inner join of `get_aware_days()` leaves such a stay
@@ -170,9 +173,10 @@ get_patient_exposure_days <- function(x, use_cache = TRUE) {
   if (use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
+  enrollments <- .enrollment_hierarchy_cols(x$enrollments)
   x$patients |>
     dplyr::inner_join(
-      x$enrollments |>
+      enrollments |>
         dplyr::select(
           c(
             "patient_key",
@@ -181,11 +185,7 @@ get_patient_exposure_days <- function(x, use_cache = TRUE) {
       dplyr::join_by("patient_key")) |>
     dplyr::inner_join(
       x$events |>
-        dplyr::select(
-          c(
-            "enrollment_key",
-            !tidyselect::any_of(c(names(x$patients), names(x$enrollments))))
-        ),
+        dplyr::select("enrollment_key", "event_key"),
       dplyr::join_by("enrollment_key")) |>
     dplyr::inner_join(
       x$surveillanceEndData |>
@@ -193,7 +193,7 @@ get_patient_exposure_days <- function(x, use_cache = TRUE) {
           "event_key", tidyselect::all_of(exposure_factor_day_columns)),
       dplyr::join_by("event_key")) |>
     dplyr::group_by(dplyr::across(
-      tidyselect::any_of(c("patient_key", "department_key")))) |>
+      tidyselect::all_of(c("patient_key", "enrollment_department_key")))) |>
     # The eight day counts are compulsory on a completed surveillance-end
     # form, so a stay that leaves one blank records no days of that factor:
     # a blank adds none of its stay's days, a patient whose forms are all
