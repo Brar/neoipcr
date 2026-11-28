@@ -108,7 +108,7 @@
 # for a completed enrolment. An infection dated before the stay's first day,
 # which would derive a day of life below the admission's, is left to rules
 # 12, 13, and 14, which report the event's date outside the enrolment
-# window where the stay carries its surveillance-end event.
+# window.
 .rule_early_dol <- function(x, exceptions, rule_id, event_type)
 {
   check_neoipcr_ds(x)
@@ -143,8 +143,7 @@
       dol = .data$adm_dol + as.integer(.data$occurredAt - .data$enrolledAt)) |>
     # Judge only infections dated on or after the stay's first day; a date
     # before it derives a day below the admission's and belongs to rules 12
-    # to 14, which report the event's date outside the enrolment window
-    # where the stay carries its surveillance-end event.
+    # to 14, which report the event's date outside the enrolment window.
     dplyr::filter(.data$occurredAt >= .data$enrolledAt) |>
     dplyr::filter(.data$dol < 4L) |>
     dplyr::anti_join(
@@ -185,8 +184,7 @@
       dos = as.integer(.data$occurredAt - .data$enrolledAt) + 1L) |>
     # Judge only infections dated on or after the stay's first day, which
     # derive day 1 or more; an earlier date belongs to rules 12 to 14, which
-    # report the event's date outside the enrolment window where the stay
-    # carries its surveillance-end event.
+    # report the event's date outside the enrolment window.
     dplyr::filter(.data$dos >= 1L) |>
     dplyr::filter(.data$dos < 3L) |>
     dplyr::anti_join(

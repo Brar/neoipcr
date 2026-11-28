@@ -14,6 +14,10 @@ section above it for the next changes.
 
 # neoipcr (development version)
 
+* Validation rules 12 to 15 now judge the beginning of the enrolment window on a stay without its surveillance-end
+  date: the lower bound, an event dated earlier than either the enrolment date or the admission event, holds whether
+  or not that date exists, and the end of the window is judged only where it does. A finding whose stay lacks the
+  surveillance-end date keeps all four declared context fields, with `endOccurredAt` left missing.
 * Events and the form-data tables carry their hierarchy keys as a symmetric pair over the organisation-unit chain:
   the side the record's own organisation unit shows, `event_department_key` with its `event_hospital_key`,
   `event_country_key`, and `event_world_bank_class_key`, beside the stay's side, `enrollment_department_key` and its

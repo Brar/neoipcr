@@ -288,7 +288,7 @@ being a compulsory value of the form, which no rule checks.\tabular{lll}{
    4 \tab \code{enrollment_key} \tab \code{admOccurredAt}, \code{endOccurredAt} \cr
    5, 6 \tab \code{enrollment_key} \tab \code{status} \cr
    7, 8, 9, 10, 11 \tab \code{event_key} \tab \code{enrollment_status}, \code{end_status}, and the form's own status as \code{bsi_status}, \code{nec_status}, \code{hap_status}, \code{pro_status} or \code{ssi_status} \cr
-   12, 13, 14, 15 \tab \code{event_key} \tab \code{enrolledAt}, \code{admOccurredAt}, \code{endOccurredAt}, and the event's date as \code{bsiOccurredAt}, \code{necOccurredAt}, \code{hapOccurredAt} or \code{proOccurredAt} \cr
+   12, 13, 14, 15 \tab \code{event_key} \tab \code{enrolledAt}, \code{admOccurredAt}, \code{endOccurredAt} (missing when the stay has no surveillance-end date), and the event's date as \code{bsiOccurredAt}, \code{necOccurredAt}, \code{hapOccurredAt}, or \code{proOccurredAt} \cr
    17 \tab \code{enrollment_key} \tab \code{enrolledAt_this}, \code{endOccurredAt_this}, \code{enrolledAt_other}, \code{endOccurredAt_other} — one finding for each enrolment of an overlapping pair, naming the other's dates, so each overlap appears once from either side and an enrolment that overlaps two others appears twice \cr
    18 \tab \code{enrollment_key} \tab \code{patient_days}, \code{patient_days_calculated} \cr
    19 \tab \code{event_key} \tab \code{infection_type} \cr

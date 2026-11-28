@@ -73,21 +73,31 @@ test_that("rule 4 honours exceptions", {
 })
 
 # --- Rules 12-15: infection/surgery event date outside the enrolment window ---
-# Rule 12=bsi, 13=nec, 14=hap, 15=pro. The window runs from the later of the
-# enrolment date and the admission event to the surveillance-end event. A
-# surgical site infection is not held to it (see rule 19).
+# Rule 12=bsi, 13=nec, 14=hap, 15=pro. They share one shape. The window runs
+# from the later of the enrolment date and the admission event to the
+# surveillance-end event, and stays open above while the stay carries no end
+# event. A surgical site infection is not held to it (see rule 19).
 
-window_ds <- function(event_type, event_date, admission_date = "2024-01-01")
+window_ds <- function(event_type, event_date, admission_date = "2024-01-01",
+                      end_date = "2024-01-15", status = NULL)
+{
+  open <- is.na(end_date)
+  status <- status %||% if (open) "ACTIVE" else "COMPLETED"
+  types <- if (open) c("adm", event_type) else c("adm", "end", event_type)
+  dates <- if (open) c(admission_date, event_date) else
+    c(admission_date, end_date, event_date)
   make_test_ds(
     patients    = make_test_patients(1),
     enrollments = make_test_enrollments(1,
       patient_keys = 1L,
-      enrolledAt = as.Date("2024-01-01")),
-    events = make_test_events(3,
-      enrollment_keys = c(1L, 1L, 1L),
-      patient_keys    = c(1L, 1L, 1L),
-      event_type_keys = c("adm", "end", event_type),
-      occurredAt = as.Date(c(admission_date, "2024-01-15", event_date))))
+      enrolledAt = as.Date("2024-01-01"),
+      status = factor(status, levels = c("ACTIVE", "COMPLETED", "CANCELLED"))),
+    events = make_test_events(length(types),
+      enrollment_keys = rep(1L, length(types)),
+      patient_keys    = rep(1L, length(types)),
+      event_type_keys = types,
+      occurredAt = as.Date(dates)))
+}
 
 date_rules <- list(
   list(rule = 12L, type = "bsi", fun = neoipcr:::validation_rule_12),
@@ -130,6 +140,56 @@ for (entry in date_rules) {
       expect_equal(nrow(f(window_ds(t, "2024-01-01"), NULL)), 0L)
       expect_equal(nrow(f(window_ds(t, "2024-01-15"), NULL)), 0L)
       expect_equal(nrow(f(window_ds(t, "2024-01-16"), NULL)), 1L)
+    })
+
+    test_that(paste0("rule ", r, " detects ", t,
+                     " event before an open stay's first day"), {
+      # Without a surveillance-end event the lower bound is still fully
+      # knowable, so the infection dated the day before the enrolment is a
+      # finding; the context keeps its fields, the end date missing.
+      result <- f(window_ds(t, "2023-12-31", end_date = NA), NULL)
+      expect_equal(nrow(result), 1L)
+      expect_declared_context(result)
+      expect_equal(result$context[[1]][[paste0(t, "OccurredAt")]],
+                   as.Date("2023-12-31"))
+      expect_identical(result$context[[1]]$endOccurredAt, as.Date(NA))
+    })
+
+    test_that(paste0("rule ", r, " detects ", t,
+                     " event before an open stay's admission"), {
+      result <- f(window_ds(t, "2024-01-02", admission_date = "2024-01-03",
+                            end_date = NA), NULL)
+      expect_equal(nrow(result), 1L)
+      expect_declared_context(result)
+    })
+
+    test_that(paste0("rule ", r, " holds no upper bound on an open ", t,
+                     " stay"), {
+      # The window has no end until the surveillance-end event arrives: an
+      # infection far past the admission day and one inside the stay are
+      # both unjudged.
+      expect_equal(nrow(f(window_ds(t, "2024-06-01", end_date = NA), NULL)), 0L)
+      expect_equal(nrow(f(window_ds(t, "2024-01-10", end_date = NA), NULL)), 0L)
+    })
+
+    test_that(paste0("rule ", r, " opens and closes ", t,
+                     " on the end event, not the enrolment status"), {
+      # The window's key is the surveillance-end event alone: a completed
+      # enrolment missing that event is open, and a stay carrying it is
+      # bounded even while the enrolment is active.
+      expect_equal(nrow(f(window_ds(t, "2023-12-31", end_date = NA,
+                                    status = "COMPLETED"), NULL)), 1L)
+      expect_equal(nrow(f(window_ds(t, "2024-02-01",
+                                    status = "ACTIVE"), NULL)), 1L)
+      expect_equal(nrow(f(window_ds(t, "2024-01-10",
+                                    status = "ACTIVE"), NULL)), 0L)
+    })
+
+    test_that(paste0("rule ", r, " honours exceptions on an open ", t,
+                     " stay"), {
+      result <- f(window_ds(t, "2023-12-31", end_date = NA),
+                  make_test_exceptions(r, event_key = 2L))
+      expect_equal(nrow(result), 0L)
     })
 
     test_that(paste0("rule ", r, " honours exceptions"), {

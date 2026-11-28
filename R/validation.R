@@ -866,7 +866,7 @@ validation_summary <- function(findings)
 #' | 4 | `enrollment_key` | `admOccurredAt`, `endOccurredAt` |
 #' | 5, 6 | `enrollment_key` | `status` |
 #' | 7, 8, 9, 10, 11 | `event_key` | `enrollment_status`, `end_status`, and the form's own status as `bsi_status`, `nec_status`, `hap_status`, `pro_status` or `ssi_status` |
-#' | 12, 13, 14, 15 | `event_key` | `enrolledAt`, `admOccurredAt`, `endOccurredAt`, and the event's date as `bsiOccurredAt`, `necOccurredAt`, `hapOccurredAt` or `proOccurredAt` |
+#' | 12, 13, 14, 15 | `event_key` | `enrolledAt`, `admOccurredAt`, `endOccurredAt` (missing when the stay has no surveillance-end date), and the event's date as `bsiOccurredAt`, `necOccurredAt`, `hapOccurredAt`, or `proOccurredAt` |
 #' | 17 | `enrollment_key` | `enrolledAt_this`, `endOccurredAt_this`, `enrolledAt_other`, `endOccurredAt_other` — one finding for each enrolment of an overlapping pair, naming the other's dates, so each overlap appears once from either side and an enrolment that overlaps two others appears twice |
 #' | 18 | `enrollment_key` | `patient_days`, `patient_days_calculated` |
 #' | 19 | `event_key` | `infection_type` |

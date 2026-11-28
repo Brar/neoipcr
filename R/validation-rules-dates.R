@@ -59,11 +59,13 @@ validation_rule_4 <- function(x, exceptions)
 
 # Rules 12–15 share one shape: an infection or surgery event dated outside
 # the window of its enrolment, which runs from the later of the enrolment
-# date and the admission event to the surveillance-end event. The event's own
-# date travels under a type-specific name so the consumer's sentence can name
-# the form. A surgical site infection is not held to that window: it is
-# attributed to its procedure's follow-up period (rule 19), which may run past
-# the discharge and into a readmission.
+# date and the admission event to the surveillance-end event. The lower bound
+# holds whether or not the stay has closed: a stay without a surveillance-end
+# date has its window open above and is judged on the lower bound alone. The
+# event's own date travels under a type-specific name so the consumer's
+# sentence can name the form. A surgical site infection is not held to that
+# window: it is attributed to its procedure's follow-up period (rule 19),
+# which may run past the discharge and into a readmission.
 .rule_event_outside_enrolment <- function(x, exceptions, rule_id, event_type)
 {
   check_neoipcr_ds(x)
@@ -77,7 +79,7 @@ validation_rule_4 <- function(x, exceptions)
         dplyr::filter(.data$event_type_key == "adm") |>
         dplyr::select("enrollment_key", "admOccurredAt" = "occurredAt"),
       dplyr::join_by("enrollment_key")) |>
-    dplyr::inner_join(
+    dplyr::left_join(
       x$events |>
         dplyr::filter(.data$event_type_key == "end") |>
         dplyr::select("enrollment_key", "endOccurredAt" = "occurredAt"),
@@ -87,9 +89,14 @@ validation_rule_4 <- function(x, exceptions)
         dplyr::filter(.data$event_type_key == event_type) |>
         dplyr::select("enrollment_key", "event_key", "eventOccurredAt" = "occurredAt"),
       dplyr::join_by("enrollment_key")) |>
+    # The upper bound is judged only where the surveillance-end date stands:
+    # missing, the term is FALSE and the lower bounds decide the row. Stated
+    # so rather than left to an NA, which the filter keeps exactly when a
+    # lower bound has fired and drops otherwise — the same either way.
     dplyr::filter(.data$eventOccurredAt < .data$enrolledAt |
                   .data$eventOccurredAt < .data$admOccurredAt |
-                  .data$eventOccurredAt > .data$endOccurredAt) |>
+                  (!is.na(.data$endOccurredAt) &
+                   .data$eventOccurredAt > .data$endOccurredAt)) |>
     dplyr::anti_join(
       .rule_exceptions(exceptions, id),
       dplyr::join_by("event_key")) |>

@@ -35,7 +35,8 @@ timing_ds <- function(type, form = list(), admission = list(), offset = 5L) {
 }
 
 # Close the surveillance window of a `timing_ds` stay: a surveillance-end
-# event (key 3) six days after the enrolment, which rules 12 to 14 join on.
+# event (key 3) six days after the enrolment, the window end rules 12 to 14
+# judge against wherever it stands.
 timing_closed <- function(ds) {
   end <- ds$events[1L, ]
   end$event_key <- 3L
