@@ -2673,3 +2673,144 @@ test_that("the usage-density table gives the not-classified category its own row
   # The other entry, of a classified substance, reaches its own row.
   expect_equal(t$n[t$factor == "a"], 3L)
 })
+
+test_that("on a stay split across departments, the departments' infection counts sum to the incidence density tables' pooled rows", {
+  # make_split_department_calc_ds(): one stay of 100 patient-days enrolled
+  # in department 2, its patient record in department 1, its sepsis
+  # recorded at department 3's desk; the sepsis form answers the infection
+  # as device-associated on a central venous catheter, and the
+  # surveillance end holds 3 CVC days. Hand-derived over the stay side:
+  # one sepsis, no NEC and no pneumonia, so sepsis and the
+  # severe-infection composite count 1 in the stay's 100 patient-days and
+  # NEC and pneumonia 0; the CVC counts that one infection in its 3 days.
+  ds <- make_split_department_calc_ds()
+
+  grouped <- neoipcr:::get_incidence_density_rates(
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  # The drift lands on the stay side exactly once: department 2 holds the
+  # only departmental row, neither the patient record's department 1 nor
+  # the recording desk's department 3, and the four type rows of that one
+  # department are all the grid holds.
+  expect_equal(unique(grouped$enrollment_department_key), 2L)
+  expect_equal(nrow(grouped), 4L)
+  expect_equal(as.character(grouped$inf), c("bsi", "hap", "nec", "si"))
+  expect_equal(grouped$n, c(1L, 0L, 0L, 1L))
+  expect_equal(grouped$patient_days, rep(100L, 4L))
+
+  t <- get_incidence_density_rate_table(ds, use_cache = FALSE)
+  # The table's pooled figures are the departments' sums: one sepsis and
+  # one severe infection in 100 patient-days, at 10 per 1000
+  # patient-days, and the two types without infections at 0 over the same
+  # denominator.
+  summed <- grouped |>
+    dplyr::summarise(
+      n = sum(.data$n),
+      total = sum(.data$patient_days),
+      .by = "inf")
+  row <- match(as.character(t$inf), summed$inf)
+  expect_equal(summed$n[row], t$n)
+  expect_equal(summed$total[row], rep(100L, 4L))
+  expect_equal(as.character(t$inf), c("si", "bsi", "hap", "nec"))
+  expect_equal(t$n, c(1L, 1L, 0L, 0L))
+  expect_equal(t$pooled, c(10, 10, 0, 0))
+  # The one department enters every type's quartiles with its 100
+  # patient-days; below five departments the quartiles stay hidden.
+  expect_equal(t$quartile_departments, rep(1L, 4L))
+  expect_true(all(is.na(t$q1)))
+
+  # The same figures as the ungrouped chain gives them: grouping leaves
+  # the pooled count and denominator where they stand.
+  ungrouped <- neoipcr:::get_incidence_density_rates(ds, use_cache = FALSE)
+  expect_equal(
+    summed$n[match(as.character(ungrouped$inf), summed$inf)], ungrouped$n)
+  expect_equal(ungrouped$patient_days, rep(100L, 4L))
+
+  # The device-associated table reads the same drift: the sepsis form
+  # stands on the recording desk's department, its stay on department 2.
+  dev_grouped <- neoipcr:::get_dev_ass_incidence_density_rates(
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  expect_equal(unique(dev_grouped$enrollment_department_key), 2L)
+  expect_equal(nrow(dev_grouped), 5L)
+  cvc_rows <- dev_grouped[dev_grouped$dev == "cvc", ]
+  expect_equal(nrow(cvc_rows), 1L)
+  expect_equal(cvc_rows$n, 1L)
+  expect_equal(cvc_rows$days, 3L)
+
+  dt <- get_dev_ass_incidence_density_rate_table(ds, use_cache = FALSE)
+  cvc <- dt[dt$dev == "cvc", ]
+  expect_equal(cvc$n, 1L)
+  expect_equal(cvc$pooled, 1000 / 3)
+  # The department stays out of every device's quartiles - 3 CVC days are
+  # below the minimum of 50 - and stays in the pooled count and rate.
+  expect_equal(dt$quartile_departments, rep(0L, nrow(dt)))
+  expect_equal(dt$n[dt$dev == "cvc"], 1L)
+})
+
+test_that("on a stay split across departments, the departments' days sum to the utilization and usage-density tables' pooled rows", {
+  # make_split_department_calc_ds(): the one stay of 100 patient-days in
+  # department 2, its surveillance end recording 3 CVC, 2 PVC, 2
+  # ventilation-support, 1 invasive-ventilation and 1
+  # non-invasive-ventilation day, 8 human-milk, 6 probiotic and 4
+  # kangaroo-care days and 5 antibiotic days, and one entry of 3 days of
+  # J01CA04 - an Access substance the fixture's metadata gives no ATC5
+  # group. Hand-derived over the stay side: every one of these days in
+  # department 2, the entry giving 3 days to the substance and the same 3
+  # to the group of no code.
+  ds <- make_split_department_calc_ds()
+  dept_risk <- neoipcr:::get_risk_time(
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  # The stay's department is the only departmental row; the patient
+  # record's department 1 holds no stay and opens none.
+  expect_equal(unique(dept_risk$enrollment_department_key), 2L)
+  # The departmental denominators sum to the pooled denominator, once.
+  pooled_risk <- neoipcr:::get_risk_time(ds, use_cache = FALSE)
+  expect_equal(sum(dept_risk$patient_days), pooled_risk$patient_days)
+  expect_equal(pooled_risk$patient_days, 100L)
+
+  # Usage density: every factor's pooled days are their sum over the one
+  # departmental row, and every row shows the same pooled denominator.
+  udr <- get_usage_density_rate_table(ds, use_cache = FALSE)
+  derived_days <- c(
+    cvc = 3L, pvc = 2L, vs = 2L, inv = 1L, niv = 1L, ab = 5L,
+    a = 3L, w = 0L, r = 0L,
+    human_milk = 8L, probiotic = 6L, kangaroo_care = 4L)
+  expect_equal(as.character(udr$factor), names(derived_days))
+  expect_equal(udr$n, as.integer(derived_days))
+  expect_equal(udr$pooled, as.numeric(derived_days))
+  # The department enters every factor's quartiles with its 100
+  # patient-days, the factors it holds none of at 0; the quartiles stay
+  # hidden below five departments.
+  expect_equal(udr$quartile_departments, rep(1L, nrow(udr)))
+  expect_true(all(is.na(udr$q1)))
+
+  # Antibiotic utilization: the substance row and the group row of no
+  # code each hold the entry's 3 days, over the same 100 patient-days.
+  aur <- get_antibiotic_utilization_table(ds, use_cache = FALSE)
+  substance <- aur[aur$row_type == "substance", ]
+  expect_equal(substance$row_id, "J01CA04")
+  expect_equal(substance$n, 3L)
+  expect_equal(substance$pooled, 3)
+  group <- aur[aur$row_type == "atc5", ]
+  expect_true(is.na(group$row_id))
+  expect_equal(group$n, 3L)
+  expect_equal(group$quartile_departments, 1L)
+
+  # The departments' day counts the utilization table's grid carries:
+  # department 2 alone, the substance's and the group's 3 days each,
+  # equal to the ungrouped totals.
+  dept_days <- dplyr::bind_rows(
+    neoipcr:::summarise_substance_days(
+      ds, level = "substance",
+      group_cols = "enrollment_department_key", use_cache = FALSE),
+    neoipcr:::summarise_substance_days(
+      ds, level = "atc5",
+      group_cols = "enrollment_department_key", use_cache = FALSE))
+  expect_equal(unique(dept_days$enrollment_department_key), 2L)
+  expect_equal(dept_days$days, c(3L, 3L))
+  pooled_days <- c(
+    neoipcr:::summarise_substance_days(
+      ds, level = "substance", use_cache = FALSE)$days,
+    neoipcr:::summarise_substance_days(
+      ds, level = "atc5", use_cache = FALSE)$days)
+  expect_equal(sort(dept_days$days), sort(pooled_days))
+})
