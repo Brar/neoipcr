@@ -34,6 +34,18 @@ timing_ds <- function(type, form = list(), admission = list(), offset = 5L) {
   do.call(make_test_ds, args)
 }
 
+# Close the surveillance window of a `timing_ds` stay: a surveillance-end
+# event (key 3) six days after the enrolment, which rules 12 to 14 join on.
+timing_closed <- function(ds) {
+  end <- ds$events[1L, ]
+  end$event_key <- 3L
+  end$event <- "EVT_3"
+  end$event_type_key <- "end"
+  end$occurredAt <- as.Date("2024-01-07")
+  ds$events <- rbind(ds$events, end)
+  ds
+}
+
 # --- Day-of-life mismatch: rules 27 (bsi), 31 (hap), 35 (nec), 39 (pro), 41 (ssi) ---
 # dol_calc = admission day of life + days from the enrolment to the event = 1 + 5.
 
@@ -218,13 +230,16 @@ for (entry in early_dol_rules) {
     })
 
     test_that(paste0("rule ", r, " returns no rows from the derived fourth day of life"), {
-      # Type 3 admitted on the second day of life, the infection four days
-      # later: derived day 6, and a derived day exactly 4.
+      # What decides is the derived day, not the stored one: the event
+      # form stores day 2, inside the window, in both fixtures, while the
+      # dates derive day 4, from the admission's day 2 in fixture 1 and
+      # the client's day 1 in fixture 2.
       expect_equal(nrow(f(
-        timing_ds(t, form = list(dol = NA_integer_),
+        timing_ds(t, form = list(dol = 2L),
                   admission = list(type = admission_type("3"), dol = 2L),
                   offset = 2L), NULL)), 0L)
-      expect_equal(nrow(f(timing_ds(t, offset = 3L), NULL)), 0L)
+      expect_equal(nrow(f(
+        timing_ds(t, form = list(dol = 2L), offset = 3L), NULL)), 0L)
     })
 
     test_that(paste0("rule ", r, " takes day 1 from a type-1 or type-2 form whatever day of life it stores"), {
@@ -282,21 +297,23 @@ for (entry in early_dol_rules) {
     })
 
     test_that(paste0("rule ", r, " leaves a ", t, " dated before the stay's first day to rules 12 to 14"), {
-      # An infection dated the day before the enrolment's first day derives
-      # a day of life of 1 from the admission's day 2, which is below 4 and
-      # would flag without the lower bound; the earlier date is rules 12 to
-      # 14's to report as outside the enrolment window, not an early onset.
-      expect_equal(nrow(f(
-        timing_ds(t, form = list(dol = 9L),
-                  admission = list(type = admission_type("3"), dol = 2L),
-                  offset = -1L), NULL)), 0L)
+      # An infection dated the day before the stay's first day: the dates
+      # derive a day of life of 1 from the admission's day 2, and the form
+      # stores an early day 2. The bound leaves the infection to rules 12 to
+      # 14 whether the stay carries a surveillance-end event or not; the
+      # two fixtures differ only in that event.
+      ds <- timing_ds(t, form = list(dol = 2L),
+                      admission = list(type = admission_type("3"), dol = 2L),
+                      offset = -1L)
+      expect_equal(nrow(f(ds, NULL)), 0L)
+      expect_equal(nrow(f(timing_closed(ds), NULL)), 0L)
     })
 
     test_that(paste0("rule ", r, " leaves the infections of a stay without an admission event unjudged"), {
-      # Before the derivation this rule judged the infection from the day its
-      # own form stored; now the stay's admission is the rule's only base, so
-      # the completed enrolment lacking the admission event is left to rule
-      # 26, which reports it, its stored day notwithstanding.
+      # The stay's admission is this rule's only base: a completed
+      # enrolment without the admission event derives no day and its
+      # infections stay unjudged, rule 26's to report, whatever its forms
+      # store.
       ds <- timing_ds(t, form = list(dol = 2L), offset = 1L)
       ds$events <- ds$events[ds$events$event_type_key != "adm", ]
       ds$admissionData <- ds$admissionData[0L, ]
@@ -371,9 +388,11 @@ for (entry in early_dos_rules) {
     })
 
     test_that(paste0("rule ", r, " returns no rows from the derived third day of the stay"), {
+      # The stored day of occurrence 0 is early on its own reading; the
+      # dates derive day 3 of the stay, which the rule leaves unflagged.
       expect_equal(nrow(f(
-        timing_ds(t, form = list(los = NA_integer_),
-                  admission = list(type = admission_type("2"), dol = 2L),
+        timing_ds(t, form = list(los = 0L),
+                  admission = list(type = admission_type("3"), dol = 2L),
                   offset = 2L), NULL)), 0L)
     })
 
@@ -402,10 +421,15 @@ for (entry in early_dos_rules) {
 
     test_that(paste0("rule ", r, " leaves a ", t, " dated before the stay's first day to rules 12 to 14"), {
       # The day before the stay's first day derives day 0 of the stay, below
-      # the cut-off of 3; the earlier date is rules 12 to 14's to report as
-      # outside the enrolment window, not an infection early in the stay.
-      expect_equal(nrow(f(
-        timing_ds(t, form = list(los = 5L), offset = -1L), NULL)), 0L)
+      # the cut-off of 3, and the form's own stored day 0 is early as well.
+      # The bound leaves the infection to rules 12 to 14 whether the stay
+      # carries a surveillance-end event or not; the two fixtures differ
+      # only in that event.
+      ds <- timing_ds(t, form = list(los = 0L),
+                      admission = list(type = admission_type("3"), dol = 2L),
+                      offset = -1L)
+      expect_equal(nrow(f(ds, NULL)), 0L)
+      expect_equal(nrow(f(timing_closed(ds), NULL)), 0L)
     })
 
     test_that(paste0("rule ", r, " honours exceptions"), {
