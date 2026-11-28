@@ -15,9 +15,9 @@ vector of procedures without a first side code.}
 
 \item{side2}{Character vector of second side ICHI procedure codes, with
 the same meaning. The arguments recycle as \code{vctrs} does: length 1
-covers a whole vector, an empty argument makes the result empty, and a
-length that is neither of these is refused. A factor stands for its
-labels.}
+covers a whole vector; an empty argument makes the result empty unless
+another holds more than one code; a length that is none of these is
+refused. A factor stands for its labels.}
 }
 \value{
 A factor with the eight procedure groups as levels in their
