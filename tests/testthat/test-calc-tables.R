@@ -212,6 +212,11 @@ test_that("patients_exposed_table gives the exposed patients and their mean days
   cvc_days <- result[result$factor == "cvc" & result$measure == "mean_days", ]
   expect_equal(cvc_days$n, 31L)
   expect_equal(cvc_days$pooled, 31 / 7, tolerance = 0.01)
+  # The mean days carry no interval: a Poisson interval on the exposed
+  # patients as exposures treats every day of one stay as an independent
+  # event, and no interval for a mean over clustered patients stands yet.
+  expect_true(is.na(cvc_days$ci_lower))
+  expect_true(is.na(cvc_days$ci_upper))
 
   hm <- result[result$factor == "human_milk" & result$measure == "patients_exposed", ]
   hm_days <- result[result$factor == "human_milk" & result$measure == "mean_days", ]
@@ -268,6 +273,10 @@ test_that("patients_exposed_table of an empty dataset holds every factor at no e
   expect_equal(
     result$n[result$measure == "patients_exposed"],
     rep(0L, 8L))
+  # No patient gives no share: the percent is `NA`, not the `NaN` of a
+  # zero divided by zero.
+  expect_false(any(is.nan(result$pooled)))
+  expect_true(all(is.na(result$pooled)))
 })
 
 test_that("patients_exposed_table gives the departments' quartiles where five enter", {
@@ -301,11 +310,39 @@ test_that("patients_exposed_table gives the departments' quartiles where five en
                       result$measure == "mean_days", ]
   expect_equal(hm_mean$quartile_departments, 5L)
   expect_equal(c(hm_mean$q1, hm_mean$q2, hm_mean$q3), c(2, 3, 4))
+  # A shown quartile of the mean days still carries no interval: the
+  # bootstrap would treat the departments' exposed patients as independent.
+  expect_true(is.na(hm_mean$ci_lower))
+  expect_true(all(is.na(hm_mean[c("q1_ci_lower", "q1_ci_upper",
+                                  "q2_ci_lower", "q2_ci_upper",
+                                  "q3_ci_lower", "q3_ci_upper")])))
+  # A share's quartiles keep their intervals.
+  expect_lt(hm_share$q1_ci_lower, hm_share$q1)
   # The pooled figures the quartiles sit beside.
   expect_equal(cvc_share$pooled, 15 / 30 * 100)
   expect_equal(cvc_mean$pooled, 56 / 15, tolerance = 0.01)
   expect_equal(hm_share$pooled, 27 / 30 * 100)
   expect_equal(hm_mean$pooled, 3)
+})
+
+test_that("patients_exposed_table counts a patient of the pseudo tier once in the pooled figures", {
+  result <- get_patients_exposed_table(
+    make_exposure_pseudo_patient_test_ds(), use_cache = FALSE)
+  # Patient 1 has a stay in each of the two departments and stands in two
+  # rows of the per-department figures; the pooled figures count it once:
+  # two of two patients exposed, which counting its rows apart would give
+  # as three, and days nine over those two patients, which it would give
+  # as a mean over three.
+  share <- result[result$factor == "cvc" &
+                    result$measure == "patients_exposed", ]
+  expect_equal(share$n, 2L)
+  expect_equal(share$pooled, 100)
+  mean_days <- result[result$factor == "cvc" &
+                        result$measure == "mean_days", ]
+  expect_equal(mean_days$n, 9L)
+  expect_equal(mean_days$pooled, 9 / 2)
+  # Two departments enter nothing.
+  expect_equal(unique(result$quartile_departments), 0L)
 })
 
 test_that("dev_ass_incidence_density_rate_table CVC event matches fixture", {

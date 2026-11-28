@@ -23,16 +23,21 @@ in a reference table, the departments' quartiles \code{q1} to \code{q3} with the
 intervals and the number of departments that enter them
 \code{quartile_departments}. A department enters a share's quartiles with at
 least 5 patients and the mean days' with at least 5 exposed patients.
+The mean days' rows carry no interval, theirs included.
 }
 \description{
 One row per exposure factor — central venous catheter (CVC), peripheral
 venous catheter (PVC), invasive (INV) and non-invasive ventilation (NIV),
 any antibiotic, human milk, probiotics, and kangaroo care — and measure.
-The
-\code{patients_exposed} measure gives the patients with at least one day of
-the factor over all patients, in percent; the \code{mean_days} measure gives
-the factor's days over those exposed patients. The days per 100
-patient-days of \code{\link[=get_usage_density_rate_table]{get_usage_density_rate_table()}} cannot tell breadth
-apart from duration; these two measures can. Durations are skewed, so a
-few long exposures raise the mean above the typical patient's days.
+The \code{patients_exposed} measure gives the patients with at least one day of
+the factor over all patients, in percent; the \code{mean_days} measure gives the
+factor's days over those exposed patients. The days per 100 patient-days of
+\code{\link[=get_usage_density_rate_table]{get_usage_density_rate_table()}} cannot tell breadth apart from duration;
+these two measures can. Durations are skewed, so a few long exposures raise
+the mean above the typical patient's days. The mean days carry no interval
+for now: a Poisson interval on the exposed patients as exposures treats
+every day of one patient's stay as an independent event, and the package
+has no interval for a mean over clustered patients yet; \code{ci_lower} and
+\code{ci_upper} and the quartiles' intervals of those rows are \code{NA} until it
+has one.
 }

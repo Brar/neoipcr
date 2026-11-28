@@ -1585,6 +1585,67 @@ make_exposure_quartiles_test_ds <- function() {
       probiotic_days = rep(0L, 30)))
 }
 
+# Exposure-days fixture with the patients table pseudonymized: two patients
+# on three completed stays — patient 1 with one stay in each of two
+# departments, patient 1 readmission and patient 2 a single stay in the
+# first. The patients table of the pseudo tier carries no department, so the
+# only department left is the enrolment's, and patient 1 stands in two rows
+# of the per-department figures: the pooled figures must count that patient
+# once. CVC: patient 1 exposed 5 days over its two stays, patient 2 4.
+make_exposure_pseudo_patient_test_ds <- function() {
+  md <- read_test_metadata(
+    dataset_options = dhis2_dataset_options(
+      include_department = "full",
+      include_country    = "full"))
+  md$departments      <- make_test_metadata_departments(2)
+  md$hospitals        <- make_test_metadata_hospitals(2)
+  md$countries        <- make_test_metadata_countries(2)
+  md$worldBankClasses <- make_test_metadata_wb_classes(2)
+  md$eventTypes       <- make_test_metadata_event_types()
+  md$dataset_options  <- dhis2_dataset_options(
+    include_department = "full",
+    include_country    = "full",
+    include_patient    = "pseudo",
+    include_enrollment = "full",
+    include_event      = "full")
+
+  patients <- make_test_patients(2,
+    include_patient = "pseudo",
+    include_department = "full")
+
+  enrollments <- make_test_enrollments(
+    n                = 3,
+    patient_keys     = c(1L, 1L, 2L),
+    department_key   = c(1L, 2L, 1L),
+    include_patient  = "pseudo")
+
+  events <- make_test_events(
+    n               = 6,
+    enrollment_keys = rep(seq_len(3), each = 2),
+    patient_keys    = rep(c(1L, 1L, 2L), each = 2),
+    event_type_keys = rep(c("adm", "end"), 3),
+    department_key  = c(1L, 1L, 2L, 2L, 1L, 1L),
+    include_patient  = "pseudo")
+
+  make_test_ds(
+    metadata            = md,
+    patients            = patients,
+    enrollments         = enrollments,
+    events              = events,
+    surveillanceEndData = make_test_surveillance_end_data(
+      event_keys = c(2L, 4L, 6L),
+      patient_days = c(5L, 6L, 7L),
+      cvc_days = c(3L, 2L, 4L),
+      pvc_days = rep(0L, 3),
+      vs_days = rep(0L, 3),
+      inv_days = rep(0L, 3),
+      niv_days = rep(0L, 3),
+      ab_days = rep(0L, 3),
+      human_milk_days = rep(0L, 3),
+      kangaroo_care_days = rep(0L, 3),
+      probiotic_days = rep(0L, 3)))
+}
+
 
 #' Construct a minimal structurally valid neoipcr_ds object.
 #'

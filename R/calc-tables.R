@@ -348,15 +348,19 @@ patients_exposed_factor_levels <- stringr::str_remove(
 #' Get the table of the patients exposed to each factor and their days
 #'
 #' One row per exposure factor — central venous catheter (CVC), peripheral
-#'  venous catheter (PVC), invasive (INV) and non-invasive ventilation (NIV),
-#'  any antibiotic, human milk, probiotics, and kangaroo care — and measure.
-#'  The
-#' `patients_exposed` measure gives the patients with at least one day of
-#'  the factor over all patients, in percent; the `mean_days` measure gives
-#'  the factor's days over those exposed patients. The days per 100
-#'  patient-days of [get_usage_density_rate_table()] cannot tell breadth
-#'  apart from duration; these two measures can. Durations are skewed, so a
-#'  few long exposures raise the mean above the typical patient's days.
+#' venous catheter (PVC), invasive (INV) and non-invasive ventilation (NIV),
+#' any antibiotic, human milk, probiotics, and kangaroo care — and measure.
+#' The `patients_exposed` measure gives the patients with at least one day of
+#' the factor over all patients, in percent; the `mean_days` measure gives the
+#' factor's days over those exposed patients. The days per 100 patient-days of
+#' [get_usage_density_rate_table()] cannot tell breadth apart from duration;
+#' these two measures can. Durations are skewed, so a few long exposures raise
+#' the mean above the typical patient's days. The mean days carry no interval
+#' for now: a Poisson interval on the exposed patients as exposures treats
+#' every day of one patient's stay as an independent event, and the package
+#' has no interval for a mean over clustered patients yet; `ci_lower` and
+#' `ci_upper` and the quartiles' intervals of those rows are `NA` until it
+#' has one.
 #'
 #' @inheritParams get_usage_density_rate_table
 #' @returns A table with `factor`, `measure`, the row's count `n`, its
@@ -365,6 +369,7 @@ patients_exposed_factor_levels <- stringr::str_remove(
 #'  intervals and the number of departments that enter them
 #'  `quartile_departments`. A department enters a share's quartiles with at
 #'  least 5 patients and the mean days' with at least 5 exposed patients.
+#'  The mean days' rows carry no interval, theirs included.
 #' @export
 get_patients_exposed_table <- function(
     x, use_cache = TRUE, include_quartiles = TRUE) {
@@ -376,7 +381,19 @@ get_patients_exposed_table <- function(
   patient_days <- get_patient_exposure_days(x, use_cache = use_cache)
   n_patients <- get_risk_population(x, use_cache = use_cache)$n_patients
 
-  counts <- patient_days |>
+  # The pooled figures sum each patient once: a patient whose stays sit in
+  # two departments gives two rows of `patient_days` when the patients table
+  # carries no department, and counting those rows apart would count the
+  # patient and the days twice while `get_risk_population()` counts one
+  # patient. The department figures below keep the rows as they are, since
+  # each department holds the patient's own stay.
+  pooled_days <- patient_days |>
+    dplyr::summarise(
+      dplyr::across(
+        tidyselect::all_of(exposure_factor_day_columns), ~ sum(.x)),
+      .by = "patient_key")
+
+  counts <- pooled_days |>
     tidyr::pivot_longer(
       cols = tidyselect::all_of(exposure_factor_day_columns),
       names_to = "factor",
@@ -395,23 +412,28 @@ get_patients_exposed_table <- function(
       days = dplyr::coalesce(.data$days, 0L))
 
   shares <- rows |>
-    dplyr::transmute(
+    dplyr::mutate(
+      .keep = "none",
       factor = .data$factor,
       measure = "patients_exposed",
       n = .data$n_exposed,
-      pooled = .data$n_exposed / n_patients * 100) |>
+      pooled = if (n_patients > 0)
+        .data$n_exposed / n_patients * 100
+      else
+        NA_real_) |>
     dplyr::bind_cols(wilson_ci_cols(
       rows$n_exposed, rep(n_patients, nrow(rows)), scale = 100))
 
   mean_days <- rows |>
-    dplyr::transmute(
+    dplyr::mutate(
+      .keep = "none",
       factor = .data$factor,
       measure = "mean_days",
       n = .data$days,
       pooled = dplyr::if_else(
-        .data$n_exposed > 0, .data$days / .data$n_exposed, NA_real_)) |>
-    dplyr::bind_cols(poisson_ci_cols(
-      rows$days, rows$n_exposed, multiplier = 1))
+        .data$n_exposed > 0, .data$days / .data$n_exposed, NA_real_),
+      ci_lower = NA_real_,
+      ci_upper = NA_real_)
 
   r <- dplyr::bind_rows(shares, mean_days) |>
     dplyr::mutate(
@@ -450,14 +472,16 @@ get_patients_exposed_table <- function(
 
     departments <- dplyr::bind_rows(
       dept_grid |>
-        dplyr::transmute(
+        dplyr::mutate(
+          .keep = "none",
           factor = .data$factor,
           measure = "patients_exposed",
           department_key = .data$department_key,
           events = .data$n_exposed,
           denominator = .data$n_patients),
       dept_grid |>
-        dplyr::transmute(
+        dplyr::mutate(
+          .keep = "none",
           factor = .data$factor,
           measure = "mean_days",
           department_key = .data$department_key,
@@ -471,12 +495,18 @@ get_patients_exposed_table <- function(
         by = "factor", scale = 100, type = "binomial",
         denominator = "count") |>
         dplyr::mutate(measure = "patients_exposed"),
+      # The mean days' quartiles are withheld their intervals as the pooled
+      # rows are: the bootstrap would treat the departments' exposed patients
+      # as independent, as their pooled interval would.
       .department_quartiles(
         departments |> dplyr::filter(.data$measure == "mean_days"),
         r |> dplyr::filter(.data$measure == "mean_days"),
         by = "factor", scale = 1, type = "poisson",
         denominator = "count") |>
-        dplyr::mutate(measure = "mean_days")) |>
+        dplyr::mutate(
+          measure = "mean_days",
+          dplyr::across(
+            tidyselect::matches("^q[1-3]_ci_(lower|upper)$"), ~ NA_real_))) |>
       dplyr::mutate(
         factor = factor(.data$factor,
                         levels = patients_exposed_factor_levels),

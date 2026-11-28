@@ -63,3 +63,15 @@ test_that("a stay with a blank day count adds none of its days, the known ones s
                              table_result$measure == "mean_days", ]
   expect_equal(cvc_days$n, 29L)
 })
+
+test_that("a day column the surveillance-end forms lack fails where the exposure days read it", {
+  gap_ds <- make_exposure_patients_test_ds()
+  gap_ds$surveillanceEndData <- gap_ds$surveillanceEndData |>
+    dplyr::select(-"human_milk_days")
+  # The eight day counts are compulsory on the form, so a dataset whose
+  # forms lack one is malformed: the error names the column at the read,
+  # not at the pivot far downstream.
+  expect_error(
+    neoipcr:::get_patient_exposure_days(gap_ds, use_cache = FALSE),
+    "human_milk_days")
+})

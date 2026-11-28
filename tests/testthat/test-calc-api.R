@@ -600,10 +600,10 @@ test_that("get_benchmark_data joins a table only where the versions of its rate 
   for (table in c("usage_density_rate_table", "antibiotic_utilization_table",
                   "surgery_rate_table", "incidence_density_rate_table",
                   "dev_ass_incidence_density_rate_table", "n_infections",
-                   "secondary_bsi_rate_table",
-                   "infectious_agent_detection_rate_per_inf_type_table",
-                   "resistance_test_rate_table",
-                   "patients_exposed_table")) {
+                  "secondary_bsi_rate_table",
+                  "infectious_agent_detection_rate_per_inf_type_table",
+                  "resistance_test_rate_table",
+                  "patients_exposed_table")) {
     expect_equal(nrow(matching$value[[table]]), nrow(ref[[table]]),
                  label = table)
     if ("n" %in% names(ref[[table]]))

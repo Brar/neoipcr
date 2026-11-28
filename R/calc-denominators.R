@@ -181,14 +181,17 @@ get_patient_exposure_days <- function(x, use_cache = TRUE) {
     dplyr::inner_join(
       x$surveillanceEndData |>
         dplyr::select(
-          "event_key", tidyselect::any_of(exposure_factor_day_columns)),
+          "event_key", tidyselect::all_of(exposure_factor_day_columns)),
       dplyr::join_by("event_key")) |>
     dplyr::group_by(dplyr::across(
       tidyselect::any_of(c("patient_key", "department_key")))) |>
-    # A blank day count adds none of its stay's days, so the patient's other
-    # stays still count the days that are known.
+    # The eight day counts are compulsory on a completed surveillance-end
+    # form, so a stay that leaves one blank records no days of that factor:
+    # a blank adds none of its stay's days, a patient whose forms are all
+    # blank counts as not exposed and stays in the denominator, and the
+    # patient's other stays still count the days that are known.
     dplyr::summarise(
-      dplyr::across(tidyselect::any_of(exposure_factor_day_columns),
+      dplyr::across(tidyselect::all_of(exposure_factor_day_columns),
                     ~ sum(.x, na.rm = TRUE)),
       .groups = "drop") |>
     cache(x, cache_key)
