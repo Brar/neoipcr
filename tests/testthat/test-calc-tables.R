@@ -109,6 +109,49 @@ test_that("the infectious-agent table builders refuse pseudonymized events, and 
   }
 })
 
+test_that("a table builder refuses a dataset stored before the hierarchy pair", {
+  # The shared chokepoint of `check_ds_and_try_get_table()` and the two
+  # builders that compute outside it each carry the precondition and
+  # name the table; every cache lookup sits ahead of it, so a table
+  # already computed for the dataset, even one stored before the pair,
+  # is still served from the cache.
+  cnd <- expect_error(
+    get_usage_density_rate_table(make_stale_import_ds(),
+                                 use_cache = FALSE,
+                                 include_quartiles = FALSE),
+    class = "neoipcr_missing_hierarchy_pair")
+  # The shared branch names the table by its slot, as the refusal of
+  # the options already does.
+  expect_match(conditionMessage(cnd),
+               "usage_density_rate_table() needs a dataset imported by",
+               fixed = TRUE)
+  cnd <- expect_error(
+    get_surgery_rate_table(make_stale_import_ds(), use_cache = FALSE),
+    class = "neoipcr_missing_hierarchy_pair")
+  expect_match(conditionMessage(cnd),
+               "get_surgery_rate_table() needs a dataset imported by",
+               fixed = TRUE)
+  cnd2 <- expect_error(
+    get_ref_surgery_rate_table(make_stale_import_ds(), use_cache = FALSE),
+    class = "neoipcr_missing_hierarchy_pair")
+  expect_match(conditionMessage(cnd2),
+               "get_ref_surgery_rate_table() needs a dataset imported by",
+               fixed = TRUE)
+})
+
+test_that("a table builder still serves a cached table from a dataset stored before the hierarchy pair", {
+  # The refusal guards recomputation, not the stored result: the stale
+  # copy shares its source's cache, so the table computed once for the
+  # dataset is served from it untouched.
+  ds <- make_calc_test_ds()
+  computed <- get_usage_density_rate_table(ds, use_cache = TRUE,
+                                           include_quartiles = FALSE)
+  expect_identical(
+    get_usage_density_rate_table(make_stale_import_ds(ds), use_cache = TRUE,
+                                 include_quartiles = FALSE),
+    computed)
+})
+
 # --- Numerical spot-check: usage density CVC ---
 
 test_that("usage_density_rate_table CVC days match fixture", {
@@ -700,6 +743,19 @@ test_that("get_cumulative_incidence_table counts admissions and infections insid
   expect_equal(d2$n, 1L)
   expect_equal(d2$n_infected, 1L)
   expect_equal(d2$proportion, 100)
+})
+
+test_that("get_cumulative_incidence_table refuses a dataset stored before the hierarchy pair", {
+  # This entry checks the options itself rather than through the shared
+  # raw-dataset branch, so it needs the pair precondition in its own
+  # assertion list.
+  cnd <- expect_error(
+    get_cumulative_incidence_table(make_stale_import_ds(),
+                                   january_window(c(1L, 2L))),
+    class = "neoipcr_missing_hierarchy_pair")
+  expect_match(conditionMessage(cnd),
+               "get_cumulative_incidence_table() needs a dataset imported by",
+               fixed = TRUE)
 })
 
 test_that("get_cumulative_incidence_table keeps a window with no admissions, with zero counts and NA interval", {

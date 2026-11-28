@@ -14,13 +14,49 @@ section above it for the next changes.
 
 # neoipcr (development version)
 
+* Events and the form-data tables carry their hierarchy keys as a symmetric pair over the organisation-unit chain:
+  the side the record's own organisation unit shows, `event_department_key` with its `event_hospital_key`,
+  `event_country_key`, and `event_world_bank_class_key`, beside the stay's side, `enrollment_department_key` and its
+  counterparts, replacing the plain `department_key` and its chain those tables held. The import resolves the pair
+  before the schema projects the tiers, and the tiers place it where a chain breaks: on `events` at the full tier,
+  and directly on the form-data tables at the pseudonymized, where the inherited links and hierarchy keys they
+  declare are now materialized instead of left `NA`. Patient records keep their own keys as they are: a patient
+  holds no single stay. This is a breaking change for dataset readers: a reader of a stored dataset that joined
+  the events or a form-data table on the plain `department_key` finds that column gone, and the pre-alpha package
+  offers no migration.
+* A department- or trial-scoped import fetches its events through the stays it kept: it reads the scoped enrolments
+  first and then asks the events endpoint for their events by enrolment UID, which DHIS2 searches over the importing
+  user's accessible units. A form of the department's stay recorded under another organisation unit therefore reaches
+  the department's own dataset and counts for the stay's department, where the per-unit event requests had dropped
+  it silently; an event recorded beyond the importing user's reach stays out. Country- and access-scoped imports keep
+  their per-unit event requests.
+* Every rate table's department rows group by `enrollment_department_key`, and `get_infection_counts()` answers
+  every grouping column from the side its name names: an `event_` column counts and frames on the events, a plain
+  or `enrollment_` column counts each event's own stay side and frames on the enrolments, so a department with stays
+  but no infection shows a zero. A dataset stored by an older neoipcr has no pair to calculate over where its import
+  tiers materialize the pair: the calculations refuse it and name the re-import that replaces it rather than
+  recalculating on the old keys, so it must be imported again when a benchmark spanning the change needs its tables
+  recalculated; tables already computed in a stored dataset keep being served.
+* `read_token()`, and with it the `token` argument of `dhis2_connection_options()` and the
+  `NEOIPC_DHIS2_TOKEN` environment variable, now accepts a DHIS2 personal access token of either
+  version by its shape: version 1 (`d2pat_`, 48 characters), which only DHIS2 2.40 and earlier
+  issued, and version 2 (`d2p_`, 54 characters), the only version DHIS2 2.41 and later issue. Every
+  other string is still refused with the same error, and the shape check also refuses strings the
+  prefix-and-length check it replaces used to accept, such as a 48-character `d2pat_` string with a
+  `-`, `_`, or a letter among its last 10 characters. The token's checksum stays checked by DHIS2,
+  which does so when the token is used, and not by neoipcr.
+* The documentation now says what the `storedBy` columns hold: from DHIS2 2.41.9, and on the later
+  lines from 2.42.6 and 2.43.1, a record written through the tracker API holds the authenticated
+  user's name there, while the legacy APIs that Tracker Capture writes through still store the value
+  the client sent, so attribution rests on the `createdBy` and `updatedBy` columns that `include_user`
+  adds, of which a patient's attribute values have none.
 * `get_patients_exposed_table()` is a new export: one row per exposure factor — central venous
   catheter, peripheral venous catheter, invasive and non-invasive ventilation, any antibiotic,
-  human milk, probiotics, and kangaroo care — and measure, giving the share of patients exposed
-  to the factor and the factor's days over those exposed patients. The mean days carry no
-  interval: a Poisson interval on the exposed patients as exposures counts every day of one
-  stay as an independent event, and the package has no interval for a mean over clustered
-  patients, so the mean days' `ci_lower` and `ci_upper` and their quartiles' intervals are `NA`.
+  human milk, probiotics, and kangaroo care — and measure, giving the share of exposed patients
+  and the factor's days over those patients. The mean days carry no interval: a Poisson interval
+  on the exposed patients as exposures counts every day of one stay as an independent event, and
+  the package has no interval for a mean over clustered patients, so the mean days' `ci_lower` and
+  `ci_upper` and their quartiles' intervals are `NA`.
 * Both calculated datasets carry the new `patients_exposed_table` slot with the stamp of its
   rate definitions; datasets calculated before it lack the slot, and `get_benchmark_data()`
   joins the table on `factor` and `measure`, taking the rows of the datasets that hold it.
@@ -221,6 +257,19 @@ section above it for the next changes.
   stored department dataset that is to be benchmarked: its infectious-agent tables count otherwise
   than the rules above, its tables lack the ontology versions and the renamed slot, and, without the
   stamps, `get_benchmark_data()` joins none of its tables with those of a dataset calculated now.
+* Rules 29, 33, and 37 and rules 30, 34, and 38 now derive the day they judge instead of reading
+  the day of life or day of occurrence stored on the infection form, which can be stale or
+  missing. The day of life is the admission's day of life, day 1 for admission types 1 and 2 and
+  for a form without a type and the recorded day for type 3, advanced by the days from the
+  enrolment date to the event date; the day of the stay counts the day of admission as day 1 and
+  is derived from the dates for every admission, so a wrong recorded admission type can no longer
+  hide an early onset.
+  The context fields `dol` and `dos` hold the derived days. An infection dated before the stay's
+  first day is left to rules 12 to 14. Rules 29, 33, and 37 leave unjudged the infections of an
+  enrolment without its admission event, which rule 26 reports for a completed enrolment, and of a
+  type-3 admission without its day of life, which rule 46 reports. An exception that keeps an
+  early-onset infection of an inborn infant on day of life 1 or 2 now needs a record for a rule 30,
+  34, or 38 as well as for its rule 29, 33, or 37, since both families now fire.
 
 # neoipcr 0.0.0.9008
 

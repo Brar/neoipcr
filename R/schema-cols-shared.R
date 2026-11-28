@@ -64,6 +64,59 @@ col_wb_class_key   <- schema_col(
   \(opts) opts$include_world_bank_class != "no"
 )
 
+# The hierarchy levels in chain order, as the departments' internal map
+# and the fact tables name their keys. Every hierarchy key is one of
+# these, so the pair prefixes, the readers' key sets, the schema helper
+# below, and the fixtures all build from here.
+.hierarchy_key_names <- c("department_key", "hospital_key", "country_key",
+                          "world_bank_class_key")
+
+# The option that gates each hierarchy key's existence, by the key's
+# name.
+.hierarchy_key_opts <- c(
+  department_key       = "include_department",
+  hospital_key         = "include_hospital",
+  country_key          = "include_country",
+  world_bank_class_key = "include_world_bank_class")
+
+# The names a hierarchy level takes on the events side of the fact
+# chain: `<side>_<key>` for each key and each side. The reader
+# materializes them, the schema declares them, and the tests derive
+# their expectations from them.
+.hierarchy_leg_names <- function(side = c("event_", "enrollment_"))
+  as.vector(outer(side, .hierarchy_key_names, paste0))
+
+# The fact tibbles that carry a hierarchy key: patients and enrollments
+# carry the plain key, the events table and its children the pair. The
+# data-protection guardian, the post-filter's key survival, and the
+# tests share this one list of names.
+.hierarchy_fact_tables <- c(
+  "patients", "enrollments", "events",
+  "admissionData", "surveillanceEndData", "sepsisData", "necData",
+  "pneumoniaData", "surgeryData", "ssiData",
+  "infectiousAgentFindings", "substanceDays",
+  "eventNotes", "enrollment_notes")
+
+# The hierarchy pair and `isTest` as a child of events declares them:
+# each leg lands directly on the child only where the events's compiled
+# schema does not already carry it under the given opts. Every child of
+# events — the per-event-type data tables, the findings, and the event
+# notes — declares the same columns, so they are declared once here.
+# `events_cols` must be defined by the time this is called, which the
+# child schema files' `@include` of `schema-events.R` establishes.
+events_child_hierarchy_cols <- function() {
+  legs <- purrr::map(.hierarchy_key_names, \(key)
+    purrr::map(c("event_", "enrollment_"), \(side)
+      col_inherited_from(paste0(side, key), .hierarchy_key_opts[[key]],
+                         events_cols)))
+  c(unlist(legs, recursive = FALSE),
+    list(schema_col(
+      "isTest", logical(),
+      include_when = \(opts)
+        isTRUE(opts$include_test_data) &&
+        !("isTest" %in% names(compile_schema(events_cols, opts))))))
+}
+
 # ---- User key -------------------------------------------------------------
 #
 # Users sit alongside the hierarchy-metadata entities. `user_key` is the
@@ -120,16 +173,22 @@ col_inherited_from <- function(col_name, opts_key, parent_cols,
 # ---- Per-attribute companion columns --------------------------------------
 #
 # DHIS2 tracker entities carry two different user-attribution claims
-# (client-asserted `storedBy` vs server-authenticated `createdBy`) and a
-# pair of server-assigned timestamps (`createdAt` / `updatedAt`). Each
-# user-entered attribute on an event, enrollment, or event-data value
-# picks up companion columns that mirror these claims, gated jointly by
-# the attribute's own inclusion predicate and by `include_user` /
-# `include_timestamps`.
+# (`storedBy`, the value written with the record, vs server-authenticated
+# `createdBy`) and a pair of server-assigned timestamps (`createdAt` /
+# `updatedAt`). Each user-entered attribute on an event, enrollment, or
+# event-data value picks up companion columns that mirror these claims,
+# gated jointly by the attribute's own inclusion predicate and by
+# `include_user` / `include_timestamps`.
 #
-# See [docs/dhis2-user-timestamp-semantics.md] for the source-backed
-# explanation of why `_storedBy` and `_createdBy` are distinct signals
-# (and why per-TEA attributes need a different variant below).
+# `storedBy` holds what DHIS2 returns, and its meaning depends on the API
+# the record was written through: from DHIS2 2.41.9, and on the later
+# lines from 2.42.6 and 2.43.1 (DHIS2's issue DHIS2-21537), a record
+# written through the tracker API holds the authenticated user's name
+# there, while the legacy APIs that Tracker Capture writes through —
+# `/api/events` for events, `/api/trackedEntityInstances` for patients
+# and their attribute values — still store the value the client sends.
+# One dataset can therefore hold both meanings, and attribution rests on
+# `createdBy` and `updatedBy`, which DHIS2 sets itself.
 #
 # Usage: wrap a base attribute column together with its inclusion
 # predicate; the helper returns a flat list of all the columns to splice
@@ -166,7 +225,11 @@ attribute_cols <- function(base_col, base_when)
 # Per-TEA-attribute variant — used on patients (tracked-entity attributes).
 # DHIS2's `Attribute.java` carries `createdAt` / `updatedAt` timestamps but
 # no per-attribute `createdBy` / `updatedBy` User objects, so `_storedBy`
-# is the only user-attribution companion at this level.
+# is the only companion at this level that could name a user — and no
+# attribute value is attributed through it: it holds what DHIS2 returns,
+# of the two meanings "Per-attribute companion columns" above gives. Who
+# created and last updated the patient stands in the patient's own
+# `createdBy` and `updatedBy`.
 tea_attribute_cols <- function(base_col, base_when)
 {
   name <- base_col$name

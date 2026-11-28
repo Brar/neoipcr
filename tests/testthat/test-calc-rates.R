@@ -126,15 +126,138 @@ test_that("each secondary-BSI rate carries the share of the type's infections fo
   expect_true(is.nan(nec$followup_rate))
 
   by_dept <- neoipcr:::get_secondary_bsi_rates(
-    ds, group_cols = "department_key", use_cache = FALSE) |>
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE) |>
     dplyr::filter(.data$event_type_key == "hap") |>
-    dplyr::arrange(.data$department_key)
-  expect_equal(by_dept$department_key, c(1, 2, 3))
+    dplyr::arrange(.data$enrollment_department_key)
+  expect_equal(by_dept$enrollment_department_key, c(1, 2, 3))
   expect_equal(by_dept$total_n, c(2L, 1L, 2L))
   expect_equal(by_dept$followup_n, c(1L, 1L, 0L))
   expect_equal(by_dept$followup_rate, c(50, 100, 0))
   expect_equal(by_dept$n, c(1L, 0L, 0L))
   expect_equal(by_dept$rate, c(100, 0, NaN))
+})
+
+test_that("an infection recorded outside its stay counts for the stay's department", {
+  # Both sepsis episodes belong to the stay of department 1; the recording
+  # desk moved them to department 2's unit, as an event recorded away from
+  # its enrolment's unit is on a live DHIS2.
+  ds <- make_infection_calc_test_ds(
+    forms = tibble::tibble(
+      event_type_key = c("bsi", "bsi"),
+      department_key = c(1L, 1L)),
+    findings = tibble::tibble(form = 1:2, pathogen_key = c(934L, 1807L)))
+  # The surveillance-end row's AWaRe days come from the substance-days table
+  # joined through its data, so the fixture gives the end event a substance.
+  end_key <- ds$events$event_key[ds$events$event_type_key == "end"]
+  ds$substanceDays <- make_test_substance_days(end_key)
+  inf <- ds$events$event_key[
+    ds$events$event_type_key %in% c("bsi", "nec", "hap", "ssi")]
+  ds$events$event_department_key[ds$events$event_key %in% inf] <- 2L
+  expect_equal(unique(ds$events$event_department_key[
+    ds$events$event_key %in% inf]), 2L)
+
+  counts <- neoipcr:::get_infection_counts(
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  expect_equal(counts$enrollment_department_key, 1L)
+  expect_equal(counts$n, 2L)
+
+  density <- neoipcr:::get_incidence_density_rates(
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  expect_equal(unique(density$enrollment_department_key), 1L)
+  expect_equal(density$n[density$inf == "bsi"], 2L)
+
+  # The stay's days follow the stay, not the recording desk.
+  risk_time <- neoipcr:::get_risk_time(
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  expect_equal(risk_time$enrollment_department_key, 1L)
+})
+
+test_that("a department with stays but no infection counts at zero by the stay's department", {
+  # Both sepsis episodes are department 2's. Department 1 holds a stay,
+  # its admission and surveillance-end forms, and no infection — the
+  # department a benchmark's pooled mean must still hold, at zero
+  # infections.
+  ds <- make_infection_calc_test_ds(
+    forms = tibble::tibble(
+      event_type_key = c("bsi", "bsi"),
+      department_key = c(2L, 2L)),
+    findings = tibble::tibble(form = 1:2, pathogen_key = c(934L, 1807L)))
+
+  counts <- neoipcr:::get_infection_counts(
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  expect_equal(counts$enrollment_department_key, c(1L, 2L))
+  expect_equal(counts$n, c(0L, 2L))
+
+  # The plain key counts the same stays, under the name the caller gave.
+  plain <- neoipcr:::get_infection_counts(
+    ds, group_cols = "department_key", use_cache = FALSE)
+  expect_equal(plain$department_key, c(1L, 2L))
+  expect_equal(plain$n, c(0L, 2L))
+})
+
+test_that("a dataset without infections counts zero for every stay's department", {
+  # Both stays hold their admission and surveillance-end forms, and the
+  # dataset records no infection at all: the frame must still hold both
+  # departments at zero, and every department-and-type pair at zero, so a
+  # benchmark's means and quartiles do not lose the departments over a
+  # dataset no infection entered.
+  ds <- make_infection_calc_test_ds(
+    forms = tibble::tibble(event_type_key = "bsi", department_key = c(1L, 2L)))
+  inf <- ds$events$event_key[
+    ds$events$event_type_key %in% c("bsi", "nec", "hap", "ssi")]
+  ds$events <- ds$events[!ds$events$event_key %in% inf, ]
+
+  counts <- neoipcr:::get_infection_counts(
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  expect_equal(counts$enrollment_department_key, c(1L, 2L))
+  expect_equal(counts$n, c(0L, 0L))
+
+  by_type <- neoipcr:::get_infection_counts(
+    ds, group_cols = c("enrollment_department_key", "event_type_key"),
+    use_cache = FALSE)
+  expect_equal(nrow(by_type), 8L)
+  expect_equal(unique(by_type$enrollment_department_key), c(1L, 2L))
+  expect_equal(as.character(unique(by_type$event_type_key)),
+               c("bsi", "nec", "hap", "ssi"))
+  expect_equal(unique(by_type$n), 0L)
+
+  # The recording side frames on the events it has: the admission and
+  # surveillance-end forms' units, each at zero infections.
+  recording <- neoipcr:::get_infection_counts(
+    ds, group_cols = "event_department_key", use_cache = FALSE)
+  expect_equal(recording$event_department_key, c(1L, 2L))
+  expect_equal(recording$n, c(0L, 0L))
+})
+
+test_that("grouping by the recording side counts and frames on what was recorded", {
+  # Both sepsis episodes belong to stays of department 2, which also
+  # holds their admissions; department 1 holds one stay, its admission
+  # and surveillance-end forms, and no infection of its own.
+  ds <- make_infection_calc_test_ds(
+    forms = tibble::tibble(
+      event_type_key = c("bsi", "bsi"),
+      department_key = c(2L, 2L)),
+    findings = tibble::tibble(form = 1:2, pathogen_key = c(934L, 1807L)))
+
+  # Department 1 records its stay's forms but no infection: zero.
+  before <- neoipcr:::get_infection_counts(
+    ds, group_cols = "event_department_key", use_cache = FALSE)
+  expect_equal(before$event_department_key, c(1L, 2L))
+  expect_equal(before$n, c(0L, 2L))
+
+  # The recording desk moves one episode to department 1's unit: it now
+  # counts there, and no longer at the stay's department on this side.
+  inf <- ds$events$event_key[ds$events$event_type_key == "bsi"]
+  ds$events$event_department_key[ds$events$event_key == inf[1]] <- 1L
+  after <- neoipcr:::get_infection_counts(
+    ds, group_cols = "event_department_key", use_cache = FALSE)
+  expect_equal(after$event_department_key, c(1L, 2L))
+  expect_equal(after$n, c(1L, 1L))
+
+  # The stay side never saw the drift.
+  stay <- neoipcr:::get_infection_counts(
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  expect_equal(stay$n, c(0L, 2L))
 })
 
 # --- Classified findings ----------------------------------------------------
@@ -231,6 +354,35 @@ test_that("a detection is an infectious agent once per infection, tested where a
   expect_equal(r$resistant_car, c(FALSE, FALSE, FALSE))
   expect_equal(r$tested_cor, c(FALSE, FALSE, FALSE))
   expect_equal(r$gram_reaction, c("negative", NA, NA))
+})
+
+test_that("resistance counts group by the stay's department, not the recording desk's", {
+  # Department 1's stay holds the sepsis; the recording desk moved its
+  # form to department 2's unit. The resistance counts, and the testing's
+  # completeness counts beside them, answer under the stay — the side the
+  # same tables' patient-day denominators stand on — and the recording
+  # desk holds no row.
+  ds <- make_infection_calc_test_ds(
+    forms = tibble::tibble(event_type_key = "bsi", department_key = 1L),
+    findings = tibble::tibble(form = 1L, pathogen_key = 1807L,
+                              `3gcr` = "yes"))
+  inf <- ds$events$event_key[
+    ds$events$event_type_key %in% c("bsi", "nec", "hap", "ssi")]
+  ds$events$event_department_key[ds$events$event_key %in% inf] <- 2L
+
+  detections <- neoipcr:::get_infectious_agent_detections(
+    ds, use_cache = FALSE)
+  expect_equal(unique(detections$department_key), 1L)
+
+  rows <- neoipcr:::get_infectious_agent_resistance_rates(
+    ds, use_cache = FALSE)$rows
+  expect_equal(unique(rows$department_key), 1L)
+  expect_equal(sum(rows$resistant[rows$abr == "3gcr" &
+                                 rows$node_id == "bacteria"]), 1L)
+
+  tests <- neoipcr:::get_resistance_test_counts(ds, use_cache = FALSE)
+  expect_equal(unique(tests$department_key), 1L)
+  expect_equal(tests$total[tests$abr == "3gcr" & tests$cond == "routine"], 1L)
 })
 
 # --- Departments' quartiles -------------------------------------------------

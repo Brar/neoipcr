@@ -208,6 +208,23 @@ test_that("the calculation functions abort on a dataset without a validation sum
   expect_error(calculate_reference_data(ds), "validationSummary")
 })
 
+test_that("the calculation functions abort on a dataset stored before the hierarchy pair", {
+  # A dataset saved by an older neoipcr cannot be recalculated at all:
+  # its events hold the pre-pair keys, so the refusal names the
+  # re-import that replaces it.
+  ds <- make_stale_import_ds()
+  cnd <- expect_error(calculate_department_data(ds),
+                     class = "neoipcr_missing_hierarchy_pair")
+  expect_match(conditionMessage(cnd),
+               "calculate_department_data() needs a dataset imported by",
+               fixed = TRUE)
+  cnd <- expect_error(calculate_reference_data(ds),
+                     class = "neoipcr_missing_hierarchy_pair")
+  expect_match(conditionMessage(cnd),
+               "calculate_reference_data() needs a dataset imported by",
+               fixed = TRUE)
+})
+
 
 # --- Validation summary and serializable options --------------------------
 
@@ -2696,4 +2713,40 @@ test_that("get_benchmark_data gives a row of the resistance rates the reference 
     expect_identical(vre$quartile_departments_ref, rep(0L, nrow(vre)),
                      label = slot)
   }
+})
+
+test_that("the calculation pipeline leaves a split stay's infection and days in its stay's department", {
+  # One stay spread over three departments: the patient record stands in
+  # department 1, the stay, its admission, and its surveillance end in
+  # department 2, and its one sepsis is recorded at department 3's desk.
+  # The stay spans 100 patient-days.
+  ds <- make_split_department_calc_ds()
+  own <- calculate_department_data(ds, use_cache = FALSE)
+  ref <- calculate_reference_data(ds, use_cache = FALSE)
+
+  # The stay's department is the calculation's only department: the patient
+  # record's unit and the recording desk's unit hold no stay, so neither
+  # opens a departmental row.
+  expect_equal(own$n_departments, 1L)
+  expect_equal(ref$n_departments, 1L)
+
+  # The stay's 100 patient-days enter the totals once and the reference
+  # quartiles once, as one department's value.
+  expect_equal(own$n_patient_days$total, 100L)
+  expect_equal(ref$n_patient_days$total, 100L)
+  expect_equal(ref$n_patient_days$quartile_departments, 1L)
+
+  # The sepsis is counted once, as its stay's department's. The
+  # department-level chain behind the tables sees only that department:
+  # counts keyed by department 3 would say the recording desk won, and a
+  # second department in the risk time would say the patient record did.
+  expect_equal(ref$n_infections$total[ref$n_infections$inf_type == "bsi"], 1L)
+  counts <- neoipcr:::get_infection_counts(
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  expect_equal(counts$enrollment_department_key, 2L)
+  expect_equal(counts$n, 1L)
+  risk_time <- neoipcr:::get_risk_time(
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  expect_equal(risk_time$enrollment_department_key, 2L)
+  expect_equal(risk_time$patient_days, 100L)
 })

@@ -325,10 +325,6 @@ make_test_events <- function(
                                              "ssi", "hap", "end")),
     enrollment_key       = enrollment_keys[keys],
     patient_key          = patient_keys[keys],
-    department_key       = rep(1L, n),
-    hospital_key         = rep(1L, n),
-    country_key          = rep(1L, n),
-    world_bank_class_key = rep(1L, n),
     isTest               = rep(FALSE, n),
     # Entity-level user fields (phase-b-event-details).
     storedBy             = rep(1L, n),
@@ -345,13 +341,44 @@ make_test_events <- function(
     # Lifecycle flags.
     followup             = rep(FALSE, n),
     deleted              = rep(FALSE, n))
+  # The hierarchy pair, both legs at the first unit: an event recorded
+  # in its stay's unit. A fixture wants drift, it passes leg names.
+  for (leg in neoipcr:::.hierarchy_leg_names())
+    full[[leg]] <- rep(1L, n)
+  given <- names(list(...))
   full <- utils::modifyList(full, list(...))
+  # The hierarchy columns exist twice, as `event_*` and `enrollment_*`: the
+  # recording event's unit and the stay's. A plain name given as an override
+  # sets both legs to one value, a fixture without drift; a test that wants
+  # drift passes the leg names.
+  for (plain in neoipcr:::.hierarchy_key_names) {
+    if (plain %in% given) {
+      for (leg in c("event_", "enrollment_")) {
+        leg_col <- paste0(leg, plain)
+        if (!(leg_col %in% given)) full[[leg_col]] <- full[[plain]]
+      }
+      full[[plain]] <- NULL
+    }
+  }
   d <- tibble::as_tibble(full[names(schema)])
   for (col in names(schema)) {
     if (is.factor(schema[[col]]) && !is.factor(d[[col]]))
       d[[col]] <- factor(d[[col]], levels = levels(schema[[col]]))
   }
   structure(d, class = c("neoipcr_evt", class(d)))
+}
+
+# The hierarchy link columns exist twice, as `event_*` and `enrollment_*`.
+# An event-child fixture holds the same value on both legs, which is an
+# event recorded in its stay's unit; a schema that declares a leg gets it.
+.fill_hierarchy_legs <- function(full, schema, n) {
+  for (plain in neoipcr:::.hierarchy_key_names)
+    for (leg in c("event_", "enrollment_")) {
+      leg_col <- paste0(leg, plain)
+      if (leg_col %in% names(schema) && is.null(full[[leg_col]]))
+        full[[leg_col]] <- rep(1L, n)
+    }
+  full
 }
 
 # Internal helper: build a per-event-type data fixture from a schema.
@@ -365,6 +392,7 @@ make_test_events <- function(
     return(structure(schema, class = c(class_name, class(schema))))
 
   full <- c(list(event_key = event_keys), default_full(n))
+  full <- .fill_hierarchy_legs(full, schema, n)
 
   d <- tibble::as_tibble(full[names(schema)])
   for (col in names(schema)) {
@@ -609,6 +637,7 @@ make_test_substance_days <- function(event_keys = 1L,
     index          = seq_len(n),
     substance_code = rep("J01CA04", n),
     days           = rep(3L, n))
+  full <- .fill_hierarchy_legs(full, schema, n)
   d <- tibble::as_tibble(full[names(schema)])
   if (length(list(...)) > 0L) {
     overrides <- list(...)
@@ -641,6 +670,7 @@ make_test_iaf <- function(event_keys = 1L,
     cor    = factor(rep("no", n), levels = c("no", "yes", "not_tested")),
     mrsa   = factor(rep("no", n), levels = c("no", "yes", "not_tested")),
     vre    = factor(rep("no", n), levels = c("no", "yes", "not_tested")))
+  full <- .fill_hierarchy_legs(full, schema, n)
   d <- tibble::as_tibble(full[names(schema)])
   if (length(list(...)) > 0L) {
     overrides <- list(...)
@@ -663,6 +693,7 @@ make_test_unknown_pathogen_names <- function(agent_finding_keys = integer(0),
   full <- list(
     agent_finding_key = agent_finding_keys,
     name              = rep("Unknown pathogen", n))
+  full <- .fill_hierarchy_legs(full, schema, n)
   d <- tibble::as_tibble(full[names(schema)])
   if (length(list(...)) > 0L) {
     overrides <- list(...)
@@ -690,6 +721,7 @@ make_test_event_notes <- function(event_keys = 1L,
     event_key = event_keys,
     note      = paste0("NOTE_", event_keys),
     value     = rep("test note", n))
+  full <- .fill_hierarchy_legs(full, schema, n)
   d <- tibble::as_tibble(full[names(schema)])
   if (length(list(...)) > 0L) {
     overrides <- list(...)
@@ -1165,6 +1197,69 @@ make_calc_test_ds <- function() {
     infectiousAgentFindings = make_test_iaf(c(3L, 9L),
       pathogen_key = c(1L, 503L)),
     substanceDays       = make_test_substance_days(c(2L, 5L, 8L)))
+}
+
+# A calculation fixture of one stay with the hierarchy pair at its widest
+# spread: the patient record stands in department 1, the stay, its admission,
+# and its surveillance end in department 2, and the recording desk of its one
+# sepsis in department 3. The stay spans 100 patient-days, enough to enter a
+# reference quartile.
+make_split_department_calc_ds <- function() {
+  md <- read_test_metadata(
+    dataset_options = dhis2_dataset_options(
+      include_department = "full",
+      include_country    = "full"))
+  md$departments      <- make_test_metadata_departments(3)
+  md$hospitals        <- make_test_metadata_hospitals(3)
+  md$countries        <- make_test_metadata_countries(3)
+  md$worldBankClasses <- make_test_metadata_wb_classes(3)
+  md$eventTypes       <- make_test_metadata_event_types()
+  md$dataset_options  <- dhis2_dataset_options(
+    include_department = "full",
+    include_country    = "full",
+    include_patient    = "full",
+    include_enrollment = "full",
+    include_event      = "full")
+
+  events <- make_test_events(
+    n                         = 3L,
+    enrollment_keys           = c(1, 1, 1),
+    patient_keys              = c(1, 1, 1),
+    event_type_keys           = c("adm", "end", "bsi"),
+    occurredAt                = as.Date(c(
+      "2024-01-01", "2024-01-15", "2024-01-08")),
+    event_department_key      = c(2L, 2L, 3L),
+    enrollment_department_key = rep(2L, 3))
+
+  make_test_ds(
+    metadata                = md,
+    patients                = make_test_patients(
+      1L, department_key = 1L, birth_weight = 1200L, gest_age = "30+0",
+      total_gestation_days = 210L),
+    enrollments             = make_test_enrollments(
+      1L, patient_keys = 1L, department_key = 2L,
+      enrolledAt = as.Date("2024-01-01")),
+    events                  = events,
+    admissionData           = make_test_admission_data(1L),
+    surveillanceEndData     = make_test_surveillance_end_data(
+      2L, patient_days = 100L),
+    sepsisData              = make_test_sepsis_data(3L, dol = 8L, los = 7L),
+    infectiousAgentFindings = make_test_iaf(3L),
+    substanceDays           = make_test_substance_days(2L))
+}
+
+# A dataset as an older neoipcr would have stored it: its events table
+# holds the plain hierarchy keys of the pre-pair import — the values of
+# the event side stand for them, which no refusal depends on — and
+# lacks the `event_`/`enrollment_` pair its calculations group by.
+make_stale_import_ds <- function(ds = make_calc_test_ds()) {
+  for (key in c("department_key", "hospital_key", "country_key",
+                "world_bank_class_key")) {
+    ds$events[[key]] <- ds$events[[paste0("event_", key)]]
+    ds$events[[paste0("event_", key)]] <- NULL
+    ds$events[[paste0("enrollment_", key)]] <- NULL
+  }
+  ds
 }
 
 # Calc pipeline fixture of infection forms. `forms` holds one row per
