@@ -34,11 +34,14 @@ guard_with <- function(ds = base_ds, ...) {
 
 # Helper: strip a hierarchy key from the fact and metadata targets
 # (simulating what a schema-compliant reader would produce under
-# `include_X = "no"`).
-strip_key <- function(ds, col, fact_targets = c("patients", "enrollments", "events"),
-                     metadata_targets = character()) {
+# `include_X = "no"`). The events and the event-child tables carry the
+# key as the `event_*` and `enrollment_*` legs, which are stripped with it.
+strip_key <- function(ds, col,
+                      fact_targets = neoipcr:::.hierarchy_fact_tables,
+                      metadata_targets = character()) {
+  cols <- c(col, paste0("event_", col), paste0("enrollment_", col))
   for (t in fact_targets)
-    ds[[t]] <- ds[[t]] |> dplyr::select(!tidyselect::any_of(col))
+    ds[[t]] <- ds[[t]] |> dplyr::select(!tidyselect::any_of(cols))
   for (t in metadata_targets) {
     if (!is.null(ds$metadata[[t]]))
       ds$metadata[[t]] <- ds$metadata[[t]] |>
@@ -161,6 +164,58 @@ test_that("assert_data_protection aborts naming multiple leak sites under includ
   expect_match(msg, "x\\$metadata\\$hospitals")
   expect_match(msg, "x\\$metadata\\$departments")
 })
+
+# --- Isolated leaks: one leg on one watched table ----------------------
+#
+# The full-leak tests above seed every table at once, so a table dropped
+# from the guardian's watch list would leave them all still aborting
+# through the other tables. These hold the guardian on a lone leaked
+# leg: every other copy is stripped, one pair leg stands on exactly one
+# fact table, and the abort must name that table and that column.
+# The expected fact tables are named here rather than read from
+# `.hierarchy_fact_tables`: a watch list read back from the guardian
+# would make this test blind to the entry it dropped, which is the very
+# regression these isolate.
+
+fact_tables <- c(
+  "patients", "enrollments", "events",
+  "admissionData", "surveillanceEndData", "sepsisData", "necData",
+  "pneumoniaData", "surgeryData", "ssiData",
+  "infectiousAgentFindings", "substanceDays",
+  "eventNotes", "enrollment_notes")
+
+test_that("the guardian watches every fact table", {
+  expect_equal(neoipcr:::.hierarchy_fact_tables, fact_tables)
+})
+
+for (level in c("department", "hospital", "country", "world_bank_class")) {
+  test_that(sprintf("a lone %s leg on a single fact table is named under its 'no' opt",
+                    level), {
+    meta <- switch(level,
+      hospital = "departments",
+      country = c("hospitals", "departments"),
+      world_bank_class = c("countries", "hospitals", "departments"),
+      character())
+    for (tbl in fact_tables) {
+      for (side in c("event_", "enrollment_")) {
+        col <- paste0(side, level, "_key")
+        ds <- strip_key(base_ds, paste0(level, "_key"),
+                        fact_targets = fact_tables,
+                        metadata_targets = meta)
+        ds[[tbl]][[col]] <- 1L
+        args <- list(ds = ds)
+        args[[paste0("include_", level)]] <- "no"
+        err <- tryCatch(do.call(guard_with, args), error = identity)
+        info <- sprintf("%s carries %s", tbl, col)
+        expect_true(inherits(err, "rlang_error"), info = info)
+        msg <- if (inherits(err, "condition"))
+          conditionMessage(err) else "<no abort>"
+        expect_match(msg, paste0("x\\$", tbl), info = info)
+        expect_match(msg, col, info = info)
+      }
+    }
+  })
+}
 
 # `eventDetails` scrub-shim tests removed in phase-b-event-details —
 # the sidecar tibble was merged into `events`, and the `event` id on

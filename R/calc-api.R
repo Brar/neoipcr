@@ -67,6 +67,7 @@ calculate_reference_data <- function(x, use_cache = TRUE) {
   fn_name = "calculate_reference_data")
   assert_validation_summary(x, fn_name = "calculate_reference_data")
   assert_reconciliation_summary(x, fn_name = "calculate_reference_data")
+  assert_hierarchy_pair(x, fn_name = "calculate_reference_data")
   .warn_unknown_infectious_agent_codes(x)
 
   # `metadata$countries` is always a tibble under the three-mode schema
@@ -80,7 +81,7 @@ calculate_reference_data <- function(x, use_cache = TRUE) {
   pd <- get_risk_time(x, use_cache = use_cache)$patient_days
   pd_dept <- get_risk_time(
     x,
-    group_cols = "department_key",
+    group_cols = "enrollment_department_key",
     use_cache = use_cache)$patient_days
   pd_q <- pd_dept |>
     stats::quantile(probs = quartile_probs) |>
@@ -89,7 +90,7 @@ calculate_reference_data <- function(x, use_cache = TRUE) {
   rp <- x |>
     get_risk_population(use_cache = use_cache)
   rp_dept <- x |>
-    get_risk_population(group_cols = "department_key", use_cache = use_cache)
+    get_risk_population(group_cols = "enrollment_department_key", use_cache = use_cache)
   pat_q <- rp_dept$n_patients |>
     stats::quantile(probs = quartile_probs) |>
     as.integer()
@@ -102,13 +103,13 @@ calculate_reference_data <- function(x, use_cache = TRUE) {
 
   sr_dept <- x |>
     get_surgery_risk(
-      group_cols = "department_key",
+      group_cols = "enrollment_department_key",
       use_cache = use_cache) |>
     dplyr::full_join(
       x$enrollments |>
-        dplyr::select("department_key") |>
+        dplyr::select(enrollment_department_key = "department_key") |>
         dplyr::distinct(),
-      dplyr::join_by("department_key")) |>
+      dplyr::join_by("enrollment_department_key")) |>
     dplyr::mutate(
       n_patients = tidyr::replace_na(.data$n_patients, 0L),
       n_procedures = tidyr::replace_na(.data$n_procedures, 0L))
@@ -130,7 +131,7 @@ calculate_reference_data <- function(x, use_cache = TRUE) {
         get_infection_counts() |>
         dplyr::bind_cols(
           x |>
-            get_infection_counts(group_cols = "department_key") |>
+            get_infection_counts(group_cols = "enrollment_department_key") |>
             dplyr::summarise(
               pooled_mean = as.integer(round(mean(.data$n))),
               q = list(
@@ -142,7 +143,7 @@ calculate_reference_data <- function(x, use_cache = TRUE) {
       dplyr::inner_join(
         x |>
           get_infection_counts(
-            group_cols = c("department_key", "event_type_key")) |>
+            group_cols = c("enrollment_department_key", "event_type_key")) |>
           dplyr::group_by(.data$event_type_key) |>
           dplyr::summarise(
             pooled_mean = as.integer(round(mean(.data$n))),
@@ -299,6 +300,7 @@ calculate_department_data <- function(x, use_cache = TRUE) {
   fn_name = "calculate_department_data")
   assert_validation_summary(x, fn_name = "calculate_department_data")
   assert_reconciliation_summary(x, fn_name = "calculate_department_data")
+  assert_hierarchy_pair(x, fn_name = "calculate_department_data")
   .warn_unknown_infectious_agent_codes(x)
 
   rt <- x |>

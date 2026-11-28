@@ -14,6 +14,29 @@ section above it for the next changes.
 
 # neoipcr (development version)
 
+* Events and the form-data tables carry their hierarchy keys as a symmetric pair over the organisation-unit chain:
+  the side the record's own organisation unit shows, `event_department_key` with its `event_hospital_key`,
+  `event_country_key`, and `event_world_bank_class_key`, beside the stay's side, `enrollment_department_key` and its
+  counterparts, replacing the plain `department_key` and its chain those tables held. The import resolves the pair
+  before the schema projects the tiers, and the tiers place it where a chain breaks: on `events` at the full tier,
+  and directly on the form-data tables at the pseudonymized, where the inherited links and hierarchy keys they
+  declare are now materialized instead of left `NA`. Patient records keep their own keys as they are: a patient
+  holds no single stay. This is a breaking change for dataset readers: a reader of a stored dataset that joined
+  the events or a form-data table on the plain `department_key` finds that column gone, and the pre-alpha package
+  offers no migration.
+* A department- or trial-scoped import fetches its events through the stays it kept: it reads the scoped enrolments
+  first and then asks the events endpoint for their events by enrolment UID, which DHIS2 searches over the importing
+  user's accessible units. A form of the department's stay recorded under another organisation unit therefore reaches
+  the department's own dataset and counts for the stay's department, where the per-unit event requests had dropped
+  it silently; an event recorded beyond the importing user's reach stays out. Country- and access-scoped imports keep
+  their per-unit event requests.
+* Every rate table's department rows group by `enrollment_department_key`, and `get_infection_counts()` answers
+  every grouping column from the side its name names: an `event_` column counts and frames on the events, a plain
+  or `enrollment_` column counts each event's own stay side and frames on the enrolments, so a department with stays
+  but no infection shows a zero. A dataset stored by an older neoipcr has no pair to calculate over where its import
+  tiers materialize the pair: the calculations refuse it and name the re-import that replaces it rather than
+  recalculating on the old keys, so it must be imported again when a benchmark spanning the change needs its tables
+  recalculated; tables already computed in a stored dataset keep being served.
 * `read_token()`, and with it the `token` argument of `dhis2_connection_options()` and the
   `NEOIPC_DHIS2_TOKEN` environment variable, now accepts a DHIS2 personal access token of either
   version by its shape: version 1 (`d2pat_`, 48 characters), which only DHIS2 2.40 and earlier
