@@ -213,7 +213,17 @@ check_ds_and_try_get_table <- function(
 #'  Set to FALSE for department-level reports to simplify output.
 #'
 #' @returns A table containing usage density rates of the time dependent risk
-#'  factors
+#'  factors: one row per factor, at 0 where no stay had it, and a Not
+#'  classified (`nc`) row only where the dataset holds substance-days its
+#'  AWaRe metadata gives no category. With `include_quartiles`, the
+#'  departments' quartiles (`q1`, `q2`, `q3`) and their bootstrap intervals
+#'  (`q1_ci_lower` to `q3_ci_upper`): a department enters every factor's
+#'  quartiles with at least 50 of its patient-days, at 0 where it had none of
+#'  the factor's days; the quartiles are shown where at least five
+#'  departments enter, the factor's pooled days are above 0, and the entering
+#'  departments' median patient-days exceed the patient-days in which the
+#'  pooled rate gives one day of the factor; `quartile_departments` gives
+#'  that number whether or not the quartiles are shown.
 #' @export
 get_usage_density_rate_table <- function(
     x, use_cache = TRUE, include_quartiles = TRUE){
@@ -245,48 +255,54 @@ get_usage_density_rate_table <- function(
   r <- r |>
     dplyr::bind_cols(poisson_ci_cols(r$n, risk_time$patient_days, multiplier = 100))
 
-  # The departments' quartiles over patient-days: a department enters a
-  # factor's quartiles with the minimum of its patient-days, at 0 where it
-  # holds none of the factor's days.
-  counts <- get_risk_time(
-    x, group_cols = "department_key", use_cache = use_cache) |>
-    dplyr::select("department_key", "patient_days",
-                  tidyselect::ends_with("_days") & !"patient_days") |>
-    tidyr::pivot_longer(
-      cols = !c("department_key", "patient_days"),
-      names_to = "factor",
-      values_to = "n") |>
-    dplyr::transmute(
-      factor = stringr::str_remove(.data$factor, "_days$"),
-      department_key = .data$department_key,
-      n = .data$n,
-      total = .data$patient_days)
+  # The departments' quartiles read the department-level risk time, which no
+  # department-report edition (include_quartiles = FALSE) asks for: it is
+  # built only when the quartiles are wanted.
+  if (include_quartiles) {
+    # A department enters a factor's quartiles with the minimum of its
+    # patient-days, at 0 where it holds none of the factor's days.
+    counts <- get_risk_time(
+      x, group_cols = "enrollment_department_key", use_cache = use_cache) |>
+      dplyr::select("enrollment_department_key", "patient_days",
+                    tidyselect::ends_with("_days") & !"patient_days") |>
+      tidyr::pivot_longer(
+        cols = !c("enrollment_department_key", "patient_days"),
+        names_to = "factor",
+        values_to = "n") |>
+      dplyr::mutate(
+        factor = stringr::str_remove(.data$factor, "_days$"),
+        department_key = .data$enrollment_department_key,
+        n = .data$n,
+        total = .data$patient_days,
+        .keep = "none")
 
-  r <- r |>
-    dplyr::left_join(
-      .infectious_agent_rate_columns(
-        counts,
-        keys = r["factor"],
-        by = "factor",
-        scale = 100,
-        interval = "poisson",
-        denominator = "days",
-        include_quartiles = include_quartiles) |>
-        dplyr::select(-c("n", "total", "pooled", "ci_lower", "ci_upper")),
-      by = "factor") |>
-    add_class("neoipcr_tbl_udr")
+    r <- r |>
+      dplyr::left_join(
+        .infectious_agent_rate_columns(
+          counts,
+          keys = r["factor"],
+          by = "factor",
+          scale = 100,
+          interval = "poisson",
+          denominator = "days",
+          include_quartiles = TRUE) |>
+          dplyr::select(-c("n", "total", "pooled", "ci_lower", "ci_upper")),
+        by = "factor")
+  }
+
+  r <- add_class(r, "neoipcr_tbl_udr")
   if(include_quartiles)
     r <- add_class(r, "neoipcr_tbl_udr_ref")
 
   # The factors the table holds: `ab` names the antibiotics' days, and `nc`,
-  # when the risk time has them, those of an entry whose substance the
-  # list does not classify. A factor the risk time lacks gets a row at 0,
-  # as in the editions without it.
+  # when the risk time holds days of an unclassified substance, those of an
+  # entry the list does not classify. The table holds every expected factor:
+  # one the risk time lacks stands in it at 0.
   expected_levels <- c(
     "cvc","pvc",
     "vs","inv","niv",
     "ab","a","w","r",
-    if ("nc" %in% r$factor) "nc",
+    if (risk_time$nc_days > 0) "nc",
     "human_milk","probiotic","kangaroo_care")
   missing <- setdiff(expected_levels, r$factor)
   if (length(missing) > 0L)
@@ -316,7 +332,22 @@ get_usage_density_rate_table <- function(
 #'  Set to FALSE for department-level reports to simplify output.
 #'
 #' @returns A table containing antibiotic exposure density rates per substance
-#'  and ATC5 group, with hierarchical row structure
+#'  and ATC5 group, with hierarchical row structure: every substance and group
+#'  with an entry keeps its row, at 0 known days where its entries record
+#'  none, and a substance the AWaRe metadata gives no category carries `"nc"`
+#'  in `aware` where the others carry their option's code. `ci_lower` and
+#'  `ci_upper` give a row its Poisson interval where its days are above 0; a
+#'  row of 0 known days carries no interval, its two bounds `NA`. With
+#'  `include_quartiles`, the departments' quartiles of the rate per 100
+#'  patient-days (`q1`, `q2`, `q3`) and their bootstrap intervals
+#'  (`q1_ci_lower` to `q3_ci_upper`): a department enters a row's quartiles
+#'  with at least 50 of its patient-days, at 0 where it used none of the
+#'  substance or group; the quartiles are shown where at least five
+#'  departments enter, the row's pooled days are above 0, and the entering
+#'  departments' median patient-days exceed the patient-days in which the
+#'  pooled rate gives one day of the row's substance or group;
+#'  `quartile_departments` gives that number whether or not the quartiles
+#'  are shown.
 #' @export
 get_antibiotic_utilization_table <- function(
     x, use_cache = TRUE, include_quartiles = TRUE) {
@@ -327,6 +358,13 @@ get_antibiotic_utilization_table <- function(
 
   patient_days <- get_risk_time(x, use_cache = use_cache)$patient_days
 
+  # The AWaRe category a row carries: the metadata's option group code, and
+  # "nc" for a substance whose value is none of the three AWaRe option codes,
+  # the category that counts the risk factors' unclassified days too; a
+  # group's row holds none of its own.
+  aware_option_levels <- c("WHO_AWARE_ACCESS", "WHO_AWARE_WATCH",
+                           "WHO_AWARE_RESERVE", "nc")
+
   # ATC5-level totals
   atc5_totals <- summarise_substance_days(x, level = "atc5", use_cache = use_cache) |>
     dplyr::rename(n = "days") |>
@@ -334,11 +372,10 @@ get_antibiotic_utilization_table <- function(
       row_id = .data$code,
       atc5_group = .data$code,
       row_type = factor("atc5", levels = c("atc5", "substance")),
-      aware = factor(NA_character_,
-                     levels = c("WHO_AWARE_ACCESS", "WHO_AWARE_WATCH",
-                                "WHO_AWARE_RESERVE")))
+      aware = factor(NA_character_, levels = aware_option_levels))
 
-  # Substance-level totals
+  # Substance-level totals. A substance of no ATC5 option group keeps its row
+  # under the group of no code, which the table shows beside its substances.
   substance_totals <- summarise_substance_days(
     x, level = "substance", use_cache = use_cache) |>
     dplyr::rename(n = "days") |>
@@ -350,15 +387,25 @@ get_antibiotic_utilization_table <- function(
       row_id = .data$code,
       atc5_group = as.character(.data$ATC5),
       row_type = factor("substance", levels = c("atc5", "substance")),
-      aware = .data$WHO_AWARE) |>
+      aware = factor(
+        ifelse(as.character(.aware_level(.data$WHO_AWARE)) %in%
+                 aware_levels[1:3],
+               as.character(.data$WHO_AWARE), "nc"),
+        levels = aware_option_levels)) |>
     dplyr::select(!c("WHO_AWARE", "ATC5"))
 
-  # Combine and compute rates + CIs
+  # Every substance and group with an entry keeps its row, at 0 known days
+  # where all its entries lack days.
   r <- dplyr::bind_rows(atc5_totals, substance_totals) |>
-    dplyr::filter(.data$n > 0L) |>
     dplyr::mutate(
       pooled = .data$n / patient_days * 100) |>
-    (\(d) dplyr::bind_cols(d, poisson_ci_cols(d$n, patient_days, multiplier = 100)))()
+    (\(d) dplyr::bind_cols(d, poisson_ci_cols(d$n, patient_days, multiplier = 100)))() |>
+    # A row of no days carries no interval: its exact Poisson interval would
+    # be the single point 0, so the table leaves both bounds empty there.
+    dplyr::mutate(
+      dplyr::across(
+        c("ci_lower", "ci_upper"),
+        ~ ifelse(.data$n == 0L, NA_real_, .x)))
 
   if (include_quartiles) {
     # The departments' quartiles over patient-days: every department with the
@@ -366,39 +413,44 @@ get_antibiotic_utilization_table <- function(
     # of the substance or group.
     dept_totals <- dplyr::bind_rows(
       summarise_substance_days(
-        x, level = "substance", group_cols = "department_key",
+        x, level = "substance", group_cols = "enrollment_department_key",
         use_cache = use_cache) |>
-        dplyr::transmute(
+        dplyr::mutate(
           row_id = .data$code,
-          department_key = .data$department_key,
-          n = .data$days),
+          department_key = .data$enrollment_department_key,
+          n = .data$days,
+          .keep = "none"),
       summarise_substance_days(
-        x, level = "atc5", group_cols = "department_key",
+        x, level = "atc5", group_cols = "enrollment_department_key",
         use_cache = use_cache) |>
-        dplyr::transmute(
+        dplyr::mutate(
           row_id = .data$code,
-          department_key = .data$department_key,
-          n = .data$days))
+          department_key = .data$enrollment_department_key,
+          n = .data$days,
+          .keep = "none"))
 
-    # The departments of the risk time, not only those that recorded days:
-    # one that used none enters at 0. NA row_id (a substance without an ATC5
-    # code) is excluded, as it has no row in the main table.
+    # The departments of the risk time, not only those that recorded days: one
+    # that used none enters at 0. The group of no ATC5 code stands in the
+    # table like any other, so its row enters the grid too.
+    dept_risk <- get_risk_time(
+      x, group_cols = "enrollment_department_key", use_cache = use_cache)
     counts <- tidyr::expand_grid(
-      row_id = unique(dept_totals$row_id[!is.na(dept_totals$row_id)]),
-      department_key = get_risk_time(
-        x, group_cols = "department_key", use_cache = use_cache)$department_key) |>
-      dplyr::left_join(dept_totals, by = c("row_id", "department_key")) |>
+      row_id = unique(dept_totals$row_id),
+      department_key = dept_risk$enrollment_department_key) |>
+      dplyr::left_join(dept_totals, by = c("row_id", "department_key"),
+                       na_matches = "na") |>
       dplyr::mutate(n = dplyr::coalesce(.data$n, 0L)) |>
       dplyr::left_join(
-        get_risk_time(
-          x, group_cols = "department_key", use_cache = use_cache) |>
-          dplyr::select("department_key", "patient_days"),
+        dept_risk |>
+          dplyr::select("department_key" = "enrollment_department_key",
+                        "patient_days"),
         by = "department_key") |>
-      dplyr::transmute(
+      dplyr::mutate(
         row_id = .data$row_id,
         department_key = .data$department_key,
         n = .data$n,
-        total = .data$patient_days)
+        total = .data$patient_days,
+        .keep = "none")
 
     r <- r |>
       dplyr::left_join(
@@ -411,7 +463,7 @@ get_antibiotic_utilization_table <- function(
           denominator = "days",
           include_quartiles = TRUE) |>
           dplyr::select(-c("n", "total", "pooled", "ci_lower", "ci_upper")),
-        by = "row_id")
+        by = "row_id", na_matches = "na")
   }
 
   # Sort: by ATC5 group, then ATC5 header before substances, then by code
@@ -605,7 +657,17 @@ get_ref_surgery_rate_table <- function(ref, use_cache = TRUE) {
 #'  Set to FALSE for department-level reports to simplify output.
 #'
 #' @returns A table containing incidence density rates of the infections with
-#'  time dependent risks
+#'  time dependent risks, one row per infection type: `n`, the infections;
+#'  `pooled`, the rate per 1000 patient-days, and its Poisson interval
+#'  (`ci_lower`, `ci_upper`). With `include_quartiles`, the departments'
+#'  quartiles (`q1`, `q2`, `q3`) and their bootstrap intervals
+#'  (`q1_ci_lower` to `q3_ci_upper`): a department enters every type's
+#'  quartiles with at least 50 of its patient-days, at 0 where it holds none
+#'  of the type's infections; the quartiles are shown where at least five
+#'  departments enter, the type's infections number above 0, and the entering
+#'  departments' median patient-days exceed the patient-days in which the
+#'  pooled rate gives one infection; `quartile_departments` gives that
+#'  number whether or not the quartiles are shown.
 #' @export
 get_incidence_density_rate_table <- function(
     x, use_cache = TRUE, include_quartiles = TRUE) {
@@ -614,35 +676,38 @@ get_incidence_density_rate_table <- function(
     cache_key, use_cache, include_quartiles)))
     return(r)
 
-  # The pooled rates and the departments' quartiles over patient-days:
-  # every department with the minimum of them enters every type's quartiles,
-  # at 0 where it holds none of the type's infections.
-  pooled_rates <- get_incidence_density_rates(
-    x, use_cache = use_cache) |>
-    dplyr::rename("pooled" = "rate")
+  # The pooled rates and the departments' quartiles over patient-days: every
+  # department with the minimum of them enters every type's quartiles, at 0
+  # where it holds none of the type's infections. The rows are every type, so
+  # the table is built from the departments' counts alone: their sums give the
+  # pooled rate and its interval, the ungrouped rates add nothing here.
   counts <- get_incidence_density_rates(
-    x, group_cols = "department_key", use_cache = use_cache) |>
-    dplyr::transmute(
+    x, group_cols = "enrollment_department_key", use_cache = use_cache) |>
+    dplyr::mutate(
       inf = .data$inf,
-      department_key = .data$department_key,
+      department_key = .data$enrollment_department_key,
       n = .data$n,
-      total = .data$patient_days)
+      total = .data$patient_days,
+      .keep = "none")
 
   r <- .infectious_agent_rate_columns(
     counts,
-    keys = pooled_rates["inf"],
+    keys = tibble::tibble(inf = incidence_density_types),
     by = "inf",
     scale = 1000,
     interval = "poisson",
     denominator = "days",
     include_quartiles = include_quartiles) |>
+    dplyr::select(-"total") |>
     add_class("neoipcr_tbl_idr")
   if(include_quartiles)
     r <- add_class(r, "neoipcr_tbl_idr_ref")
 
   r |>
     dplyr::mutate(
-      inf = factor(.data$inf, levels = c("si", "bsi", "hap", "nec"))) |>
+      inf = factor(
+        .data$inf,
+        levels = c("si", setdiff(incidence_density_types, "si")))) |>
     dplyr::arrange(.data$inf) |>
     cache(x, cache_key)
 }
@@ -658,7 +723,18 @@ get_incidence_density_rate_table <- function(
 #'  Set to FALSE for department-level reports to simplify output.
 #'
 #' @returns A table containing device associated incidence density rates of the
-#'  infections with device associated risks
+#'  infections with device associated risks, one row per device: `n`, the
+#'  infections; `pooled`, the rate per 1000 device-days, and its Poisson
+#'  interval (`ci_lower`, `ci_upper`). With `include_quartiles`, the
+#'  departments' quartiles (`q1`, `q2`, `q3`) and their bootstrap intervals
+#'  (`q1_ci_lower` to `q3_ci_upper`): a department enters a device's
+#'  quartiles with at least 50 of its own days of that device, at 0 where it
+#'  held none of the device's infections, and leaves without so many days of
+#'  the device; the quartiles are shown where at least five departments
+#'  enter, the device's infections number above 0, and the entering
+#'  departments' median device-days exceed the device-days in which the
+#'  pooled rate gives one infection; `quartile_departments` gives that
+#'  number whether or not the quartiles are shown.
 #' @export
 get_dev_ass_incidence_density_rate_table <- function(
     x, use_cache = TRUE, include_quartiles = TRUE) {
@@ -674,32 +750,40 @@ get_dev_ass_incidence_density_rate_table <- function(
     dplyr::bind_cols(poisson_ci_cols(rates$n, rates$days, multiplier = 1000)) |>
     dplyr::select(!"days")
 
-  # The departments' quartiles over each device's days: a department enters
-  # a device's quartiles with the minimum of that device's own days, and
-  # leaves without any, at 0 where it had none of the device's infections.
-  counts <- x |>
-    get_dev_ass_incidence_density_rates(
-      group_cols = "department_key",
-      use_cache = use_cache) |>
-    dplyr::transmute(
-      dev = .data$dev,
-      department_key = .data$department_key,
-      n = .data$n,
-      total = .data$days)
+  # The departments' quartiles read the department-level device-days rates,
+  # which no department-report edition (include_quartiles = FALSE) asks for:
+  # the body above is complete without them, so they are built only when the
+  # quartiles are wanted.
+  if (include_quartiles) {
+    # A department enters a device's quartiles with the minimum of that
+    # device's own days, and leaves without any, at 0 where it had none of the
+    # device's infections.
+    counts <- x |>
+      get_dev_ass_incidence_density_rates(
+        group_cols = "enrollment_department_key",
+        use_cache = use_cache) |>
+      dplyr::mutate(
+        dev = .data$dev,
+        department_key = .data$enrollment_department_key,
+        n = .data$n,
+        total = .data$days,
+        .keep = "none")
 
-  r <- r |>
-    dplyr::left_join(
-      .infectious_agent_rate_columns(
-        counts,
-        keys = r["dev"],
-        by = "dev",
-        scale = 1000,
-        interval = "poisson",
-        denominator = "days",
-        include_quartiles = include_quartiles) |>
-        dplyr::select(-c("n", "total", "pooled", "ci_lower", "ci_upper")),
-      by = "dev") |>
-    add_class("neoipcr_tbl_daidr")
+    r <- r |>
+      dplyr::left_join(
+        .infectious_agent_rate_columns(
+          counts,
+          keys = r["dev"],
+          by = "dev",
+          scale = 1000,
+          interval = "poisson",
+          denominator = "days",
+          include_quartiles = TRUE) |>
+          dplyr::select(-c("n", "total", "pooled", "ci_lower", "ci_upper")),
+        by = "dev")
+  }
+
+  r <- add_class(r, "neoipcr_tbl_daidr")
   if(include_quartiles)
     r <- add_class(r, "neoipcr_tbl_daidr_ref")
 
@@ -1555,11 +1639,12 @@ get_secondary_bsi_rate_table <- function(
         group_cols = "enrollment_department_key",
         use_cache = use_cache)
     counts <- dept_all |>
-      dplyr::transmute(
+      dplyr::mutate(
         event_type_key = as.character(.data$event_type_key),
-        department_key = .data$department_key,
+        department_key = .data$enrollment_department_key,
         n = .data$n,
-        total = .data$followup_n)
+        total = .data$followup_n,
+        .keep = "none")
     r <- r |>
       dplyr::left_join(
         .infectious_agent_rate_columns(

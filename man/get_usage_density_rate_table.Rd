@@ -18,7 +18,17 @@ Set to FALSE for department-level reports to simplify output.}
 }
 \value{
 A table containing usage density rates of the time dependent risk
-factors
+factors: one row per factor, at 0 where no stay had it, and a Not
+classified (\code{nc}) row only where the dataset holds substance-days its
+AWaRe metadata gives no category. With \code{include_quartiles}, the
+departments' quartiles (\code{q1}, \code{q2}, \code{q3}) and their bootstrap intervals
+(\code{q1_ci_lower} to \code{q3_ci_upper}): a department enters every factor's
+quartiles with at least 50 of its patient-days, at 0 where it had none of
+the factor's days; the quartiles are shown where at least five
+departments enter, the factor's pooled days are above 0, and the entering
+departments' median patient-days exceed the patient-days in which the
+pooled rate gives one day of the factor; \code{quartile_departments} gives
+that number whether or not the quartiles are shown.
 }
 \description{
 Get the table with usage density rates of the time dependent risk factors

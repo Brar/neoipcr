@@ -1509,18 +1509,20 @@ make_sepsis_findings_test_ds <- function(findings, department_key = 1L,
 # Departments' risk time: departments 1 to `n_dep`, each with one patient,
 # one enrolment, and its admission and surveillance-end forms, its stay of
 # `patient_days` patient-days, an antibiotic entry of `entry_days`
-# substance-days of the fixture substance on the surveillance-end form of
-# each department in `entry_departments`, and the fixture's default sepsis
-# infection on the stay of department `n_dep`. `extra_forms` names the
-# infection event types to place on a department's stay in addition to the
-# default sepsis, `extra_departments` the department of each (department 1
-# where left out). `entry_rows` replaces the entry rows, one per row with its
-# `event_key`, its `days` (NA where the entry records none), and its
-# `substance_code` (the fixture substance where the column is absent), for
-# an entry that records no days or a substance of a caller's choice.
+# substance-days of the substance `substance_code` names (the fixture's
+# antibiotic) on the surveillance-end form of each department in
+# `entry_departments`, and the fixture's default sepsis infection on the
+# stay of department `n_dep`. `extra_forms` names the infection event types
+# to place on a department's stay in addition to the default sepsis,
+# `extra_departments` the department of each (department 1 where left out).
+# `entry_rows` replaces the entry rows, one per row with its `event_key`,
+# its `days` (NA where the entry records none), and its `substance_code`
+# (`substance_code` where the column is absent), for an entry that records
+# no days or a substance of a caller's choice.
 make_risk_time_test_ds <- function(n_dep = 2L, patient_days = NULL,
                                    entry_departments = integer(0),
                                    entry_days = 3L,
+                                   substance_code = "J01CA04",
                                    extra_forms = character(),
                                    extra_departments = NULL,
                                    entry_rows = NULL) {
@@ -1539,7 +1541,7 @@ make_risk_time_test_ds <- function(n_dep = 2L, patient_days = NULL,
       event_key = end_keys[entry_departments],
       days = as.integer(entry_days))
   if (!"substance_code" %in% names(entry_rows))
-    entry_rows$substance_code <- "J01CA04"
+    entry_rows$substance_code <- substance_code
   ds$substanceDays <- if (nrow(entry_rows) == 0L)
     make_test_substance_days(integer(0))
   else

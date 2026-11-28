@@ -64,9 +64,9 @@ test_that("a stay without an antibiotic entry counts in the pooled risk time", {
 test_that("a stay without an antibiotic entry counts in its department's risk time", {
   ds <- make_risk_time_test_ds(patient_days = c(10L, 15L))
   rt <- neoipcr:::get_risk_time(
-    ds, group_cols = "department_key", use_cache = FALSE)
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
   expect_equal(nrow(rt), 2L)
-  row1 <- rt[rt$department_key == 1L, ]
+  row1 <- rt[rt$enrollment_department_key == 1L, ]
   expect_equal(row1$patient_days, 10L)
   expect_equal(row1$inv_days, 1L)
   expect_equal(row1$probiotic_rate, 60)
@@ -76,8 +76,8 @@ test_that("the substance-day columns of a stay without an entry are 0", {
   ds <- make_risk_time_test_ds(
     patient_days = c(10L, 15L), entry_departments = 2L, entry_days = 5L)
   rt <- neoipcr:::get_risk_time(
-    ds, group_cols = "department_key", use_cache = FALSE)
-  rt <- rt[order(rt$department_key), ]
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  rt <- rt[order(rt$enrollment_department_key), ]
   expect_equal(rt$patient_days, c(10L, 15L))
   expect_equal(rt$a_days, c(0L, 5L))
   expect_equal(rt$a_rate, c(0, 100 / 3))
@@ -87,15 +87,19 @@ test_that("a procedure on a stay without an antibiotic entry counts in the surgi
   ds <- make_risk_time_test_ds(
     patient_days = c(10L, 15L),
     extra_forms = c("pro"))
-  ds$surgeryData <- make_test_surgery_data(5L,
+  # The procedure form of the first department's stay is the fixture's last
+  # event, and the stay holds no antibiotic entry.
+  proc_event <- nrow(ds$events)
+  expect_equal(ds$events$event_department_key[proc_event], 1L)
+  ds$surgeryData <- make_test_surgery_data(proc_event,
     main_procedure_code = "KMA.JB.AE")
   expect_equal(as.character(get_procedure_category("KMA.JB.AE")),
                "abdominal_surgery")
   sr <- neoipcr:::get_surgery_risk(
-    ds, group_cols = "department_key", use_cache = FALSE)
-  row2 <- sr[sr$department_key == 2L, ]
-  expect_equal(row2$n_procedures, 1L)
-  expect_equal(row2$n_patients, 1L)
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
+  expect_equal(sr$enrollment_department_key, 1L)
+  expect_equal(sr$n_procedures, 1L)
+  expect_equal(sr$n_patients, 1L)
 })
 
 # --- Entries without days ---
@@ -190,7 +194,7 @@ test_that("an entry without days leaves the risk time of every department free o
       substance_code = "J01CA04",
       days = NA_integer_))
   rt <- neoipcr:::get_risk_time(
-    ds, group_cols = "department_key", use_cache = FALSE)
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
   expect_equal(nrow(rt), 2L)
   expect_false(any(is.na(rt$a_days)))
   expect_equal(sum(rt$a_days), 0L)

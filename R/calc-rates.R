@@ -75,6 +75,12 @@ get_dev_ass_incidence_density_rates <- function(
     cache(x, cache_key)
 }
 
+# The infection types the incidence-density tables count, in the order the
+# grouped rates return them: the three time-dependent-risk types and the
+# severe-infection composite over sepsis and pneumonia. The rate tables show
+# the composite first, by their own display order.
+incidence_density_types <- c("bsi", "hap", "nec", "si")
+
 get_incidence_density_rates <- function(
     x, group_cols = NULL, use_cache = TRUE) {
   if(is.null(group_cols))
@@ -88,7 +94,6 @@ get_incidence_density_rates <- function(
   # The grid of the groups' risk time and every infection type, so that a
   # group without infections of a type holds that type's row with a count
   # of 0, and no row lacks an infection type.
-  incidence_density_types <- c("bsi", "hap", "nec", "si")
   risk_time <- get_risk_time(x, group_cols, use_cache)
   counts <- x$events |>
     dplyr::filter(.data$event_type_key %in% c("bsi","nec","hap")) |>
@@ -107,10 +112,10 @@ get_incidence_density_rates <- function(
     tibble::tibble(inf = incidence_density_types) |>
       dplyr::left_join(counts, by = "inf")
   } else {
-    tidyr::expand_grid(
-      department_key = risk_time$department_key,
-      inf = incidence_density_types) |>
-      dplyr::left_join(counts, by = c("department_key", "inf"))
+    dplyr::cross_join(
+      dplyr::select(risk_time, tidyselect::all_of(group_cols)),
+      tibble::tibble(inf = incidence_density_types)) |>
+      dplyr::left_join(counts, by = c(group_cols, "inf"))
   }
   r <- r |>
     dplyr::mutate(n = dplyr::coalesce(.data$n, 0L))
@@ -1128,7 +1133,11 @@ infectious_agent_residual_suffix <- "~n.o.s."
             n = sum(.data$n),
             total = sum(.data$total),
             .by = tidyselect::all_of(by)),
-        by = by) |>
+        by = by,
+        # A table's rows may legitimately carry an NA key (the antibiotic
+        # utilization table's group of no ATC5 code): it is one row, so it
+        # joins to its own counts like any other key.
+        na_matches = "na") |>
       dplyr::mutate(
         n = dplyr::coalesce(.data$n, 0L),
         total = dplyr::coalesce(.data$total, 0L),
@@ -1159,7 +1168,7 @@ infectious_agent_residual_suffix <- "~n.o.s."
           scale = scale,
           type = if (interval == "wilson") "binomial" else "poisson",
           denominator = denominator),
-        by = by)
+        by = by, na_matches = "na")
 
   for (type in types)
     r <- dplyr::bind_cols(
@@ -1207,7 +1216,7 @@ quartile_minimum_denominator <- c(count = 5L, days = 50L)
       .by = tidyselect::all_of(by))
   r <- pooled |>
     dplyr::select(tidyselect::all_of(c(by, "pooled"))) |>
-    dplyr::left_join(entering, by = by) |>
+    dplyr::left_join(entering, by = by, na_matches = "na") |>
     dplyr::mutate(
       quartile_departments = dplyr::coalesce(.data$quartile_departments, 0L),
       shown = .data$quartile_departments >= 5L &

@@ -252,8 +252,8 @@ The four main classes span two shapes: dataset lists (`neoipcr_ds`, `neoipcr_rep
 
 **Invariants**:
 
-- Fixed category vocabulary: rows correspond to `c("cvc", "pvc", "vs", "inv", "niv", "ab", "a", "w", "r", "human_milk", "probiotic", "kangaroo_care")` plus `"overall"`, and `"nc"` beside `"a"`, `"w"`, `"r"` when the risk time holds days of an unclassified substance. Missing categories are added as rows with `n = 0`, `pooled = NA`.
-- Quartiles follow §13.1.1's rule and its display test, as in the other reference tables; the rework by procedure group narrows them to the departments that operate.
+- Fixed category vocabulary: rows correspond to `c("cvc", "pvc", "vs", "inv", "niv", "ab", "a", "w", "r", "human_milk", "probiotic", "kangaroo_care")` plus `"overall"`. Missing categories are added as rows with `n = 0`, `pooled = NA`.
+- Quartiles dropped to `NA` when `n_departments < 5` OR when `round(100 / pooled) >= median_patient_days` (protective gate).
 - **No schema file** — column contract is fixed by `get_ref_surgery_rate_table()` directly (anomaly relative to `neoipcr_ds` members).
 
 **Predicates**: no dedicated `is_*` or `check_*`; callers use `inherits(x, "neoipcr_tbl_sr_ref")` directly. **This is a gap**: `pretty_names.neoipcr_tbl_sr_ref` dispatches on the class but the package does not assert it — callers constructing the class by hand bypass the schema.
@@ -1721,8 +1721,9 @@ skin-to-skin contact.
 1 row per factor in `factor` (`cvc`, `pvc`, `vs`, `inv`, `niv`, `ab`, `a`, `w`, `r`, `human_milk`, `probiotic`, and
 `kangaroo_care`), with `n`, `pooled`, `ci_lower`, `ci_upper`, and the quartile columns (a department's table: `days`,
 `rate`, `ci_lower`, and `ci_upper`), each row's denominator (patient-days, or all substance-days for the Access share),
-and the number of departments that enter the row's quartiles (§13.1.6), and a row each for the substance-days not
-classified and the Access share, in the reference and the department tables alike.
+and the number of departments that enter the row's quartiles (§13.1.6), a row for the Access share, in the reference and
+the department tables alike, and, where the dataset holds days of a substance its AWaRe classification gives no
+category, a row for those substance-days not classified.
 
 | Measure | Counted | Over | Scale | Interval | Flag | Quartiles |
 | --- | --- | --- | --- | --- | --- | --- |

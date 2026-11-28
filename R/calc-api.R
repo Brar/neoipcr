@@ -310,23 +310,47 @@ calculate_department_data <- function(x, use_cache = TRUE) {
   sr <- x |>
     get_surgery_risk(use_cache = use_cache)
 
+  # The not-classified category stands in the table only where the risk time
+  # holds days of an unclassified substance, as in the reference table.
+  aware_categories <- if (rt$nc_days > 0) c("a", "w", "r", "nc") else c("a", "w", "r")
   usage_density_rate_table <- rt |>
-    dplyr::select(!"patient_days") |>
+    dplyr::select(!"patient_days" & tidyselect::ends_with("_days")) |>
     tidyr::pivot_longer(
-      cols = tidyselect::everything(),
-      names_to = c("factor","name"),
-      names_pattern = "^(.+)_([^_]+)$") |>
-    tidyr::pivot_wider() |>
+      cols = tidyselect::ends_with("_days"),
+      names_to = "factor",
+      values_to = "days") |>
     dplyr::mutate(
-      factor = factor(.data$factor,
-        levels = c("cvc","pvc","vs","inv","niv","human_milk","probiotic",
-                   "kangaroo_care","ab","a","w","r","nc"))
+      factor = stringr::str_remove(.data$factor, "_days$"),
+      .before = 1) |>
+    dplyr::full_join(
+      rt |>
+        dplyr::select(!"patient_days" & tidyselect::ends_with("_rate")) |>
+        tidyr::pivot_longer(
+          cols = tidyselect::ends_with("_rate"),
+          names_to = "factor",
+          values_to = "rate") |>
+        dplyr::mutate(
+          factor = stringr::str_remove(.data$factor, "_rate$")),
+      dplyr::join_by("factor")) |>
+    dplyr::mutate(
+      # The named factors in the table's order, then any factor the risk time
+      # adds beyond them; an AWaRe category the condition above leaves out
+      # turns NA and leaves the table.
+      factor = factor(
+        .data$factor,
+        levels = union(
+          c("cvc","pvc","vs","inv","niv","human_milk","probiotic",
+            "kangaroo_care","ab", aware_categories),
+          setdiff(unique(.data$factor),
+                  c("cvc","pvc","vs","inv","niv","human_milk","probiotic",
+                    "kangaroo_care","ab", aware_levels))))
     ) |>
+    dplyr::filter(!is.na(.data$factor)) |>
     (\(d) dplyr::bind_cols(d, poisson_ci_cols(d$days, rt$patient_days, multiplier = 100)))() |>
     (\(r) {
-      expected_levels <- c("cvc","pvc","vs","inv","niv","human_milk","probiotic",
-                           "kangaroo_care","ab","a","w","r","nc")
-      missing <- setdiff(expected_levels, as.character(r$factor))
+      # A level of the factor the data left out still stands in the table, at
+      # 0 days: the factor's levels are what the table holds.
+      missing <- setdiff(levels(r$factor), as.character(r$factor))
       if (length(missing) > 0)
         r <- r |>
           dplyr::bind_rows(

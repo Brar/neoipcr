@@ -18,7 +18,22 @@ Set to FALSE for department-level reports to simplify output.}
 }
 \value{
 A table containing antibiotic exposure density rates per substance
-and ATC5 group, with hierarchical row structure
+and ATC5 group, with hierarchical row structure: every substance and group
+with an entry keeps its row, at 0 known days where its entries record
+none, and a substance the AWaRe metadata gives no category carries \code{"nc"}
+in \code{aware} where the others carry their option's code. \code{ci_lower} and
+\code{ci_upper} give a row its Poisson interval where its days are above 0; a
+row of 0 known days carries no interval, its two bounds \code{NA}. With
+\code{include_quartiles}, the departments' quartiles of the rate per 100
+patient-days (\code{q1}, \code{q2}, \code{q3}) and their bootstrap intervals
+(\code{q1_ci_lower} to \code{q3_ci_upper}): a department enters a row's quartiles
+with at least 50 of its patient-days, at 0 where it used none of the
+substance or group; the quartiles are shown where at least five
+departments enter, the row's pooled days are above 0, and the entering
+departments' median patient-days exceed the patient-days in which the
+pooled rate gives one day of the row's substance or group;
+\code{quartile_departments} gives that number whether or not the quartiles
+are shown.
 }
 \description{
 Get the antibiotic utilization table with ATC5/substance-level rates

@@ -105,9 +105,10 @@ get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE) {
 
 # The surveillance-end forms with their substance-day categories' days: one
 # row per form, since a stay without an antimicrobial-substance entry is at
-# risk like the others. The aware days reach the form through a left join,
-# and a category whose column the join leaves out, because the dataset holds
-# no entry at all, stands at 0 days on every stay rather than missing.
+# risk like the others. The aware days reach the form through a left join:
+# get_aware_days() holds a column for every category, so what the join leaves
+# NA is a stay whose form names no substance at all, and its days stand at 0
+# rather than missing.
 .join_aware_days <- function(end_data, aware_days) {
   aware_cols <- names(aware_days)[names(aware_days) != "event_key"]
   end_data |>
@@ -189,17 +190,22 @@ get_procedures <- function(x, group_cols = NULL, use_cache = TRUE) {
     cache(x, cache_key)
 }
 
+# The AWaRe categories a substance's days are counted under, in the order they
+# become the risk time's `<level>_days` columns: Access, Watch, Reserve, and
+# the not-classified category of `.aware_level()`.
+aware_levels <- c("a", "w", "r", "nc")
+
 # The AWaRe category a substance's option carries, with "Not classified" for
 # a substance the AWaRe classification names no category of — a substance
-# without one, or with a value the option set carries, counts in its own
-# category beside Access, Watch, and Reserve, never in a row no report can
-# label.
+# with none, or with an option-set value that is neither Access, Watch, nor
+# Reserve, counts in its own category beside those three, never in a row no
+# report can label.
 .aware_level <- function(who_aware) {
   dplyr::coalesce(
     tolower(
       stringr::str_extract(who_aware, "^WHO_AWARE_(A|W|R).+$", group = 1)),
     "nc") |>
-    factor(levels = c("a", "w", "r", "nc"))
+    factor(levels = aware_levels)
 }
 
 get_substance_days <- function(
@@ -345,14 +351,15 @@ get_aware_days <- function(x, use_cache = TRUE) {
       names_glue = "{AWaRe}_{.value}",
       values_fill = 0L)
   # pivot_wider builds a column only for a category present in the data; every
-  # stay needs all four, so add those the pivot left out.
-  for (col in c("a_days", "w_days", "r_days", "nc_days"))
+  # stay needs one for each AWaRe category, so add those the pivot left out.
+  # `aware_days` reaches its forms through the left join of
+  # `.join_aware_days()`, where an absent stay's days are set to 0.
+  for (col in paste0(aware_levels, "_days"))
     if (!col %in% names(r))
       r[[col]] <- 0L
   r <- r |>
     dplyr::mutate(dplyr::across(
-      tidyselect::ends_with("_days"),
-      ~ dplyr::if_else(is.na(.x), 0L, as.integer(.x))))
+      tidyselect::ends_with("_days"), as.integer))
 
   cache(r, x, "aware_days")
 }

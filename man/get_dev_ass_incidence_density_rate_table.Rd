@@ -23,7 +23,18 @@ Set to FALSE for department-level reports to simplify output.}
 }
 \value{
 A table containing device associated incidence density rates of the
-infections with device associated risks
+infections with device associated risks, one row per device: \code{n}, the
+infections; \code{pooled}, the rate per 1000 device-days, and its Poisson
+interval (\code{ci_lower}, \code{ci_upper}). With \code{include_quartiles}, the
+departments' quartiles (\code{q1}, \code{q2}, \code{q3}) and their bootstrap intervals
+(\code{q1_ci_lower} to \code{q3_ci_upper}): a department enters a device's
+quartiles with at least 50 of its own days of that device, at 0 where it
+held none of the device's infections, and leaves without so many days of
+the device; the quartiles are shown where at least five departments
+enter, the device's infections number above 0, and the entering
+departments' median device-days exceed the device-days in which the
+pooled rate gives one infection; \code{quartile_departments} gives that
+number whether or not the quartiles are shown.
 }
 \description{
 Get the table with device associated incidence density rates of the

@@ -159,10 +159,12 @@ test_that("usage_density_rate_table CVC days match fixture", {
   expect_equal(cvc_row$n, 9L)
 })
 
-test_that("usage_density_rate_table has 13 factor rows", {
+test_that("usage_density_rate_table has 12 factor rows", {
   result <- get_usage_density_rate_table(calc_ds, use_cache = FALSE,
     include_quartiles = FALSE)
-  expect_equal(nrow(result), 13L)
+  # The fixture's substance-days all carry an AWaRe category, so no Not
+  # classified row stands.
+  expect_equal(nrow(result), 12L)
 })
 
 # --- Numerical spot-checks per table ---
@@ -2459,9 +2461,9 @@ test_that("the secondary-BSI rate's quartiles take only the departments that fol
 # --- The quartile rule and its minimum, over every table's denominator ---
 
 test_that("the incidence densities hold a row of every type for every department, at 0 without the type's infections", {
-  # Six departments: department 1 has one sepsis and one NEC in 100
-  # patient-days, department 2 a sepsis in 100, department 3 a sepsis in 200,
-  # departments 4-5 nothing in 100 each, department 6 nothing in 40.
+  # Six departments: department 1 has one sepsis, one NEC and one pneumonia
+  # in 100 patient-days, department 2 a sepsis in 100, department 3 a sepsis
+  # in 200, departments 4-5 nothing in 100 each, department 6 nothing in 40.
   ds <- make_infection_calc_test_ds(
     forms = tibble::tibble(
       event_type_key = c("bsi", "nec", "hap", "bsi", "bsi"),
@@ -2470,10 +2472,10 @@ test_that("the incidence densities hold a row of every type for every department
     n_departments = 6L)
 
   r <- neoipcr:::get_incidence_density_rates(
-    ds, group_cols = "department_key", use_cache = FALSE)
+    ds, group_cols = "enrollment_department_key", use_cache = FALSE)
   expect_false(any(is.na(r$inf)))
   expect_equal(nrow(r), 6L * 4L)
-  row5 <- r[r$department_key == 5L, ]
+  row5 <- r[r$enrollment_department_key == 5L, ]
   expect_equal(as.character(row5$inf), c("bsi", "hap", "nec", "si"))
   expect_equal(row5$n, c(0L, 0L, 0L, 0L))
 
@@ -2491,7 +2493,7 @@ test_that("the incidence densities hold a row of every type for every department
   # quartiles.
   expect_equal(bsi$pooled, 3 / 640 * 1000)
 
-  # Ten sepses pass the gate: the median of the departments' patient-days,
+  # Nine sepses pass the gate: the median of the departments' patient-days,
   # 100, exceeds the 60 patient-days in which the pooled rate gives one
   # event; the sepsis rates 20, 20, 20, 20, 0 give the quartiles 20, 20, 20,
   # and the fixture's sepsis on department 6 enters the pooled rate only,
@@ -2513,7 +2515,7 @@ test_that("the incidence densities hold a row of every type for every department
 test_that("a department without days of a device leaves that device's quartiles, count, and gate", {
   # Six departments with a stay each, one sepsis on a CVC day: departments
   # 1-5 have CVC days (150, 100, 50, 50, 20), department 6 none. The
-  # quartiles take departments 1-4 at 6.67, 10, 20, 20; department 5 leaves
+  # quartiles take departments 1-4 at 6.67, 0, 0, 0; department 5 leaves
   # with 20 CVC days, below the minimum of 50, department 6 without CVC days;
   # both stay in the pooled rate.
   ds <- make_risk_time_test_ds(
@@ -2568,20 +2570,67 @@ test_that("the utilization table's quartiles take the departments that used none
   expect_equal(row$q3, 4)
 })
 
+test_that("the utilization table keeps a substance whose entries have no days, at 0", {
+  # J01CA04 entered on the five departments' surveillance ends with no days
+  # on any entry: it keeps its row and its group's, both at 0, so the table
+  # shows what was entered without days rather than dropping it. The
+  # fixture's antibiotic carries no ATC5 group, so its group row is the
+  # group of no code.
+  ds <- make_risk_time_test_ds(
+    n_dep = 5L, patient_days = 100L,
+    entry_departments = 1:5, entry_days = NA_integer_)
+  t <- get_antibiotic_utilization_table(ds, use_cache = FALSE)
+  row <- t[t$row_type == "substance", ]
+  expect_equal(row$row_id, "J01CA04")
+  expect_equal(row$n, 0L)
+  expect_equal(row$pooled, 0)
+  expect_true(is.na(row$ci_lower))
+  expect_true(is.na(row$ci_upper))
+  group <- t[t$row_type == "atc5", ]
+  expect_true(is.na(group$row_id))
+  expect_equal(group$n, 0L)
+})
+
+test_that("the utilization table marks a substance of no AWaRe category, and its group row carries the quartiles", {
+  # J01MA17, which the fixture's metadata gives no AWaRe category and no
+  # ATC5 group: 3 days on each of five departments of 100 patient-days.
+  # Its row names the category it does not have, and the group row of no
+  # code stands in the quartiles like any other group's.
+  ds <- make_risk_time_test_ds(
+    n_dep = 5L, patient_days = 100L,
+    entry_departments = 1:5, entry_days = 3L, substance_code = "J01MA17")
+  t <- get_antibiotic_utilization_table(ds, use_cache = FALSE)
+  expect_equal(as.character(t$aware[t$row_type == "substance"]), "nc")
+  group <- t[t$row_type == "atc5", ]
+  expect_true(is.na(group$row_id))
+  expect_equal(group$n, 15L)
+  expect_equal(group$quartile_departments, 5L)
+  # The same days make the risk time's unclassified substance-days, which
+  # give the usage density table its Not classified row.
+  udr <- get_usage_density_rate_table(ds, use_cache = FALSE,
+    include_quartiles = FALSE)
+  expect_equal(udr$n[udr$factor == "nc"], 15L)
+})
+
 test_that("the secondary-BSI quartiles take each row's followed-up infections as denominator and count", {
   # Five departments of 7 followed-up SSIs each, 2 with a secondary BSI;
-  # department 3 has 8; department 6 has 2, none followed up. The
-  # followed-up denominator, not the infections, is what the rate and the
-  # minimum of 5 count: departments 1-5 enter, department 6 leaves, and the
-  # quartiles are those of the shares 2/7 and 2/8.
+  # department 3 has 8; department 6 has 2, none followed up, below the
+  # minimum either way; department 7 has 6, none followed up, which the
+  # followed-up denominator keeps out. Were the infections the minimum and
+  # the share's denominator, it would enter, the six shares would be 0, 25
+  # and four of 28.57, and q1 would read 25.89 while q2 and q3 stay at 2/7,
+  # so the quartile_departments of 6 and the q1 assertions are what catch
+  # that regression. As it is, departments 1-5 enter, departments 6 and 7
+  # leave, and the quartiles are those of the shares 2/7 and 2/8.
   sec <- c(rep("0", 5), rep("1", 2),
            rep("0", 5), rep("1", 2),
            rep("0", 6), rep("1", 2),
            rep("0", 5), rep("1", 2),
            rep("0", 5), rep("1", 2),
-           rep("-1", 2))
+           rep("-1", 2),
+           rep("-1", 6))
   dept <- c(rep(1L, 7), rep(2L, 7), rep(3L, 8), rep(4L, 7), rep(5L, 7),
-            rep(6L, 2))
+            rep(6L, 2), rep(7L, 6))
   ds <- make_infection_calc_test_ds(
     forms = tibble::tibble(
       event_type_key = rep("ssi", length(dept)),
@@ -2596,8 +2645,8 @@ test_that("the secondary-BSI quartiles take each row's followed-up infections as
 
   r <- get_secondary_bsi_rate_table(ds, use_cache = FALSE)
   ssi <- r[r$event_type_key == "ssi", ]
-  # 10 secondary BSIs of the 36 followed-up infections, department 6's
-  # unfollowed-up ones excluded from both sides of the rate.
+  # 10 secondary BSIs of the 36 followed-up infections, department 6's and
+  # 7's unfollowed-up ones excluded from both sides of the rate.
   expect_equal(ssi$n, 10L)
   expect_equal(ssi$followup_n, 36L)
   expect_equal(ssi$pooled, 10 / 36 * 100)
@@ -2608,7 +2657,7 @@ test_that("the secondary-BSI quartiles take each row's followed-up infections as
   expect_false(is.na(ssi$q1_ci_lower))
 })
 
-test_that("the risk-density table gives the not-classified category its own row", {
+test_that("the usage-density table gives the not-classified category its own row", {
   ds <- make_risk_time_test_ds(
     n_dep = 2L, patient_days = c(100L, 100L),
     entry_rows = tibble::tibble(
@@ -2621,4 +2670,6 @@ test_that("the risk-density table gives the not-classified category its own row"
   nc <- t[t$factor == "nc", ]
   expect_equal(nc$n, 2L)
   expect_equal(nc$pooled, 1)
+  # The other entry, of a classified substance, reaches its own row.
+  expect_equal(t$n[t$factor == "a"], 3L)
 })

@@ -19,7 +19,17 @@ Set to FALSE for department-level reports to simplify output.}
 }
 \value{
 A table containing incidence density rates of the infections with
-time dependent risks
+time dependent risks, one row per infection type: \code{n}, the infections;
+\code{pooled}, the rate per 1000 patient-days, and its Poisson interval
+(\code{ci_lower}, \code{ci_upper}). With \code{include_quartiles}, the departments'
+quartiles (\code{q1}, \code{q2}, \code{q3}) and their bootstrap intervals
+(\code{q1_ci_lower} to \code{q3_ci_upper}): a department enters every type's
+quartiles with at least 50 of its patient-days, at 0 where it holds none
+of the type's infections; the quartiles are shown where at least five
+departments enter, the type's infections number above 0, and the entering
+departments' median patient-days exceed the patient-days in which the
+pooled rate gives one infection; \code{quartile_departments} gives that
+number whether or not the quartiles are shown.
 }
 \description{
 Get the table with incidence density rates of the infections with time

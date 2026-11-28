@@ -106,9 +106,11 @@ test_that("calculate_department_data usage_density_rate_table has expected struc
   expect_true("factor" %in% names(udr))
   expect_true("days" %in% names(udr))
   expect_true("rate" %in% names(udr))
-  # Should have rows for: cvc, pvc, vs, inv, niv, human_milk,
-  # probiotic, kangaroo_care, ab, a, w, r, nc
-  expect_equal(nrow(udr), 13L)
+  # Rows for: cvc, pvc, vs, inv, niv, human_milk, probiotic, kangaroo_care,
+  # ab, a, w, r. The Not classified row stands only where the risk time has
+  # substance-days of an AWaRe category the metadata names none of, of which
+  # the fixture has none.
+  expect_equal(nrow(udr), 12L)
 })
 
 test_that("calculate_department_data incidence_density_rate_table has structure", {
