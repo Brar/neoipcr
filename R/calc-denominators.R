@@ -68,10 +68,9 @@ get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE) {
           x$events |>
             dplyr::select("enrollment_key", "event_key") |>
             dplyr::inner_join(
-              x$surveillanceEndData |>
-                dplyr::inner_join(
-                  get_aware_days(x, use_cache),
-                  dplyr::join_by("event_key")),
+              .join_aware_days(
+                x$surveillanceEndData,
+                get_aware_days(x, use_cache)),
               dplyr::join_by("event_key")),
           dplyr::join_by("enrollment_key")) |>
         dplyr::inner_join(
@@ -104,6 +103,20 @@ get_surgery_risk <- function(x, group_cols = NULL, use_cache = TRUE) {
     cache(x, cache_key)
 }
 
+# The surveillance-end forms with their substance-day categories' days: one
+# row per form, since a stay without an antimicrobial-substance entry is at
+# risk like the others. The aware days reach the form through a left join,
+# and a category whose column the join leaves out, because the dataset holds
+# no entry at all, stands at 0 days on every stay rather than missing.
+.join_aware_days <- function(end_data, aware_days) {
+  aware_cols <- names(aware_days)[names(aware_days) != "event_key"]
+  end_data |>
+    dplyr::left_join(aware_days, dplyr::join_by("event_key")) |>
+    dplyr::mutate(dplyr::across(
+      dplyr::any_of(aware_cols),
+      ~ dplyr::if_else(is.na(.x), 0L, as.integer(.x))))
+}
+
 get_risk_time <- function(x, group_cols = NULL, use_cache = TRUE) {
   if(is.null(group_cols))
     cache_key <- "risk_time"
@@ -132,10 +145,9 @@ get_risk_time <- function(x, group_cols = NULL, use_cache = TRUE) {
           x$events |>
             dplyr::select("enrollment_key", "event_key") |>
             dplyr::inner_join(
-              x$surveillanceEndData |>
-                dplyr::inner_join(
-                  get_aware_days(x, use_cache),
-                  dplyr::join_by("event_key")),
+              .join_aware_days(
+                x$surveillanceEndData,
+                get_aware_days(x, use_cache)),
               dplyr::join_by("event_key")),
           dplyr::join_by("enrollment_key")),
       dplyr::join_by("patient_key")) |>
@@ -177,6 +189,19 @@ get_procedures <- function(x, group_cols = NULL, use_cache = TRUE) {
     cache(x, cache_key)
 }
 
+# The AWaRe category a substance's option carries, with "Not classified" for
+# a substance the AWaRe classification names no category of — a substance
+# without one, or with a value the option set carries, counts in its own
+# category beside Access, Watch, and Reserve, never in a row no report can
+# label.
+.aware_level <- function(who_aware) {
+  dplyr::coalesce(
+    tolower(
+      stringr::str_extract(who_aware, "^WHO_AWARE_(A|W|R).+$", group = 1)),
+    "nc") |>
+    factor(levels = c("a", "w", "r", "nc"))
+}
+
 get_substance_days <- function(
     x, level = c("substance", "atc5", "aware"), use_cache = TRUE) {
   level <- match.arg(level)
@@ -184,10 +209,11 @@ get_substance_days <- function(
   if (use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
-  # Per-event, per-substance base data
+  # Per-event, per-substance base data. An entry that records a substance but
+  # no days adds no days; every sum counts the days that are known.
   base <- x$substanceDays |>
     dplyr::group_by(.data$event_key, .data$substance_code) |>
-    dplyr::summarise(days = sum(.data$days), .groups = "drop") |>
+    dplyr::summarise(days = sum(.data$days, na.rm = TRUE), .groups = "drop") |>
     dplyr::inner_join(
       x$metadata$antimicrobialSubstances |>
         dplyr::select(tidyselect::all_of(c("code", "displayName", "WHO_AWARE", "ATC5"))),
@@ -213,7 +239,7 @@ get_substance_days <- function(
         dplyr::mutate(atc5_code = as.character(.data$ATC5)) |>
         dplyr::left_join(atc5_names, dplyr::join_by("atc5_code")) |>
         dplyr::group_by(.data$event_key, .data$atc5_code, .data$atc5_name) |>
-        dplyr::summarise(days = sum(.data$days), .groups = "drop") |>
+        dplyr::summarise(days = sum(.data$days, na.rm = TRUE), .groups = "drop") |>
         dplyr::mutate(
           event_key = .data$event_key,
           code = .data$atc5_code,
@@ -223,16 +249,9 @@ get_substance_days <- function(
     },
 
     aware = base |>
-      dplyr::mutate(
-        AWaRe = factor(
-          tolower(
-            stringr::str_extract(
-              .data$WHO_AWARE,
-              "^WHO_AWARE_(A|W|R).+$",
-              group = 1)),
-          levels = c("a", "w", "r"))) |>
+      dplyr::mutate(AWaRe = .aware_level(.data$WHO_AWARE)) |>
       dplyr::group_by(.data$event_key, .data$AWaRe) |>
-      dplyr::summarise(days = sum(.data$days), .groups = "drop") |>
+      dplyr::summarise(days = sum(.data$days, na.rm = TRUE), .groups = "drop") |>
       dplyr::mutate(
         event_key = .data$event_key,
         code = .data$AWaRe,
@@ -255,10 +274,11 @@ summarise_substance_days <- function(
   if (use_cache && !is.null(r <- get_cached(x, cache_key)))
     return(r)
 
-  # Per-event, per-substance base data
+  # Per-event, per-substance base data. An entry that records a substance but
+  # no days adds no days; every sum counts the days that are known.
   base <- x$substanceDays |>
     dplyr::group_by(.data$event_key, .data$substance_code) |>
-    dplyr::summarise(days = sum(.data$days), .groups = "drop") |>
+    dplyr::summarise(days = sum(.data$days, na.rm = TRUE), .groups = "drop") |>
     dplyr::inner_join(
       x$metadata$antimicrobialSubstances |>
         dplyr::select(tidyselect::all_of(c("code", "displayName", "WHO_AWARE", "ATC5"))),
@@ -279,7 +299,7 @@ summarise_substance_days <- function(
         dplyr::across(tidyselect::all_of(group_cols)),
         code = .data$substance_code,
         display_name = as.character(.data$displayName)) |>
-      dplyr::summarise(days = sum(.data$days), .groups = "drop"),
+      dplyr::summarise(days = sum(.data$days, na.rm = TRUE), .groups = "drop"),
 
     atc5 = {
       atc5_names <- x$metadata$atc5Categories |>
@@ -295,22 +315,18 @@ summarise_substance_days <- function(
           dplyr::across(tidyselect::all_of(group_cols)),
           code = .data$atc5_code,
           display_name = .data$atc5_name) |>
-        dplyr::summarise(days = sum(.data$days), .groups = "drop")
+      dplyr::summarise(days = sum(.data$days, na.rm = TRUE), .groups = "drop")
     },
 
     aware = base |>
-      dplyr::mutate(
-        AWaRe = factor(
-          tolower(
-            stringr::str_extract(
-              .data$WHO_AWARE,
-              "^WHO_AWARE_(A|W|R).+$",
-              group = 1)),
-          levels = c("a", "w", "r"))) |>
+      dplyr::mutate(AWaRe = .aware_level(.data$WHO_AWARE)) |>
+      # Every category holds a row, at 0 known days where no entry names it:
+      # a missing row reads as no data, a 0 reads as none used.
       dplyr::group_by(
         dplyr::across(tidyselect::all_of(group_cols)),
-        code = .data$AWaRe) |>
-      dplyr::summarise(days = sum(.data$days), .groups = "drop") |>
+        code = .data$AWaRe,
+        .drop = FALSE) |>
+      dplyr::summarise(days = sum(.data$days, na.rm = TRUE), .groups = "drop") |>
       dplyr::mutate(display_name = NA_character_)
   )
 
@@ -321,12 +337,22 @@ get_aware_days <- function(x, use_cache = TRUE) {
   if (use_cache && !is.null(r <- get_cached(x, "aware_days")))
     return(r)
 
-  get_substance_days(x, level = "aware", use_cache = use_cache) |>
+  r <- get_substance_days(x, level = "aware", use_cache = use_cache) |>
     dplyr::select("event_key", AWaRe = "code", "days") |>
     tidyr::pivot_wider(
       names_from = "AWaRe",
       values_from = "days",
       names_glue = "{AWaRe}_{.value}",
-      values_fill = 0L) |>
-    cache(x, "aware_days")
+      values_fill = 0L)
+  # pivot_wider builds a column only for a category present in the data; every
+  # stay needs all four, so add those the pivot left out.
+  for (col in c("a_days", "w_days", "r_days", "nc_days"))
+    if (!col %in% names(r))
+      r[[col]] <- 0L
+  r <- r |>
+    dplyr::mutate(dplyr::across(
+      tidyselect::ends_with("_days"),
+      ~ dplyr::if_else(is.na(.x), 0L, as.integer(.x))))
+
+  cache(r, x, "aware_days")
 }
